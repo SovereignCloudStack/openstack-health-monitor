@@ -6,7 +6,7 @@
 # License: CC-BY-SA (2.0)
 #
 # General approach:
-# - create VPC (router)
+# - create router (VPC)
 # - create two subnets
 # - create security groups
 # - create SSH key
@@ -59,3 +59,44 @@ ostackcmd_id()
   echo "$TIM $ID"
 }
 
+# List of resources
+ROUTERS=""
+SUBNETS=""
+SGROUPS=""
+VOLUMES=""
+SSHKEYS=""
+VMS=""
+
+# Statistics
+NETSTATS=""
+VOLSTATS=""
+VOLCSTART=""
+VOLCSTOP=""
+NOVASTATS=""
+VMCSTATS=""
+VMCSTART=""
+VMCSTOP=""
+
+createRouter()
+{
+  read TM ID < <(ostackcmd_id id neutron router-create VPC_SAPTEST)
+  RC=$?
+  NETSTATS="$NETSTATS $TM"
+  if test $RC != 0; then echo "ERROR: VPC creation failed" 1>&2; return 1; fi
+  ROUTERS="$ROUTERS $ID"
+}
+
+deleteRouters()
+{
+  for router in $ROUTERS; do
+    read TM < <(ostackcmd_id id neutron router-delete $router)
+    NETSTATS="$NETSTATS $TM"
+  done
+}
+
+# Main 
+createRouter
+echo "$ROUTERS"
+#neutron router-show $ROUTERS
+deleteRouters
+echo "$NETSTATS"
