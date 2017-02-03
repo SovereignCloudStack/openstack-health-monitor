@@ -60,43 +60,43 @@ ostackcmd_id()
 }
 
 # List of resources
-ROUTERS=""
-SUBNETS=""
-SGROUPS=""
-VOLUMES=""
-SSHKEYS=""
-VMS=""
+declare -a ROUTERS
+declare -a SUBNETS
+declare -a SGROUPS
+declare -a VOLUMES
+declare -a SSHKEYS
+declare -a VMS
 
 # Statistics
-NETSTATS=""
-VOLSTATS=""
-VOLCSTART=""
-VOLCSTOP=""
-NOVASTATS=""
-VMCSTATS=""
-VMCSTART=""
-VMCSTOP=""
+declare -a NETSTATS
+declare -a VOLSTATS
+declare -a VOLCSTART
+declare -a VOLCSTOP
+declare -a NOVASTATS
+declare -a VMCSTATS
+declare -a VMCSTART
+declare -a VMCSTOP
 
 createRouter()
 {
   read TM ID < <(ostackcmd_id id neutron router-create VPC_SAPTEST)
   RC=$?
-  NETSTATS="$NETSTATS $TM"
+  NETSTATS+=($TM)
   if test $RC != 0; then echo "ERROR: VPC creation failed" 1>&2; return 1; fi
-  ROUTERS="$ROUTERS $ID"
+  ROUTERS+=($ID)
 }
 
 deleteRouters()
 {
   for router in $ROUTERS; do
     read TM < <(ostackcmd_id id neutron router-delete $router)
-    NETSTATS="$NETSTATS $TM"
+    NETSTATS+=($TM)
   done
 }
 
 # Main 
 createRouter
-echo "$ROUTERS"
-#neutron router-show $ROUTERS
+echo "${ROUTERS[*]}"
+#neutron router-show ${ROUTERS[0]}
 deleteRouters
-echo "$NETSTATS"
+echo "${NETSTATS[*]}"
