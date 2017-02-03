@@ -8,6 +8,8 @@
 # General approach:
 # - create VPC (router)
 # - create two subnets
+# - create security groups
+# - create SSH key
 # - create VMs by
 #   a) creating disks (from image)
 #   b) creating a port
@@ -38,4 +40,22 @@ if test "$1" = "-n"; then NUMVM=$2; shift; shift; fi
 if test "$1" = "-l"; then LOGFILE=$2; shift; shift; fi
 if test "$1" = "help" -o "$1" = "-h"; then usage; fi
 
+
+# Command wrapper for openstack commands
+# Collecting timing, logging, and extracting id
+# $1 = id to extract
+# $2-oo => command
+ostackcmd_id()
+{
+  IDNM=$1; shift
+  START=$(date +%s.%N)
+  RESP=$($@)
+  RC=$?
+  END=$(date +%s.%N)
+  ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed "s/^| *$IDNM *| *\([0-9a-f-]*\).*\$/\1/")
+  echo "$START/$END/$ID: $RESP" >> $LOGFILE
+  if test "$RC" != "0"; then echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
+  TIM=$(python -c "print \"%.3f\" % ($END-$START)")
+  echo "$TIM $ID"
+}
 
