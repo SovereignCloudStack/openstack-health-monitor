@@ -54,7 +54,7 @@ ostackcmd_id()
   RC=$?
   END=$(date +%s.%N)
   ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed "s/^| *$IDNM *| *\([0-9a-f-]*\).*\$/\1/")
-  echo "$START/$END/$ID: $RESP" >> $LOGFILE
+  echo "$START/$END/$ID: $@ => $RESP" >> $LOGFILE
   if test "$RC" != "0"; then echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
   TIM=$(python -c "print \"%.3f\" % ($END-$START)")
   echo "$TIM $ID"
@@ -95,7 +95,7 @@ createResources()
   for no in `seq 1 $QUANT`; do
     AZ=$((($no-1)%$NOAZS+1))
     VAL=${LIST[$ctr]}
-    CMD=`eval echo $@`
+    CMD=`eval echo $@ 2>&1`
     read TM ID < <(ostackcmd_id $IDNM $CMD)
     RC=$?
     eval ${STATNM}+="($TM)"
@@ -158,6 +158,17 @@ deleteSubNets()
   deleteResources NETSTATS SUBNET neutron subnet-delete
 }
 
+createRIfaces()
+{
+  createResources $NONETS NETSTATS NONE SUBNET id neutron router-interface-add ${ROUTERS[0]} \$VAL
+}
+
+deleteRIfaces()
+{
+  deleteResources NETSTATS SUBNET neutron router-interface-delete ${ROUTERS[0]}
+}
+
+
 # Main 
 if createRouters; then
  echo "Routers ${ROUTERS[*]}"
@@ -165,6 +176,8 @@ if createRouters; then
   echo "Nets ${NETS[*]}"
   if createSubNets; then
    echo "Subnets ${SUBNETS[*]}"
+   createRIfaces
+   deleteRIfaces
   fi
   deleteSubNets
  fi
