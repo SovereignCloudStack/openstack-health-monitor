@@ -81,7 +81,7 @@ declare -a VMCSTOP
 
 NOAZS=2
 
-# NUMBER STATNM RSRCNM OTHRSRC IDNM COMMAND
+# NUMBER STATNM RSRCNM OTHRSRC MORERSRC IDNM COMMAND
 createResources()
 {
   declare -i ctr=0
@@ -89,12 +89,15 @@ createResources()
   STATNM=$2
   RNM=$3
   ORNM=$4
-  IDNM=$5
-  shift; shift; shift; shift; shift
+  MRNM=$5
+  IDNM=$6
+  shift; shift; shift; shift; shift; shift
   eval LIST=( \"\${${ORNM}S[@]}\" )
+  eval MLIST=( \"\${${MRNM}S[@]}\" )
   for no in `seq 1 $QUANT`; do
     AZ=$((($no-1)%$NOAZS+1))
     VAL=${LIST[$ctr]}
+    MVAL=${MLIST[$ctr]}
     CMD=`eval echo $@ 2>&1`
     read TM ID < <(ostackcmd_id $IDNM $CMD)
     RC=$?
@@ -128,7 +131,7 @@ deleteResources()
 
 createRouters()
 {
-  createResources 1 NETSTATS ROUTER NONE id neutron router-create VPC_SAPTEST
+  createResources 1 NETSTATS ROUTER NONE NONE id neutron router-create VPC_SAPTEST
 }
 
 deleteRouters()
@@ -140,7 +143,7 @@ NONETS=2
 
 createNets()
 {
-  createResources $NONETS NETSTATS NET NONE id neutron net-create NET_SAPTEST_\$no
+  createResources $NONETS NETSTATS NET NONE NONE id neutron net-create NET_SAPTEST_\$no
 }
 
 deleteNets()
@@ -150,7 +153,7 @@ deleteNets()
 
 createSubNets()
 {
-  createResources $NONETS NETSTATS SUBNET NET id neutron subnet-create --name SUBNET_SAPTEST_\$no \$VAL 10.128.\$no.0/24 
+  createResources $NONETS NETSTATS SUBNET NET NONE id neutron subnet-create --name SUBNET_SAPTEST_\$no \$VAL 10.128.\$no.0/24 
 }
 
 deleteSubNets()
@@ -160,7 +163,7 @@ deleteSubNets()
 
 createRIfaces()
 {
-  createResources $NONETS NETSTATS NONE SUBNET id neutron router-interface-add ${ROUTERS[0]} \$VAL
+  createResources $NONETS NETSTATS NONE SUBNET NONE id neutron router-interface-add ${ROUTERS[0]} \$VAL
 }
 
 deleteRIfaces()
@@ -170,7 +173,38 @@ deleteRIfaces()
 
 createSGroups()
 {
-  createResources 2 NETSTATS SGROUP NONE id neutron security-group-create SG_SAP_\$no
+  NAMES=( SG_SAP_JumpHost SG_SAP_Internal )
+  createResources 2 NETSTATS SGROUP NAME NONE id neutron security-group-create \$VAL
+  # And set rules ... (we don't need to keep track of and delete them)
+  SG0=${SGROUPS[0]}
+  SG1=${SGROUPS[1]}
+  # Configure SGs: Internal ingress allowed
+  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG0 $SG0)
+  NETSTATS+=( $TM )
+  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG0 $SG0)
+  NETSTATS+=( $TM )
+  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG1)
+  NETSTATS+=( $TM )
+  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG1 $SG1)
+  NETSTATS+=( $TM )
+  # Configure SG_SAP_JumpHost rule: All from the other group, port 222 and 443 from outside
+  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG0)
+  NETSTATS+=( $TM )
+  #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
+  #NETSTATS+=( $TM )
+  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max 222 --remote-ip-prefix 0/0 $SG0)
+  NETSTATS+=( $TM )
+  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
+  NETSTATS+=( $TM )
+  # Configure SG_SAP_Internal rule: ssh and https and ping from the other group
+  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-group-id $SG0 $SG1)
+  NETSTATS+=( $TM )
+  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-group-id $SG0 $SG1)
+  NETSTATS+=( $TM )
+  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-group-id $SG0 $SG1)
+  NETSTATS+=( $TM )
+  #neutron security-group-show $SG0
+  #neutron security-group-show $SG1
 }
 
 deleteSGroups()
