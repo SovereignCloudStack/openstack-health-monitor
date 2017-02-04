@@ -7,6 +7,7 @@
 #
 # General approach:
 # - create router (VPC)
+# - create two nets
 # - create two subnets
 # - create security groups
 # - create SSH key
@@ -33,7 +34,7 @@ usage()
 }
 
 
-DATE=`date +s`
+DATE=`date +%s`
 LOGFILE=sap_978793-$DATE.log
 NUMVM=30
 if test "$1" = "-n"; then NUMVM=$2; shift; shift; fi
@@ -61,6 +62,7 @@ ostackcmd_id()
 
 # List of resources
 declare -a ROUTERS
+declare -a NETS
 declare -a SUBNETS
 declare -a SGROUPS
 declare -a VOLUMES
@@ -77,26 +79,77 @@ declare -a VMCSTATS
 declare -a VMCSTART
 declare -a VMCSTOP
 
-createRouter()
+NOAZS=2
+
+# NUMBER STATNM RSRCNM IDNM COMMAND
+createResources()
 {
-  read TM ID < <(ostackcmd_id id neutron router-create VPC_SAPTEST)
-  RC=$?
-  NETSTATS+=($TM)
-  if test $RC != 0; then echo "ERROR: VPC creation failed" 1>&2; return 1; fi
-  ROUTERS+=($ID)
+  QUANT=$1
+  STATNM=$2
+  RNM=$3
+  IDNM=$4
+  shift; shift; shift; shift
+  for no in `seq 1 $QUANT`; do
+    AZ=$((($no-1)%$NOAZS+1))
+    CMD=`eval echo $@`
+    read TM ID < <(ostackcmd_id $IDNM $CMD)
+    RC=$?
+    eval ${STATNM}+="($TM)"
+    if test $RC != 0; then echo "ERROR: $RNM creation failed" 1>&2; return 1; fi
+    eval ${RNM}S+="($ID)"
+  done
+}
+
+# STATNM RSRCNM COMMAND
+deleteResources()
+{
+  STATNM=$1
+  RNM=$2
+  shift; shift
+  #eval varAlias=( \"\${myvar${varname}[@]}\" ) 
+  eval LIST=( \"\${${RNM}S[@]}\" )
+  #echo $LIST
+  echo -n "Del:"
+  #for rsrc in $LIST; do
+  while test ${#LIST[@]} -gt 0; do
+    rsrc=${LIST[-1]}
+    echo -n " $rsrc"
+    read TM < <(ostackcmd_id id $@ $rsrc)
+    eval ${STATNM}+="($TM)"
+    unset LIST[-1]
+  done
+  echo
+}
+
+createRouters()
+{
+  createResources 1 NETSTATS ROUTER id neutron router-create VPC_SAPTEST
 }
 
 deleteRouters()
 {
-  for router in $ROUTERS; do
-    read TM < <(ostackcmd_id id neutron router-delete $router)
-    NETSTATS+=($TM)
-  done
+  deleteResources NETSTATS ROUTER neutron router-delete
+}
+
+NONETS=2
+
+createNets()
+{
+  createResources $NONETS NETSTATS NET id neutron net-create NET_SAPTEST_\$no
+}
+
+deleteNets()
+{
+  deleteResources NETSTATS NET neutron net-delete
 }
 
 # Main 
-createRouter
-echo "${ROUTERS[*]}"
-#neutron router-show ${ROUTERS[0]}
+if createRouters; then
+ echo "Routers ${ROUTERS[*]}"
+ if createNets; then
+  echo "Nets ${NETS[*]}"
+ fi
+ deleteNets
+fi
 deleteRouters
 echo "${NETSTATS[*]}"
