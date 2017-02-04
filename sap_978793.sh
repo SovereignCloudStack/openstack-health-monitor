@@ -68,6 +68,7 @@ declare -a SGROUPS
 declare -a VOLUMES
 declare -a SSHKEYS
 declare -a VMS
+declare -a VIPS
 
 # Statistics
 declare -a NETSTATS
@@ -117,7 +118,7 @@ deleteResources()
   #eval varAlias=( \"\${myvar${varname}[@]}\" ) 
   eval LIST=( \"\${${RNM}S[@]}\" )
   #echo $LIST
-  echo -n "Del:"
+  echo -n "Del $RNM:"
   #for rsrc in $LIST; do
   while test ${#LIST[@]} -gt 0; do
     rsrc=${LIST[-1]}
@@ -127,6 +128,19 @@ deleteResources()
     unset LIST[-1]
   done
   echo
+}
+
+# STATNM RESRNM COMMAND
+# Only for the log file
+showResources()
+{
+  STATNM=$1
+  RNM=$2
+  shift; shift
+  eval LIST=( \"\${$RNM}S[@]\" )
+  while rsrc in ${LIST}; do
+    read TM ID < <(ostackcmd_id id $@ $rsrc)
+  done
 }
 
 createRouters()
@@ -174,7 +188,7 @@ deleteRIfaces()
 createSGroups()
 {
   NAMES=( SG_SAP_JumpHost SG_SAP_Internal )
-  createResources 2 NETSTATS SGROUP NAME NONE id neutron security-group-create \$VAL
+  createResources 2 NETSTATS SGROUP NAME NONE id neutron security-group-create \$VAL || return
   # And set rules ... (we don't need to keep track of and delete them)
   SG0=${SGROUPS[0]}
   SG1=${SGROUPS[1]}
@@ -209,7 +223,18 @@ createSGroups()
 
 deleteSGroups()
 {
-  deleteResources NETSTSTATS SGROUP neutron security-group-delete
+  deleteResources NETSTATS SGROUP neutron security-group-delete
+}
+
+createVIPs()
+{
+  createResources 1 NETSTATS VIP NONE NONE id neutron port-create --name SAP_VirtualIP --security-group ${SGROUPS[0]} ${NETS[0]}
+  #neutron port-show ${VIPS[0]}
+}
+
+deleteVIPs()
+{
+  deleteResources NETSTATS VIP neutron port-delete
 }
 
 stats()
@@ -240,8 +265,10 @@ if createRouters; then
    if createRIfaces; then
     if createSGroups; then
      echo "SGroups ${SGROUPS[*]}"
+     createVIPs
      echo "SETUP DONE, SLEEP"
      sleep 1
+     deleteVIPs
     fi
     deleteSGroups
    fi
