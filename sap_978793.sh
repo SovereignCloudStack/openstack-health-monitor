@@ -81,20 +81,25 @@ declare -a VMCSTOP
 
 NOAZS=2
 
-# NUMBER STATNM RSRCNM IDNM COMMAND
+# NUMBER STATNM RSRCNM OTHRSRC IDNM COMMAND
 createResources()
 {
+  declare -i ctr=0
   QUANT=$1
   STATNM=$2
   RNM=$3
-  IDNM=$4
-  shift; shift; shift; shift
+  ORNM=$4
+  IDNM=$5
+  shift; shift; shift; shift; shift
+  eval LIST=( \"\${${ORNM}S[@]}\" )
   for no in `seq 1 $QUANT`; do
     AZ=$((($no-1)%$NOAZS+1))
+    VAL=${LIST[$ctr]}
     CMD=`eval echo $@`
     read TM ID < <(ostackcmd_id $IDNM $CMD)
     RC=$?
     eval ${STATNM}+="($TM)"
+    let ctr+=1
     if test $RC != 0; then echo "ERROR: $RNM creation failed" 1>&2; return 1; fi
     eval ${RNM}S+="($ID)"
   done
@@ -123,7 +128,7 @@ deleteResources()
 
 createRouters()
 {
-  createResources 1 NETSTATS ROUTER id neutron router-create VPC_SAPTEST
+  createResources 1 NETSTATS ROUTER NONE id neutron router-create VPC_SAPTEST
 }
 
 deleteRouters()
@@ -135,7 +140,7 @@ NONETS=2
 
 createNets()
 {
-  createResources $NONETS NETSTATS NET id neutron net-create NET_SAPTEST_\$no
+  createResources $NONETS NETSTATS NET NONE id neutron net-create NET_SAPTEST_\$no
 }
 
 deleteNets()
@@ -143,11 +148,25 @@ deleteNets()
   deleteResources NETSTATS NET neutron net-delete
 }
 
+createSubNets()
+{
+  createResources $NONETS NETSTATS SUBNET NET id neutron subnet-create --name SUBNET_SAPTEST_\$no \$VAL 10.128.\$no.0/24 
+}
+
+deleteSubNets()
+{
+  deleteResources NETSTATS SUBNET neutron subnet-delete
+}
+
 # Main 
 if createRouters; then
  echo "Routers ${ROUTERS[*]}"
  if createNets; then
   echo "Nets ${NETS[*]}"
+  if createSubNets; then
+   echo "Subnets ${SUBNETS[*]}"
+  fi
+  deleteSubNets
  fi
  deleteNets
 fi
