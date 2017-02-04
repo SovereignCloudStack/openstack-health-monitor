@@ -168,6 +168,33 @@ deleteRIfaces()
   deleteResources NETSTATS SUBNET neutron router-interface-delete ${ROUTERS[0]}
 }
 
+createSGroups()
+{
+  createResources 2 NETSTATS SGROUP NONE id neutron security-group-create SG_SAP_\$no
+}
+
+deleteSGroups()
+{
+  deleteResources NETSTSTATS SGROUP neutron security-group-delete
+}
+
+stats()
+{
+  eval LIST=( \"\${${1}[@]}\" )
+  IFS=$'\n' SLIST=($(sort <<<"${LIST[*]}"))
+  #echo ${SLIST[*]}
+  MIN=${SLIST[0]}
+  MAX=${SLIST[-1]}
+  NO=${#SLIST[@]}
+  MID=$(($NO/2))
+  if test $(($NO%2)) = 1; then MED=${SLIST[$MID]}; 
+  else MED=`python -c "print \"%.3f\" % ((${SLIST[$MID]}+${SLIST[$(($MID-1))]})/2)"`
+  fi
+  AVGC="($(echo ${LIST[*]}|sed 's/ /+/g'))/$NO"
+  #echo "$AVGC"
+  AVG=`python -c "print \"%.3f\" % ($AVGC)"`
+  echo "$1: Min $MIN Max $MAX Med $MED Avg $AVG Num $NO"
+}
 
 # Main 
 if createRouters; then
@@ -176,7 +203,14 @@ if createRouters; then
   echo "Nets ${NETS[*]}"
   if createSubNets; then
    echo "Subnets ${SUBNETS[*]}"
-   createRIfaces
+   if createRIfaces; then
+    if createSGroups; then
+     echo "SGroups ${SGROUPS[*]}"
+     echo "SETUP DONE, SLEEP"
+     sleep 1
+    fi
+    deleteSGroups
+   fi
    deleteRIfaces
   fi
   deleteSubNets
@@ -184,4 +218,5 @@ if createRouters; then
  deleteNets
 fi
 deleteRouters
-echo "${NETSTATS[*]}"
+#echo "${NETSTATS[*]}"
+stats NETSTATS
