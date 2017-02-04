@@ -36,8 +36,20 @@ usage()
 
 DATE=`date +%s`
 LOGFILE=sap_978793-$DATE.log
-NUMVM=30
-if test "$1" = "-n"; then NUMVM=$2; shift; shift; fi
+NOVMS=30
+NOAZS=2
+NONETS=2
+
+
+# IMAGE
+IMG="Standard_openSUSE_42_JeOS_latest"
+IMGFILT="--property-filter __platform=OpenSUSE"
+
+VOLSIZE=10
+
+
+
+if test "$1" = "-n"; then NOVMS=$2; shift; shift; fi
 if test "$1" = "-l"; then LOGFILE=$2; shift; shift; fi
 if test "$1" = "help" -o "$1" = "-h"; then usage; fi
 
@@ -49,10 +61,10 @@ if test "$1" = "help" -o "$1" = "-h"; then usage; fi
 ostackcmd_id()
 {
   IDNM=$1; shift
-  START=$(date +%s.%N)
+  START=$(date +%s.%3N)
   RESP=$($@)
   RC=$?
-  END=$(date +%s.%N)
+  END=$(date +%s.%3N)
   ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed "s/^| *$IDNM *| *\([0-9a-f-]*\).*\$/\1/")
   echo "$START/$END/$ID: $@ => $RESP" >> $LOGFILE
   if test "$RC" != "0"; then echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
@@ -69,20 +81,30 @@ declare -a VOLUMES
 declare -a SSHKEYS
 declare -a VMS
 declare -a VIPS
+declare -a JHPORTS
+declare -a PORTS
+declare -a JHVOLUMES
+declare -a JHVMS
 
 # Statistics
 declare -a NETSTATS
 declare -a VOLSTATS
+declare -a VOLJHSTART
+declare -a VOLJHSTOP
 declare -a VOLCSTART
 declare -a VOLCSTOP
 declare -a NOVASTATS
 declare -a VMCSTATS
+declare -a VMJHSTART
+declare -a VMJHSTOP
 declare -a VMCSTART
 declare -a VMCSTOP
 
-NOAZS=2
+# Image
+IMGID=$(glance image-list $IMGFILT | grep "$IMG" | head -n1 | sed 's/| \([0-9a-f-]*\).*$/\1/')
+echo "Image $IMGID"
 
-# NUMBER STATNM RSRCNM OTHRSRC MORERSRC IDNM COMMAND
+# NUMBER STATNM RSRCNM OTHRSRC MORERSRC STIME IDNM COMMAND
 createResources()
 {
   declare -i ctr=0
@@ -91,15 +113,18 @@ createResources()
   RNM=$3
   ORNM=$4
   MRNM=$5
-  IDNM=$6
-  shift; shift; shift; shift; shift; shift
+  STIME=$6
+  IDNM=$7
+  shift; shift; shift; shift; shift; shift; shift
   eval LIST=( \"\${${ORNM}S[@]}\" )
   eval MLIST=( \"\${${MRNM}S[@]}\" )
-  for no in `seq 1 $QUANT`; do
-    AZ=$((($no-1)%$NOAZS+1))
+  for no in `seq 0 $(($QUANT-1))`; do
+    AZ=$(($no%$NOAZS+1))
     VAL=${LIST[$ctr]}
     MVAL=${MLIST[$ctr]}
     CMD=`eval echo $@ 2>&1`
+    STM=$(date +%s.%3N)
+    if test -n "$STIME"; then eval "${STIME}+=( $STM )"; fi
     read TM ID < <(ostackcmd_id $IDNM $CMD)
     RC=$?
     eval ${STATNM}+="($TM)"
@@ -145,7 +170,7 @@ showResources()
 
 createRouters()
 {
-  createResources 1 NETSTATS ROUTER NONE NONE id neutron router-create VPC_SAPTEST
+  createResources 1 NETSTATS ROUTER NONE NONE "" id neutron router-create VPC_SAPTEST
 }
 
 deleteRouters()
@@ -153,11 +178,9 @@ deleteRouters()
   deleteResources NETSTATS ROUTER neutron router-delete
 }
 
-NONETS=2
-
 createNets()
 {
-  createResources $NONETS NETSTATS NET NONE NONE id neutron net-create NET_SAPTEST_\$no
+  createResources $NONETS NETSTATS NET NONE NONE "" id neutron net-create "NET_SAPTEST_\$no"
 }
 
 deleteNets()
@@ -167,7 +190,7 @@ deleteNets()
 
 createSubNets()
 {
-  createResources $NONETS NETSTATS SUBNET NET NONE id neutron subnet-create --name SUBNET_SAPTEST_\$no \$VAL 10.128.\$no.0/24 
+  createResources $NONETS NETSTATS SUBNET NET NONE "" id neutron subnet-create --name "SUBNET_SAPTEST_\$no" "\$VAL" 10.128.\$no.0/24
 }
 
 deleteSubNets()
@@ -177,7 +200,7 @@ deleteSubNets()
 
 createRIfaces()
 {
-  createResources $NONETS NETSTATS NONE SUBNET NONE id neutron router-interface-add ${ROUTERS[0]} \$VAL
+  createResources $NONETS NETSTATS NONE SUBNET NONE "" id neutron router-interface-add ${ROUTERS[0]} "\$VAL"
 }
 
 deleteRIfaces()
@@ -188,7 +211,7 @@ deleteRIfaces()
 createSGroups()
 {
   NAMES=( SG_SAP_JumpHost SG_SAP_Internal )
-  createResources 2 NETSTATS SGROUP NAME NONE id neutron security-group-create \$VAL || return
+  createResources 2 NETSTATS SGROUP NAME NONE "" id neutron security-group-create "\$VAL" || return
   # And set rules ... (we don't need to keep track of and delete them)
   SG0=${SGROUPS[0]}
   SG1=${SGROUPS[1]}
@@ -228,13 +251,70 @@ deleteSGroups()
 
 createVIPs()
 {
-  createResources 1 NETSTATS VIP NONE NONE id neutron port-create --name SAP_VirtualIP --security-group ${SGROUPS[0]} ${NETS[0]}
-  #neutron port-show ${VIPS[0]}
+  createResources 1 NETSTATS VIP NONE NONE "" id neutron port-create --name SAP_VirtualIP --security-group ${SGROUPS[0]} ${NETS[0]}
+  # FIXME: Do we need to do --allowed-adress-pairs here as well?
 }
 
 deleteVIPs()
 {
   deleteResources NETSTATS VIP neutron port-delete
+}
+
+createJHPorts()
+{
+  createResources $NONETS NETSTATS JHPORT NONE NONE "" id neutron port-create --name "SAP_JumpHost\${no}_Port" --security-group ${SGROUPS[0]} "\${NETS[\$((\$no%$NONETS))]}" || return
+  for i in `seq 0 $((NONETS-1))`; do
+    read TM ID < <(ostackcmd_id id neutron port-update ${JHPORTS[$i]} --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1)
+    RC=$?
+    NETSTATS+=( $TM )
+    if test $RC != 0; then echo "ERROR: Failed setting allowed-adr-pair for port ${JHPORTS[$i]}" 1>&2; return 1; fi
+  done
+}
+
+createPorts()
+{
+  createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "SAP_VM\${no}_Port" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
+}
+
+deleteJHPorts()
+{
+  deleteResources NETSTATS JHPORT neutron port-delete
+}
+
+deletePorts()
+{
+  deleteResources NETSTATS PORT neutron port-delete
+}
+
+createJHVols()
+{
+  createResources $NONETS VOLSTATS JHVOLUME NONE NONE VOLJHSTART id cinder create --image-id $IMGID --name SAP-RootVol-JH\$no --availability-zone eu-de-0\$AZ $VOLSIZE
+}
+
+waitJHVols()
+{
+  declare -i MISS=$NONETS
+  while test "$MISS" -gt 0; do
+    declare -i ctr=0
+    for rsrc in ${JHVOLUMES[@]}; do
+      if test -z "${VOLJHSTART[$ctr]}"; then continue; fi
+      read TM STAT < <(ostackcmd_id status cinder show $rsrc)
+      RC=$?
+      VOLSTATS+=( $TM )
+      if test "$STAT" = "available" -o "$STAT" = "is-use" -o "$STAT" = "error"; then
+        TM=$(date +%s.%3N)
+        VOLJHSTOP+=( $(($TM-${VOLJHSTART[$ctr]})) )
+        unset VOLJHSTART[$ctr]
+        let MISS-=1
+      fi
+      let ctr+=1
+    done
+  done
+}
+
+deleteJHVols()
+{
+  deleteResource VOLSTATS JHVOLUME cinder delete
 }
 
 stats()
@@ -256,6 +336,7 @@ stats()
 }
 
 # Main 
+START=$(date +%s)
 if createRouters; then
  echo "Routers ${ROUTERS[*]}"
  if createNets; then
@@ -265,9 +346,21 @@ if createRouters; then
    if createRIfaces; then
     if createSGroups; then
      echo "SGroups ${SGROUPS[*]}"
-     createVIPs
-     echo "SETUP DONE, SLEEP"
-     sleep 1
+     if createVIPs; then
+      echo "VirtualIP ${VIPS[*]}"
+      if createJHPorts && createPorts; then
+       echo "(JH)Ports: ${JHPORTS[*]} ${PORTS[*]}"
+       if createJHVols; then
+        echo "JH Volumes ${JHVOLUMES[*]}"
+        waitJHVols
+        echo "SETUP DONE, SLEEP"
+        sleep 1
+       fi
+       deleteJHVols
+      fi
+      deletePorts
+      deleteJHPorts
+     fi
      deleteVIPs
     fi
     deleteSGroups
@@ -281,3 +374,6 @@ fi
 deleteRouters
 #echo "${NETSTATS[*]}"
 stats NETSTATS
+stats VOLSTATS
+stats VOLJHSTOP
+echo "Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$START))s"
