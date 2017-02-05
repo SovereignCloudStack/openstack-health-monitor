@@ -65,10 +65,10 @@ ostackcmd_id()
   RESP=$($@)
   RC=$?
   END=$(date +%s.%3N)
-  ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed "s/^| *$IDNM *| *\([0-9a-f-]*\).*\$/\1/")
+  ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed -e "s/^| *$IDNM *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
   echo "$START/$END/$ID: $@ => $RESP" >> $LOGFILE
   if test "$RC" != "0"; then echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
-  TIM=$(python -c "print \"%.3f\" % ($END-$START)")
+  TIM=$(python -c "print \"%.2f\" % ($END-$START)")
   echo "$TIM $ID"
 }
 
@@ -87,18 +87,19 @@ declare -a JHVOLUMES
 declare -a JHVMS
 
 # Statistics
+# API performance neutron, cinder, nova
 declare -a NETSTATS
 declare -a VOLSTATS
-declare -a VOLJHSTART
-declare -a VOLJHSTOP
-declare -a VOLCSTART
-declare -a VOLCSTOP
 declare -a NOVASTATS
+# Resource creation stats (creation/deletion)
+declare -a VOLCSTATS
+declare -a VOLDSTATS
 declare -a VMCSTATS
-declare -a VMJHSTART
-declare -a VMJHSTOP
-declare -a VMCSTART
-declare -a VMCSTOP
+declare -a VMCDTATS
+# Arrays to store resource creation start times
+declare -a VOLSTIME
+declare -a JVOLSTIME
+declare -a VMSTIME
 
 # Image
 IMGID=$(glance image-list $IMGFILT | grep "$IMG" | head -n1 | sed 's/| \([0-9a-f-]*\).*$/\1/')
@@ -108,13 +109,9 @@ echo "Image $IMGID"
 createResources()
 {
   declare -i ctr=0
-  QUANT=$1
-  STATNM=$2
-  RNM=$3
-  ORNM=$4
-  MRNM=$5
-  STIME=$6
-  IDNM=$7
+  QUANT=$1; STATNM=$2; RNM=$3
+  ORNM=$4; MRNM=$5
+  STIME=$6; IDNM=$7
   shift; shift; shift; shift; shift; shift; shift
   eval LIST=( \"\${${ORNM}S[@]}\" )
   eval MLIST=( \"\${${MRNM}S[@]}\" )
@@ -123,7 +120,7 @@ createResources()
     VAL=${LIST[$ctr]}
     MVAL=${MLIST[$ctr]}
     CMD=`eval echo $@ 2>&1`
-    STM=$(date +%s.%3N)
+    STM=$(date +%s)
     if test -n "$STIME"; then eval "${STIME}+=( $STM )"; fi
     read TM ID < <(ostackcmd_id $IDNM $CMD)
     RC=$?
@@ -137,8 +134,7 @@ createResources()
 # STATNM RSRCNM COMMAND
 deleteResources()
 {
-  STATNM=$1
-  RNM=$2
+  STATNM=$1; RNM=$2
   shift; shift
   #eval varAlias=( \"\${myvar${varname}[@]}\" ) 
   eval LIST=( \"\${${RNM}S[@]}\" )
@@ -153,6 +149,46 @@ deleteResources()
     unset LIST[-1]
   done
   echo
+}
+
+# STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
+# STATNM: Polling API performance
+# RSRCNM: List of UUIDs to query
+# CSTAT: Stats on creation time
+# STIME: When did we start resource creation
+# COMP1/2: Completion states
+# COMMAND: CLI command (resource ID will be appended)
+waitResources()
+{
+  STATNM=$1; RNM=$2; CSTAT=$3; STIME=$4
+  COMP1=$5; COMP2=$6; IDNM=$7
+  shift; shift; shift; shift; shift; shift; shift
+  eval RLIST=( \"\${${RNM}S[@]}\" )
+  eval SLIST=( \"\${${STIME}[@]}\" )
+  LAST=$(( ${#RLIST[@]} - 1 ))
+  while test -n "${SLIST[*]}"; do
+    STATSTR=""
+    for i in $(seq 0 $LAST ); do
+      rsrc=${RLIST[$i]}
+      if test -z "${SLIST[$i]}"; then STATSTR+='a'; continue; fi
+      CMD=`eval echo $@ $rsrc 2>&1`
+      read TM STAT < <(ostackcmd_id $IDNM $CMD)
+      RC=$?
+      eval ${STATNM}+="( $TM )"
+      if test $RC != 0; then echo "ERROR: Querying $RNM $rsrc failed" 1>&2; return 1; fi
+      STATSTR+=${STAT:0:1}
+      echo -en "$RNM: $STATSTR\r"
+      if test "$STAT" == "$COMP1" -o "$STAT" == "$COMP2"; then
+        TM=$(date +%s)
+	TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
+	eval ${CSTAT}+="($TM)"
+	unset SLIST[$i]
+      elif test "$STAT" == "error"; then
+        echo "ERROR: $NM $rsrc status $STAT" 1>&2; return 1
+      fi
+    done
+    sleep 2
+  done
 }
 
 # STATNM RESRNM COMMAND
@@ -190,7 +226,7 @@ deleteNets()
 
 createSubNets()
 {
-  createResources $NONETS NETSTATS SUBNET NET NONE "" id neutron subnet-create --name "SUBNET_SAPTEST_\$no" "\$VAL" 10.128.\$no.0/24
+  createResources $NONETS NETSTATS SUBNET NET NONE "" id neutron subnet-create --name "SUBNET_SAPTEST_\$no" "\$VAL" "10.128.\$no.0/24"
 }
 
 deleteSubNets()
@@ -288,38 +324,43 @@ deletePorts()
 
 createJHVols()
 {
-  createResources $NONETS VOLSTATS JHVOLUME NONE NONE VOLJHSTART id cinder create --image-id $IMGID --name SAP-RootVol-JH\$no --availability-zone eu-de-0\$AZ $VOLSIZE
+  JVOLSTIME=()
+  createResources $NONETS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id cinder create --image-id $IMGID --name SAP-RootVol-JH\$no --availability-zone eu-de-0\$AZ 4
 }
 
+# STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
 waitJHVols()
 {
-  declare -i MISS=$NONETS
-  while test "$MISS" -gt 0; do
-    declare -i ctr=0
-    for rsrc in ${JHVOLUMES[@]}; do
-      if test -z "${VOLJHSTART[$ctr]}"; then continue; fi
-      read TM STAT < <(ostackcmd_id status cinder show $rsrc)
-      RC=$?
-      VOLSTATS+=( $TM )
-      if test "$STAT" = "available" -o "$STAT" = "is-use" -o "$STAT" = "error"; then
-        TM=$(date +%s.%3N)
-        VOLJHSTOP+=( $(($TM-${VOLJHSTART[$ctr]})) )
-        unset VOLJHSTART[$ctr]
-        let MISS-=1
-      fi
-      let ctr+=1
-    done
-  done
+  waitResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" "status" cinder show
 }
 
 deleteJHVols()
 {
-  deleteResource VOLSTATS JHVOLUME cinder delete
+  deleteResources VOLSTATS JHVOLUME cinder delete
 }
 
+createVols()
+{
+  VOLSTIME=()
+  createResources $NOVMS VOLSTATS VOLUME NONE NONE VOLSTIME id cinder create --image-id $IMGID --name SAP-RootVol-VM\$no --availability-zone eu-de-0\$AZ $VOLSIZE
+}
+
+# STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
+waitVols()
+{
+  waitResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" "status" cinder show
+}
+
+deleteVols()
+{
+  deleteResources VOLSTATS VOLUME cinder delete
+}
+
+# STATLIST [DIGITS]
 stats()
 {
   eval LIST=( \"\${${1}[@]}\" )
+  DIG=${2:-2}
   IFS=$'\n' SLIST=($(sort <<<"${LIST[*]}"))
   #echo ${SLIST[*]}
   MIN=${SLIST[0]}
@@ -327,16 +368,31 @@ stats()
   NO=${#SLIST[@]}
   MID=$(($NO/2))
   if test $(($NO%2)) = 1; then MED=${SLIST[$MID]}; 
-  else MED=`python -c "print \"%.3f\" % ((${SLIST[$MID]}+${SLIST[$(($MID-1))]})/2)"`
+  else MED=`python -c "print \"%.${DIG}f\" % ((${SLIST[$MID]}+${SLIST[$(($MID-1))]})/2)"`
   fi
   AVGC="($(echo ${LIST[*]}|sed 's/ /+/g'))/$NO"
   #echo "$AVGC"
-  AVG=`python -c "print \"%.3f\" % ($AVGC)"`
+  AVG=`python -c "print \"%.${DIG}f\" % ($AVGC)"`
   echo "$1: Min $MIN Max $MAX Med $MED Avg $AVG Num $NO"
 }
 
 # Main 
 START=$(date +%s)
+# Debugging: Start with volume step
+if test "$1" = "VOLUMES"; then
+ VOLSIZE=${2:-$VOLSIZE}
+ if createJHVols; then
+  echo "JH Volumes ${JHVOLUMES[*]}"
+  if createVols; then
+   echo "Volumes ${VOLUMES[*]}"
+   waitJHVols
+   waitVols
+   echo "SETUP DONE, SLEEP"
+   sleep 1
+  fi; deleteVols
+ fi; deleteJHVols
+else
+# Complete setup
 if createRouters; then
  echo "Routers ${ROUTERS[*]}"
  if createNets; then
@@ -352,28 +408,24 @@ if createRouters; then
        echo "(JH)Ports: ${JHPORTS[*]} ${PORTS[*]}"
        if createJHVols; then
         echo "JH Volumes ${JHVOLUMES[*]}"
-        waitJHVols
-        echo "SETUP DONE, SLEEP"
-        sleep 1
-       fi
-       deleteJHVols
-      fi
-      deletePorts
-      deleteJHPorts
-     fi
-     deleteVIPs
-    fi
-    deleteSGroups
-   fi
-   deleteRIfaces
-  fi
-  deleteSubNets
- fi
- deleteNets
-fi
-deleteRouters
+        if createVols; then
+         echo "Volumes ${VOLUMES[*]}"
+         waitJHVols
+         waitVols
+         echo "SETUP DONE, SLEEP"
+         sleep 1
+        fi; deleteVols
+       fi; deleteJHVols
+      fi; deletePorts; deleteJHPorts
+     fi; deleteVIPs
+    fi; deleteSGroups
+   fi; deleteRIfaces
+  fi; deleteSubNets
+ fi; deleteNets
+fi; deleteRouters
 #echo "${NETSTATS[*]}"
 stats NETSTATS
+fi
 stats VOLSTATS
-stats VOLJHSTOP
+stats VOLCSTATS 0
 echo "Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$START))s"
