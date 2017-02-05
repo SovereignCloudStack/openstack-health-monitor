@@ -77,13 +77,14 @@ declare -a ROUTERS
 declare -a NETS
 declare -a SUBNETS
 declare -a SGROUPS
-declare -a VOLUMES
-declare -a SSHKEYS
-declare -a VMS
-declare -a VIPS
 declare -a JHPORTS
 declare -a PORTS
+declare -a VIPS
+declare -a FIPS
+declare -a KEYPAIRS
 declare -a JHVOLUMES
+declare -a VOLUMES
+declare -a VMS
 declare -a JHVMS
 
 # Statistics
@@ -115,6 +116,7 @@ createResources()
   shift; shift; shift; shift; shift; shift; shift
   eval LIST=( \"\${${ORNM}S[@]}\" )
   eval MLIST=( \"\${${MRNM}S[@]}\" )
+  if test "$RNM" != "NONE"; then echo -n "New $RNM:"; fi
   for no in `seq 0 $(($QUANT-1))`; do
     AZ=$(($no%$NOAZS+1))
     VAL=${LIST[$ctr]}
@@ -127,8 +129,10 @@ createResources()
     eval ${STATNM}+="($TM)"
     let ctr+=1
     if test $RC != 0; then echo "ERROR: $RNM creation failed" 1>&2; return 1; fi
+    if test -n "$ID" -a "$RNM" != "NONE"; then echo -n " $ID"; fi
     eval ${RNM}S+="($ID)"
   done
+  if test "$RNM" != "NONE"; then echo; fi
 }
 
 # STATNM RSRCNM COMMAND
@@ -177,7 +181,7 @@ waitResources()
       eval ${STATNM}+="( $TM )"
       if test $RC != 0; then echo "ERROR: Querying $RNM $rsrc failed" 1>&2; return 1; fi
       STATSTR+=${STAT:0:1}
-      echo -en "$RNM: $STATSTR\r"
+      echo -en "Wait $RNM: $STATSTR\r"
       if test "$STAT" == "$COMP1" -o "$STAT" == "$COMP2"; then
         TM=$(date +%s)
 	TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
@@ -288,7 +292,7 @@ deleteSGroups()
 createVIPs()
 {
   createResources 1 NETSTATS VIP NONE NONE "" id neutron port-create --name SAP_VirtualIP --security-group ${SGROUPS[0]} ${NETS[0]}
-  # FIXME: Do we need to do --allowed-adress-pairs here as well?
+  # FIXME: We should not need --allowed-adress-pairs here ...
 }
 
 deleteVIPs()
@@ -356,6 +360,60 @@ deleteVols()
   deleteResources VOLSTATS VOLUME cinder delete
 }
 
+createKeypairs()
+{
+  START=$(date +%s.%3N)
+  nova keypair-add SAP_JH_Keypair > SAP_JH_Keypair.pem || return 1
+  STOP=$(date +%s.%3N)
+  NOVASTATS+=( $(python -c "print \"%.2f\" % ($STOP-$START)") )
+  KEYPAIRS+=( "SAP_JH_Keypair" )
+  START=$(date +%s.%3N)
+  nova keypair-add SAP_VM_Keypair > SAP_VM_Keypair.pem || return 1
+  STOP=$(date +%s.%3N)
+  NOVASTATS+=( $(python -c "print \"%.2f\" % ($STOP-$START)") )
+  KEYPAIRS+=( "SAP_VM_Keypair" )
+}
+
+deleteKeypairs()
+{
+  deleteResources NOVASTATS KEYPAIR nova keypair-delete
+}
+
+createFIPs()
+{
+  echo "createFIPs not yet implemented"
+}
+deleteFIPs()
+{
+  echo "deleteFIPs not yet implemented"
+}
+
+createJHVMs()
+{
+  echo "createJHVMs not yet implemented"
+}
+waitJHVMs()
+{
+  echo "waitJHVMs not yet implemented"
+}
+deleteJHVMs()
+{
+  echo "deleteJHVMs not yet implemented"
+}
+
+createVMs()
+{
+  echo "createVMs not yet implemented"
+}
+waitVMs()
+{
+  echo "waitVMs not yet implemented"
+}
+deleteVMs()
+{
+  echo "deleteVMs not yet implemented"
+}
+
 # STATLIST [DIGITS]
 stats()
 {
@@ -377,43 +435,45 @@ stats()
 }
 
 # Main 
-START=$(date +%s)
+MSTART=$(date +%s)
 # Debugging: Start with volume step
 if test "$1" = "VOLUMES"; then
  VOLSIZE=${2:-$VOLSIZE}
  if createJHVols; then
-  echo "JH Volumes ${JHVOLUMES[*]}"
   if createVols; then
-   echo "Volumes ${VOLUMES[*]}"
    waitJHVols
    waitVols
-   echo "SETUP DONE, SLEEP"
+   echo "SETUP DONE ($(($(date +%s)-$START))s), SLEEP 1s THEN CLEANUP "
    sleep 1
   fi; deleteVols
  fi; deleteJHVols
 else
 # Complete setup
 if createRouters; then
- echo "Routers ${ROUTERS[*]}"
  if createNets; then
-  echo "Nets ${NETS[*]}"
   if createSubNets; then
-   echo "Subnets ${SUBNETS[*]}"
    if createRIfaces; then
     if createSGroups; then
-     echo "SGroups ${SGROUPS[*]}"
      if createVIPs; then
-      echo "VirtualIP ${VIPS[*]}"
       if createJHPorts && createPorts; then
-       echo "(JH)Ports: ${JHPORTS[*]} ${PORTS[*]}"
        if createJHVols; then
-        echo "JH Volumes ${JHVOLUMES[*]}"
         if createVols; then
-         echo "Volumes ${VOLUMES[*]}"
          waitJHVols
-         waitVols
-         echo "SETUP DONE, SLEEP"
-         sleep 1
+         if createKeypairs; then
+          if createFIPs; then
+           if createJHVMs; then
+            waitJHVMs
+            waitVols
+            if createVMs; then
+             waitVMs
+             MSTOP=$(date +%s)
+             echo -n "SETUP DONE ($(($MSTOP-$MSTART))s), HIT ENTER TO STOP "
+             read ANS
+             MSTART=$(($MSTART+$(date +%s)-$MSTOP))
+            fi; deleteVMs
+           fi; deleteJHVMs
+          fi; deleteFIPs
+         fi; deleteKeypairs
         fi; deleteVols
        fi; deleteJHVols
       fi; deletePorts; deleteJHPorts
@@ -425,7 +485,8 @@ if createRouters; then
 fi; deleteRouters
 #echo "${NETSTATS[*]}"
 stats NETSTATS
+stats NOVASTATS
 fi
 stats VOLSTATS
 stats VOLCSTATS 0
-echo "Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$START))s"
+echo "Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s"
