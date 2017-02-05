@@ -81,6 +81,7 @@ ostackcmd_id()
   fi
   TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
   echo "$TIM $ID"
+  return $RC
 }
 
 OSTACKRESP=""
