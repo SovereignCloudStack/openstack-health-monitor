@@ -61,15 +61,31 @@ if test "$1" = "help" -o "$1" = "-h"; then usage; fi
 ostackcmd_id()
 {
   IDNM=$1; shift
-  START=$(date +%s.%3N)
+  LSTART=$(date +%s.%3N)
   RESP=$($@)
   RC=$?
-  END=$(date +%s.%3N)
+  LEND=$(date +%s.%3N)
   ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed -e "s/^| *$IDNM *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
-  echo "$START/$END/$ID: $@ => $RESP" >> $LOGFILE
+  echo "$LSTART/$LEND/$ID: $@ => $RESP" >> $LOGFILE
   if test "$RC" != "0"; then echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
-  TIM=$(python -c "print \"%.2f\" % ($END-$START)")
+  TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
   echo "$TIM $ID"
+}
+
+OSTACKRESP=""
+# Another variant -- return results in global variable
+# Append time to $1 array
+ostackcmd_tm()
+{
+  STATNM=$1; shift
+  LSTART=$(date +%s.%3N)
+  OSTACKRESP=$($@)
+  RC=$?
+  LEND=$(date +%s.%3N)
+  TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
+  eval "${STATNM}+=( $TIM )"
+  echo "$LSTART/$LEND/: $@ => $OSTACKRESP" >> $LOGFILE
+  return $RC
 }
 
 # List of resources
@@ -267,7 +283,7 @@ createSGroups()
   # Configure SG_SAP_JumpHost rule: All from the other group, port 222 and 443 from outside
   read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG0)
   NETSTATS+=( $TM )
-  #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
+  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
   #NETSTATS+=( $TM )
   read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max 222 --remote-ip-prefix 0/0 $SG0)
   NETSTATS+=( $TM )
@@ -362,16 +378,15 @@ deleteVols()
 
 createKeypairs()
 {
-  START=$(date +%s.%3N)
-  nova keypair-add SAP_JH_Keypair > SAP_JH_Keypair.pem || return 1
-  STOP=$(date +%s.%3N)
-  NOVASTATS+=( $(python -c "print \"%.2f\" % ($STOP-$START)") )
+  UMASK=$(umask)
+  umask 0077
+  ostackcmd_tm NOVASTATS nova keypair-add SAP_JH_Keypair || return 1
+  echo "$OSTACKRESP" > SAP_JH_Keypair.pem
   KEYPAIRS+=( "SAP_JH_Keypair" )
-  START=$(date +%s.%3N)
-  nova keypair-add SAP_VM_Keypair > SAP_VM_Keypair.pem || return 1
-  STOP=$(date +%s.%3N)
-  NOVASTATS+=( $(python -c "print \"%.2f\" % ($STOP-$START)") )
+  ostackcmd_tm NOVASTATS nova keypair-add SAP_VM_Keypair || return 1
+  echo "$OSTACKRESP" > SAP_VM_Keypair.pem
   KEYPAIRS+=( "SAP_VM_Keypair" )
+  umask $UMASK
 }
 
 deleteKeypairs()
@@ -381,20 +396,30 @@ deleteKeypairs()
 
 createFIPs()
 {
-  echo "createFIPs not yet implemented"
+  ostackcmd_tm NETSTATS neutron net-external-list || return 1
+  EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| [0-9a-f-]* | \([^ ]*\).*$/\1/')
+  # Actually this fails if the port is not assigned to a VM yet
+  #  -- we can not associate a FIP to a port w/o dev owner
+  createResources $NONETS NETSTATS FIP JHPORT NONE "" id neutron floatingip-create --port-id \$VAL admin_external_net
+  # TODO: Use API to tell VPC that the VIP is the next hop (route table)
 }
+
 deleteFIPs()
 {
-  echo "deleteFIPs not yet implemented"
+  deleteResources NETSTATS FIP neutron floatingip-delete
 }
 
 createJHVMs()
 {
+  ostackcmd_tm NETSTATS neutron port-show ${PORTS[-2]}
+  REDIR1=$(echo "OSTACKRESP" | grep '| fixed_ips ' | sed 's/^.*"ip_address": "\([0-9a-f:.]*\)".*$/\1/')
+  echo $REDIR1
   echo "createJHVMs not yet implemented"
 }
 waitJHVMs()
 {
   echo "waitJHVMs not yet implemented"
+  return 1
 }
 deleteJHVMs()
 {
@@ -404,6 +429,7 @@ deleteJHVMs()
 createVMs()
 {
   echo "createVMs not yet implemented"
+  return 1
 }
 waitVMs()
 {
@@ -460,8 +486,8 @@ if createRouters; then
         if createVols; then
          waitJHVols
          if createKeypairs; then
-          if createFIPs; then
-           if createJHVMs; then
+          if createJHVMs; then
+           if createFIPs; then
             waitJHVMs
             waitVols
             if createVMs; then
@@ -471,8 +497,8 @@ if createRouters; then
              read ANS
              MSTART=$(($MSTART+$(date +%s)-$MSTOP))
             fi; deleteVMs
-           fi; deleteJHVMs
-          fi; deleteFIPs
+           fi; deleteFIPs
+          fi; deleteJHVMs
          fi; deleteKeypairs
         fi; deleteVols
        fi; deleteJHVols
