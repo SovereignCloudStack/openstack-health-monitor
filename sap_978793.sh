@@ -548,7 +548,7 @@ stats()
   eval LIST=( \"\${${1}[@]}\" )
   if test -z "${LIST[*]}"; then return; fi
   DIG=${2:-2}
-  IFS=$'\n' SLIST=($(sort <<<"${LIST[*]}"))
+  IFS=$'\n' SLIST=($(sort -n <<<"${LIST[*]}"))
   #echo ${SLIST[*]}
   MIN=${SLIST[0]}
   MAX=${SLIST[-1]}
