@@ -73,10 +73,10 @@ ostackcmd_id()
   LEND=$(date +%s.%3N)
   if test "$IDNM" = "DELETE"; then
     ID=$(echo "$RESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
-    echo "$LSTART/$LEND/$ID: $@ => $RESP" >> $LOGFILE
+    echo "$LSTART/$LEND/$ID: $@ => $RC $RESP" >> $LOGFILE
   else
     ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed -e "s/^| *$IDNM *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
-    echo "$LSTART/$LEND/$ID: $@ => $RESP" >> $LOGFILE
+    echo "$LSTART/$LEND/$ID: $@ => $RC $RESP" >> $LOGFILE
     if test "$RC" != "0"; then echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
   fi
   TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
@@ -154,8 +154,9 @@ createResources()
     CMD=`eval echo $@ 2>&1`
     STM=$(date +%s)
     if test -n "$STIME"; then eval "${STIME}+=( $STM )"; fi
-    read TM ID < <(ostackcmd_id $IDNM $CMD)
+    RESP=$(ostackcmd_id $IDNM $CMD)
     RC=$?
+    read TM ID < <(echo "$RESP")
     eval ${STATNM}+="($TM)"
     let ctr+=1
     if test $RC != 0; then echo "ERROR: $RNM creation failed" 1>&2; return 1; fi
@@ -173,8 +174,9 @@ deleteResources()
   #eval varAlias=( \"\${myvar${varname}[@]}\" ) 
   eval LIST=( \"\${${RNM}S[@]}\" )
   #echo $LIST
-  echo -n "Del $RNM:"
+  test -n "$LIST" && echo -n "Del $RNM:"
   #for rsrc in $LIST; do
+  LN=${#LIST[@]}
   while test ${#LIST[@]} -gt 0; do
     rsrc=${LIST[-1]}
     echo -n " $rsrc"
@@ -184,7 +186,7 @@ deleteResources()
     eval ${STATNM}+="($TM)"
     unset LIST[-1]
   done
-  echo
+  test $LN -gt 0 && echo
 }
 
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
@@ -208,8 +210,9 @@ waitResources()
       rsrc=${RLIST[$i]}
       if test -z "${SLIST[$i]}"; then STATSTR+='a'; continue; fi
       CMD=`eval echo $@ $rsrc 2>&1`
-      read TM STAT < <(ostackcmd_id $IDNM $CMD)
+      RESP=$(ostackcmd_id $IDNM $CMD)
       RC=$?
+      read TM STAT < <(echo "$RESP")
       eval ${STATNM}+="( $TM )"
       if test $RC != 0; then echo "ERROR: Querying $RNM $rsrc failed" 1>&2; return 1; fi
       STATSTR+=${STAT:0:1}
@@ -242,14 +245,16 @@ waitdelResources()
   eval RLIST=( \"\${${RNM}S[@]}\" )
   eval DLIST=( \"\${${DTIME}[@]}\" )
   LAST=$(( ${#RLIST[@]} - 1 ))
+  echo "waitdelResources $STATNM $RNM $DSTAT $DTIME - ${RLIST[*]} - ${DLIST[*]}"
   while test -n "${DLIST[*]}"; do
     STATSTR=""
     for i in $(seq 0 $LAST); do
       rsrc=${RLIST[$i]}
       if test -z "${DLIST[$i]}"; then STATSTR+='x'; continue; fi
-      CMD=`eval echo $@ $rsrc 2>&1`
-      read TM STAT < <(ostackcmd_id DELETE $CMD)
+      CMD=`eval echo $@ $rsrc`
+      RESP=$(ostackcmd_id DELETE $CMD)
       RC=$?
+      read TM STAT < <(echo "$RESP")
       eval ${STATNM}+="( $TM )"
       if test $RC != 0; then
         TM=$(date +%s)
@@ -375,10 +380,11 @@ deleteVIPs()
 
 createJHPorts()
 {
-  createResources $NONETS NETSTATS JHPORT NONE NONE "" id neutron port-create --name "${RPRE}Port_JumpHost\${no}" --security-group ${SGROUPS[0]} "\${NETS[\$((\$no%$NONETS))]}" || return
+  createResources $NONETS NETSTATS JHPORT NONE NONE "" id neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} "\${NETS[\$((\$no%$NONETS))]}" || return
   for i in `seq 0 $((NONETS-1))`; do
-    read TM ID < <(ostackcmd_id id neutron port-update ${JHPORTS[$i]} --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1)
+    RESP=$(ostackcmd_id id neutron port-update ${JHPORTS[$i]} --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1)
     RC=$?
+    read TM ID < <(echo "$RESP")
     NETSTATS+=( $TM )
     if test $RC != 0; then echo "ERROR: Failed setting allowed-adr-pair for port ${JHPORTS[$i]}" 1>&2; return 1; fi
   done
@@ -557,6 +563,43 @@ stats()
   echo "$1: Min $MIN Max $MAX Med $MED Avg $AVG Num $NO"
 }
 
+findres()
+{
+  FILT=${1:-$RPRE}
+  shift
+  $@ | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
+}
+
+cleanup()
+{
+  VMS=( $(findres ${RPRE}VM_Internal nova list) )
+  deleteVMs
+  FIPS=( $(findres "" neutron floatingip-list) )
+  deleteFIPs
+  JHVMS=( $(findres ${RPRE}VM_JumpHost nova list) )
+  deleteJHVMs
+  KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  deleteKeypairs
+  VOLUMES=( $(findres ${RPRE}RoolVol_VM cinder list) )
+  waitdelVMs; deleteVols
+  JHVOLUMES=( $(findres ${RPRE}RoolVol_JH cinder list) )
+  waitdelJHVMs; deleteJHVols
+  PORTS=( $(findres ${RPRE}Port_VM neutron port-list) )
+  JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
+  deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
+  VIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
+  deleteVIPs
+  SGROUPS=( $(findres "" neutron security-group-list) )
+  deleteSGroups
+  ROUTERS=( $(findres "" neutron router-list) )
+  SUBNETS=( $(findres "" neutron subnet-list) )
+  deleteRIfaces
+  deleteSubNets
+  NETS=( $(findres "" neutron net-list) )
+  deleteNets
+  deleteRouters
+}
+
 # Main 
 MSTART=$(date +%s)
 # Debugging: Start with volume step
@@ -570,6 +613,8 @@ if test "$1" = "VOLUMES"; then
    sleep 1
   fi; deleteVols
  fi; deleteJHVols
+elif test "$1" = "CLEANUP"; then
+  cleanup
 else
 # Complete setup
 if createRouters; then
