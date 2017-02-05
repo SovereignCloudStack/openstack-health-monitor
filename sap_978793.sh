@@ -245,7 +245,7 @@ waitdelResources()
   eval RLIST=( \"\${${RNM}S[@]}\" )
   eval DLIST=( \"\${${DTIME}[@]}\" )
   LAST=$(( ${#RLIST[@]} - 1 ))
-  echo "waitdelResources $STATNM $RNM $DSTAT $DTIME - ${RLIST[*]} - ${DLIST[*]}"
+  #echo "waitdelResources $STATNM $RNM $DSTAT $DTIME - ${RLIST[*]} - ${DLIST[*]}"
   while test -n "${DLIST[*]}"; do
     STATSTR=""
     for i in $(seq 0 $LAST); do
@@ -635,7 +635,9 @@ if createRouters; then
          fi; deleteKeypairs
         fi; waitdelVMs; deleteVols
        fi; waitdelJHVMs; deleteJHVols
-      fi; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
+      fi;
+      echo "Ignore port del errors; VM cleanup took care already."
+      deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
      fi; deleteVIPs
     fi; deleteSGroups
    fi; deleteRIfaces
