@@ -503,7 +503,7 @@ addip:
   echo "$USERDATA" | sed "s/TGT/${REDIRS[0]}/" > user_data.yaml
   cat user_data.yaml >> $LOGFILE
   # of course nova boot --image ... --nic net-id ... would be easier
-  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[0]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-01 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[0]} ${RPRE}VM_JumpHost0 || return 
+  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[0]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-01 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[0]} ${RPRE}VM_JumpHost0 || return
   echo "$USERDATA" | sed "s/TGT/${REDIRS[1]}/" > user_data.yaml
   createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[1]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-02 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[1]} ${RPRE}VM_JumpHost1 || return
   #rm user_data.yaml
@@ -526,20 +526,20 @@ waitdelJHVMs()
 
 createVMs()
 {
-  echo "createVMs not yet implemented"
-  return 1
+  createResources $NOVMS NOVASTATS VM PORT VOLUME VMSTIME id nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --security-groups ${SGROUPS[1]} --nic port-id=\$VAL ${RPRE}VM_Internal\$no
 }
 waitVMs()
 {
-  echo "waitVMs not yet implemented"
+  waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" nova show
 }
 deleteVMs()
 {
-  echo "deleteVMs not yet implemented"
+  VMSTIME=()
+  deleteResources NOVASTATS VM VMSTIME nova delete
 }
 waitdelVMs()
 {
-  echo "waitdelVMs not yet implemented"
+  waitdelResources NOVASTATS VM VMDSTATS VMSTIME nova show
 }
 
 # STATLIST [DIGITS]
@@ -560,7 +560,7 @@ stats()
   AVGC="($(echo ${LIST[*]}|sed 's/ /+/g'))/$NO"
   #echo "$AVGC"
   AVG=`python -c "print \"%.${DIG}f\" % ($AVGC)"`
-  echo "$1: Min $MIN Max $MAX Med $MED Avg $AVG Num $NO"
+  echo "$1: Min $MIN Max $MAX Med $MED Avg $AVG Num $NO" | tee -a $LOGFILE
 }
 
 findres()
@@ -603,17 +603,7 @@ cleanup()
 # Main 
 MSTART=$(date +%s)
 # Debugging: Start with volume step
-if test "$1" = "VOLUMES"; then
- VOLSIZE=${2:-$VOLSIZE}
- if createJHVols; then
-  if createVols; then
-   waitJHVols
-   waitVols
-   echo "SETUP DONE ($(($(date +%s)-$START))s), SLEEP 1s THEN CLEANUP "
-   sleep 1
-  fi; deleteVols
- fi; deleteJHVols
-elif test "$1" = "CLEANUP"; then
+if test "$1" = "CLEANUP"; then
   cleanup
 else
 # Complete setup
@@ -635,6 +625,7 @@ if createRouters; then
             if createVMs; then
              waitVMs
              MSTOP=$(date +%s)
+             # We should be able to log in to FIP port 222 now ...
              echo -n "SETUP DONE ($(($MSTOP-$MSTART))s), HIT ENTER TO STOP "
              read ANS
              MSTART=$(($MSTART+$(date +%s)-$MSTOP))
