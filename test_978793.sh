@@ -552,7 +552,7 @@ internalnet:
 snat:
    masq:
       - INTERNALNET
-   fwdmasq
+   fwdmasq:
       - 0/0,TGT,tcp,222,22
 addip:
    eth0: $VIP
