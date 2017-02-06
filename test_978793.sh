@@ -128,6 +128,8 @@ ostackcmd_tm()
 declare -a ROUTERS
 declare -a NETS
 declare -a SUBNETS
+declare -a JHNETS
+declare -a JHSUBNETS
 declare -a SGROUPS
 declare -a JHPORTS
 declare -a PORTS
@@ -356,32 +358,38 @@ deleteRouters()
 
 createNets()
 {
+  createResources 1 NETSTATS JHNET NONE NONE "" id neutron net-create "${RPRE}NET_JH\$no"
   createResources $NONETS NETSTATS NET NONE NONE "" id neutron net-create "${RPRE}NET_\$no"
 }
 
 deleteNets()
 {
   deleteResources NETSTATS NET "" neutron net-delete
+  deleteResources NETSTATS JHNET "" neutron net-delete
 }
 
 createSubNets()
 {
+  createResources 1 NETSTATS JHSUBNET JHNET NONE "" id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name "${RPRE}SUBNET_JH\$no" "\$VAL" "10.250.250.0/24"
   createResources $NONETS NETSTATS SUBNET NET NONE "" id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
 }
 
 deleteSubNets()
 {
   deleteResources NETSTATS SUBNET "" neutron subnet-delete
+  deleteResources NETSTATS JHSUBNET "" neutron subnet-delete
 }
 
 createRIfaces()
 {
+  createResources 1 NETSTATS NONE JHSUBNET NONE "" id neutron router-interface-add ${ROUTERS[0]} "\$VAL"
   createResources $NONETS NETSTATS NONE SUBNET NONE "" id neutron router-interface-add ${ROUTERS[0]} "\$VAL"
 }
 
 deleteRIfaces()
 {
   deleteResources NETSTATS SUBNET "" neutron router-interface-delete ${ROUTERS[0]}
+  deleteResources NETSTATS JHSUBNET "" neutron router-interface-delete ${ROUTERS[0]}
 }
 
 createSGroups()
@@ -427,7 +435,7 @@ deleteSGroups()
 
 createVIPs()
 {
-  createResources 1 NETSTATS VIP NONE NONE "" id neutron port-create --name ${RPRE}VirtualIP --security-group ${SGROUPS[0]} ${NETS[0]}
+  createResources 1 NETSTATS VIP NONE NONE "" id neutron port-create --name ${RPRE}VirtualIP --security-group ${SGROUPS[0]} ${JHNETS[0]}
   # FIXME: We should not need --allowed-adress-pairs here ...
 }
 
@@ -438,7 +446,7 @@ deleteVIPs()
 
 createJHPorts()
 {
-  createResources $NONETS NETSTATS JHPORT NONE NONE "" id neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} "\${NETS[\$((\$no%$NONETS))]}" || return
+  createResources $NONETS NETSTATS JHPORT NONE NONE "" id neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} ${JHNETS[0]} || return
   for i in `seq 0 $((NONETS-1))`; do
     RESP=$(ostackcmd_id id neutron port-update ${JHPORTS[$i]} --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1)
     RC=$?
