@@ -689,8 +689,8 @@ if createRouters; then
             waitJHVMs
             waitVols
             if createVMs; then
-             setmetaVMs
              waitVMs
+             setmetaVMs
              MSTOP=$(date +%s)
              # We should be able to log in to FIP port 222 now ...
              echo -en "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), HIT ENTER TO STOP $NORM"
