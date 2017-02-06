@@ -1,7 +1,8 @@
 #!/bin/bash
-# sap_978793.sh
-# Testcase trying to reproduce the issue of bug 978793
+# test_978793.sh
+# Testcase trying to reproduce the issue of bug 978793 (unreliable API)
 # Creating a large number (30) of VMs, SAP HCP team observes API call timeouts
+#
 # (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017
 # License: CC-BY-SA (2.0)
 #
@@ -10,17 +11,56 @@
 # - create two nets
 # - create two subnets
 # - create security groups
-# - create SSH key
-# - create VMs by
+# - create virtual IP (for outbound SNAT via JumpHosts)
+# - create SSH keys
+# - create two JumpHost VMs by
+#   a) creating disks (from image)
+#   b) creating ports
+#   c) creating VMs
+# - create N internal VMs by
 #   a) creating disks (from image)
 #   b) creating a port
 #   c) creating VM
 #   (Steps a and c take long, so we do many in parallel and poll for progress)
 #   d) do some property changes to VMs
+# - after everything is complete, we wait
+# - and clean up ev'thing in reverse order as soon as user confirms
 #
 # We do some statistics on the duration of the steps (min, avg, median, max)
-# We keep track of resources to clean up
+# We keep track of resources to clean up.
 #
+# This takes rather long, as typical API calls take b/w 1 and 2s on OTC
+# (including the round trip to keystone for the token) though no undue long
+# response was observed in testing so far.
+#
+# Optimization possibilities:
+# - Cache token and reuse when creating a large number of resources in a loop
+# - Use cinder list and nova list for polling resource creation progress
+
+# User settings
+
+# Prefix for test resources
+RPRE=Test978793_
+# Number of VMs and networks
+NOVMS=30
+NONETS=2
+NOAZS=2
+
+# Images, flavors, disk sizes
+JHIMG="Standard_openSUSE_42_JeOS_latest"
+JHIMGFILT="--property-filter __platform=OpenSUSE"
+IMG="Standard_openSUSE_42_JeOS_latest"
+IMGFILT="--property-filter __platform=OpenSUSE"
+JHFLAVOR="computev1-1"
+FLAVOR="computev1-1"
+
+JHVOLSIZE=4
+VOLSIZE=10
+
+DATE=`date +%s`
+LOGFILE=$RPRE$DATE.log
+
+# Nothing to change below here
 
 if test -z "$OS_USERNAME"; then
   echo "source OS_ settings file before running this test"
@@ -29,30 +69,10 @@ fi
 
 usage()
 {
-  echo "Usage: sap_978793.sh [-n NUMVM] [-l LOGFILE]"
+  echo "Usage: sap_978793.sh [-n NUMVM] [-l LOGFILE] [CLEANUP]"
+  echo " CLEANUP cleans up all resources with prefix $RPRE"
   exit 0
 }
-
-RPRE=Test978793_
-
-DATE=`date +%s`
-LOGFILE=sap_978793-$DATE.log
-NOVMS=30
-NOAZS=2
-NONETS=2
-
-
-# IMAGE
-JHIMG="Standard_openSUSE_42_JeOS_latest"
-JHIMGFILT="--property-filter __platform=OpenSUSE"
-IMG="Standard_openSUSE_42_JeOS_latest"
-IMGFILT="--property-filter __platform=OpenSUSE"
-JHFLAVOR="computev1-1"
-FLAVOR="computev1-1"
-
-
-VOLSIZE=10
-
 
 
 if test "$1" = "-n"; then NOVMS=$2; shift; shift; fi
@@ -84,9 +104,10 @@ ostackcmd_id()
   return $RC
 }
 
+# Another variant -- return results in global variable OSTACKRESP
+# Append timing to $1 array
+# DO NOT call this in a subshell
 OSTACKRESP=""
-# Another variant -- return results in global variable
-# Append time to $1 array
 ostackcmd_tm()
 {
   STATNM=$1; shift
@@ -100,7 +121,7 @@ ostackcmd_tm()
   return $RC
 }
 
-# List of resources
+# List of resources - neutron
 declare -a ROUTERS
 declare -a NETS
 declare -a SUBNETS
@@ -109,9 +130,11 @@ declare -a JHPORTS
 declare -a PORTS
 declare -a VIPS
 declare -a FIPS
-declare -a KEYPAIRS
+# cinder
 declare -a JHVOLUMES
 declare -a VOLUMES
+# nova
+declare -a KEYPAIRS
 declare -a VMS
 declare -a JHVMS
 
@@ -131,11 +154,24 @@ declare -a JVOLSTIME
 declare -a VMSTIME
 declare -a JVMSTIME
 
-# Image
+# Image IDs
 JHIMGID=$(glance image-list $JHIMGFILT | grep "$JHIMG" | head -n1 | sed 's/| \([0-9a-f-]*\).*$/\1/')
 IMGID=$(glance image-list $IMGFILT | grep "$IMG" | head -n1 | sed 's/| \([0-9a-f-]*\).*$/\1/')
 #echo "Image $IMGID"
 
+# Create a number of resources and keep track of them
+# $1 => quantity of resources
+# $2 => name of timing statistics array
+# $3 => name of resource list array ("S" appended)
+# $4 => name of resource array ("S" appended, use \$VAL to ref) (optional)
+# $5 => dito, use \$MVAL (optional, use NONE if unneeded)
+# $6 => name of array where we store the timestamp of the operation (opt)
+# $7 => id field from resource to be used for storing in $3
+# $8- > openstack command to be called
+#
+# In the command you can reference \$AZ (1 or 2), \$no (running number)
+# and \$VAL and \$MVAL (from $4 and $5).
+#
 # NUMBER STATNM RSRCNM OTHRSRC MORERSRC STIME IDNM COMMAND
 createResources()
 {
@@ -147,6 +183,7 @@ createResources()
   eval LIST=( \"\${${ORNM}S[@]}\" )
   eval MLIST=( \"\${${MRNM}S[@]}\" )
   if test "$RNM" != "NONE"; then echo -n "New $RNM:"; fi
+  # FIXME: Should we get a token once here and reuse it?
   for no in `seq 0 $(($QUANT-1))`; do
     AZ=$(($no%$NOAZS+1))
     VAL=${LIST[$ctr]}
@@ -166,12 +203,19 @@ createResources()
   if test "$RNM" != "NONE"; then echo; fi
 }
 
+# Delete a number of resources
+# $1 => name of timing statistics array
+# $2 => name of array containing resources ("S" appended)
+# $3 => name of array to store timestamps (optional, use "" if unneeded)
+# $4- > openstack command to be called
+# The UUID from the resource list ($2) is appended to the command.
+#
 # STATNM RSRCNM DTIME COMMAND
 deleteResources()
 {
   STATNM=$1; RNM=$2; DTIME=$3
   shift; shift; shift
-  #eval varAlias=( \"\${myvar${varname}[@]}\" ) 
+  #eval varAlias=( \"\${myvar${varname}[@]}\" )
   eval LIST=( \"\${${RNM}S[@]}\" )
   #echo $LIST
   test -n "$LIST" && echo -n "Del $RNM:"
@@ -189,13 +233,18 @@ deleteResources()
   test $LN -gt 0 && echo
 }
 
+# Wait for resources reaching a desired state
+# $1 => name of timing statistics array
+# $2 => name of array containing resources ("S" appended)
+# $3 => name of array to collect completion timing stats
+# $4 => name of array with start times
+# $5 => value to wait for
+# $6 => alternative value to wait for
+# $7 => field name to monitor
+# $8- > openstack command for querying status
+# The values from $2 get appended to the command
+#
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
-# STATNM: Polling API performance
-# RSRCNM: List of UUIDs to query
-# CSTAT: Stats on creation time
-# STIME: When did we start resource creation
-# COMP1/2: Completion states
-# COMMAND: CLI command (resource ID will be appended)
 waitResources()
 {
   STATNM=$1; RNM=$2; CSTAT=$3; STIME=$4
@@ -232,12 +281,15 @@ waitResources()
   done
 }
 
+# Wait for deletion of resources
+# $1 => name of timing statistics array
+# $2 => name of array containing resources ("S" appended)
+# $3 => name of array to collect completion timing stats
+# $4 => name of array with deletion start times
+# $5- > openstack command for querying status
+# The values from $2 get appended to the command
+#
 # STATNM RSRCNM DSTAT DTIME COMMAND
-# STATNM: Polling API performance
-# RSRCNM: List of UUIDs to query
-# DSTAT: Stats on deletion time
-# DTIME: When did we start resource deletion
-# COMMAND: CLI command (resource ID will be appended)
 waitdelResources()
 {
   STATNM=$1; RNM=$2; DSTAT=$3; DTIME=$4
@@ -267,7 +319,7 @@ waitdelResources()
       fi
       echo -en "WaitDel $RNM: $STATSTR\r"
     done
-    echo -en "WaitDel $RNM: $STATSTR (TOGO: \"${DLIST[*]}\")\r"
+    echo -en "WaitDel $RNM: $STATSTR \r"
     test -z "${DLIST[*]}" && return 0
     sleep 2
   done
@@ -285,6 +337,9 @@ showResources()
     read TM ID < <(ostackcmd_id id $@ $rsrc)
   done
 }
+
+
+# The commands that create and delete resources ...
 
 createRouters()
 {
@@ -408,7 +463,7 @@ deletePorts()
 createJHVols()
 {
   JVOLSTIME=()
-  createResources $NONETS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id cinder create --image-id $JHIMGID --name ${RPRE}RootVol_JH\$no --availability-zone eu-de-0\$AZ 4
+  createResources $NONETS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id cinder create --image-id $JHIMGID --name ${RPRE}RootVol_JH\$no --availability-zone eu-de-0\$AZ $JHVOLSIZE
 }
 
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
@@ -554,7 +609,7 @@ stats()
   MAX=${SLIST[-1]}
   NO=${#SLIST[@]}
   MID=$(($NO/2))
-  if test $(($NO%2)) = 1; then MED=${SLIST[$MID]}; 
+  if test $(($NO%2)) = 1; then MED=${SLIST[$MID]};
   else MED=`python -c "print \"%.${DIG}f\" % ((${SLIST[$MID]}+${SLIST[$(($MID-1))]})/2)"`
   fi
   AVGC="($(echo ${LIST[*]}|sed 's/ /+/g'))/$NO"
@@ -600,7 +655,7 @@ cleanup()
   deleteRouters
 }
 
-# Main 
+# Main
 MSTART=$(date +%s)
 # Debugging: Start with volume step
 if test "$1" = "CLEANUP"; then
