@@ -366,7 +366,7 @@ deleteNets()
 
 createSubNets()
 {
-  createResources $NONETS NETSTATS SUBNET NET NONE "" id neutron subnet-create --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
+  createResources $NONETS NETSTATS SUBNET NET NONE "" id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
 }
 
 deleteSubNets()
