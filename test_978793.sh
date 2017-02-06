@@ -78,6 +78,7 @@ usage()
 
 
 if test "$1" = "-n"; then NOVMS=$2; shift; shift; fi
+if test "${1:0:2}" = "-n"; then NOVMS=${1:2}; shift; fi
 if test "$1" = "-l"; then LOGFILE=$2; shift; shift; fi
 if test "$1" = "help" -o "$1" = "-h"; then usage; fi
 
@@ -365,7 +366,7 @@ deleteNets()
 
 createSubNets()
 {
-  createResources $NONETS NETSTATS SUBNET NET NONE "" id neutron subnet-create --name "${RPRE}SUBNET_\$no" "\$VAL" "10.128.\$no.0/24"
+  createResources $NONETS NETSTATS SUBNET NET NONE "" id neutron subnet-create --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
 }
 
 deleteSubNets()
@@ -548,7 +549,7 @@ createJHVMs()
   #echo "$VIP ${REDIRS[*]}"
   USERDATA="#cloud-config
 internalnet:
-   - 10.128/16
+   - 10.250/16
 snat:
    masq:
       - INTERNALNET
@@ -637,7 +638,8 @@ cleanup()
 {
   VMS=( $(findres ${RPRE}VM_VM nova list) )
   deleteVMs
-  FIPS=( $(findres "" neutron floatingip-list) )
+  #FIPS=( $(findres "" neutron floatingip-list) )
+  FIPS=( $(neutron floatingip-list | grep '10\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   deleteFIPs
   JHVMS=( $(findres ${RPRE}VM_JH nova list) )
   deleteJHVMs
