@@ -674,7 +674,7 @@ if test "$1" = "CLEANUP"; then
   echo -e "$BOLD *** Cleanup complete *** $NORM"
 else
 # Complete setup
-echo -e "$BOLD *** Start deployment *** $NORM"
+echo -e "$BOLD *** Start deployment $NONETS SNAT JumpHosts + $NOVMS VMs *** $NORM"
 if createRouters; then
  if createNets; then
   if createSubNets; then
