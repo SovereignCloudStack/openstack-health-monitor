@@ -639,7 +639,7 @@ cleanup()
   deleteVMs
   FIPS=( $(findres "" neutron floatingip-list) )
   deleteFIPs
-  JHVMS=( $(findres ${RPRE}VM_VM nova list) )
+  JHVMS=( $(findres ${RPRE}VM_JH nova list) )
   deleteJHVMs
   KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   deleteKeypairs
