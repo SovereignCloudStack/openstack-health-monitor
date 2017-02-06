@@ -560,9 +560,9 @@ addip:
   echo "$USERDATA" | sed "s/TGT/${REDIRS[0]}/" > user_data.yaml
   cat user_data.yaml >> $LOGFILE
   # of course nova boot --image ... --nic net-id ... would be easier
-  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[0]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-01 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[0]} ${RPRE}VM_JumpHost0 || return
+  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[0]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-01 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[0]} ${RPRE}VM_JH0 || return
   echo "$USERDATA" | sed "s/TGT/${REDIRS[1]}/" > user_data.yaml
-  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[1]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-02 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[1]} ${RPRE}VM_JumpHost1 || return
+  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[1]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-02 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[1]} ${RPRE}VM_JH1 || return
   #rm user_data.yaml
 }
 
@@ -583,7 +583,7 @@ waitdelJHVMs()
 
 createVMs()
 {
-  createResources $NOVMS NOVASTATS VM PORT VOLUME VMSTIME id nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --security-groups ${SGROUPS[1]} --nic port-id=\$VAL ${RPRE}VM_Internal\$no
+  createResources $NOVMS NOVASTATS VM PORT VOLUME VMSTIME id nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --security-groups ${SGROUPS[1]} --nic port-id=\$VAL ${RPRE}VM_VM\$no
 }
 waitVMs()
 {
@@ -635,17 +635,17 @@ findres()
 
 cleanup()
 {
-  VMS=( $(findres ${RPRE}VM_Internal nova list) )
+  VMS=( $(findres ${RPRE}VM_VM nova list) )
   deleteVMs
   FIPS=( $(findres "" neutron floatingip-list) )
   deleteFIPs
-  JHVMS=( $(findres ${RPRE}VM_JumpHost nova list) )
+  JHVMS=( $(findres ${RPRE}VM_VM nova list) )
   deleteJHVMs
   KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   deleteKeypairs
-  VOLUMES=( $(findres ${RPRE}RoolVol_VM cinder list) )
+  VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
   waitdelVMs; deleteVols
-  JHVOLUMES=( $(findres ${RPRE}RoolVol_JH cinder list) )
+  JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) )
   waitdelJHVMs; deleteJHVols
   PORTS=( $(findres ${RPRE}Port_VM neutron port-list) )
   JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
