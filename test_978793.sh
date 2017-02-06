@@ -517,6 +517,11 @@ deleteKeypairs()
   #rm ${RPRE}Keypair_JH.pem
 }
 
+extract_ip()
+{
+  echo "$1" | grep '| fixed_ips ' | sed 's/^.*"ip_address": "\([0-9a-f:.]*\)".*$/\1/'
+}
+
 createFIPs()
 {
   ostackcmd_tm NETSTATS neutron net-external-list || return 1
@@ -525,16 +530,21 @@ createFIPs()
   #  -- we can not associate a FIP to a port w/o dev owner
   createResources $NONETS NETSTATS FIP JHPORT NONE "" id neutron floatingip-create --port-id \$VAL admin_external_net
   # TODO: Use API to tell VPC that the VIP is the next hop (route table)
+  ostackcmd_tm NETSTATS neutron port-show ${VIPS[0]} || return 1
+  VIP=$(extract_ip "$OSTACKRESP")
+  echo -e "$BOLD We lack the ability to set VPC route via SNAT gateways, will be fixed soon"
+  echo -e " Please set next hop $VIP to VPC ${RPRE}Router (${ROUTERS[0]}) routes $NORM"
+  FLOAT=""
+  ostackcmd_tm NETSTATS neutron floatingip-list || return 1
+  for PORT in ${FIPS[*]}; do
+    FLOAT+=" $(echo "$OSTACKRESP" | grep $PORT | sed 's/^|[^|]*|[^|]*| \([0-9:.]*\).*$/\1/')"
+  done
+  echo "Floating IPs: $FLOAT"
 }
 
 deleteFIPs()
 {
   deleteResources NETSTATS FIP "" neutron floatingip-delete
-}
-
-extract_ip()
-{
-  echo "$1" | grep '| fixed_ips ' | sed 's/^.*"ip_address": "\([0-9a-f:.]*\)".*$/\1/'
 }
 
 createJHVMs()
