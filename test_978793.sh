@@ -61,6 +61,8 @@ DATE=`date +%s`
 LOGFILE=$RPRE$DATE.log
 
 # Nothing to change below here
+BOLD="\e[0;1m"
+NORM="\e[0;0m"
 
 if test -z "$OS_USERNAME"; then
   echo "source OS_ settings file before running this test"
@@ -69,7 +71,7 @@ fi
 
 usage()
 {
-  echo "Usage: sap_978793.sh [-n NUMVM] [-l LOGFILE] [CLEANUP]"
+  echo "Usage: test_978793.sh [-n NUMVM] [-l LOGFILE] [CLEANUP]"
   echo " CLEANUP cleans up all resources with prefix $RPRE"
   exit 0
 }
@@ -596,6 +598,12 @@ waitdelVMs()
 {
   waitdelResources NOVASTATS VM VMDSTATS VMSTIME nova show
 }
+setmetaVMs()
+{
+  for no in `seq 0 $(($NOVMS-1))`; do
+    ostackcmd_tm NOVASTATS nova meta ${VMS[$no]} set deployment=cf server=$no || return 1
+  done
+}
 
 # STATLIST [DIGITS]
 stats()
@@ -659,9 +667,12 @@ cleanup()
 MSTART=$(date +%s)
 # Debugging: Start with volume step
 if test "$1" = "CLEANUP"; then
+  echo -e "$BOLD *** Start cleanup *** $NORM"
   cleanup
+  echo -e "$BOLD *** Cleanup complete *** $NORM"
 else
 # Complete setup
+echo -e "$BOLD *** Start deployment *** $NORM"
 if createRouters; then
  if createNets; then
   if createSubNets; then
@@ -678,10 +689,11 @@ if createRouters; then
             waitJHVMs
             waitVols
             if createVMs; then
+             setmetaVMs
              waitVMs
              MSTOP=$(date +%s)
              # We should be able to log in to FIP port 222 now ...
-             echo -n "SETUP DONE ($(($MSTOP-$MSTART))s), HIT ENTER TO STOP "
+             echo -en "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), HIT ENTER TO STOP $NORM"
              read ANS
              MSTART=$(($MSTART+$(date +%s)-$MSTOP))
             fi; deleteVMs
@@ -691,7 +703,7 @@ if createRouters; then
         fi; waitdelVMs; deleteVols
        fi; waitdelJHVMs; deleteJHVols
       fi;
-      echo "Ignore port del errors; VM cleanup took care already."
+      echo -e "${BOLD}Ignore port del errors; VM cleanup took care already.${NORM}"
       deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
      fi; deleteVIPs
     fi; deleteSGroups
@@ -700,6 +712,7 @@ if createRouters; then
  fi; deleteNets
 fi; deleteRouters
 #echo "${NETSTATS[*]}"
+echo -e "$BOLD *** Cleanup complete *** $NORM"
 stats NETSTATS
 stats NOVASTATS
 stats VMCSTATS 0
