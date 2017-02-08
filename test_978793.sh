@@ -679,10 +679,6 @@ createVMs()
     createResources $NOVMS NOVASTATS VM NET VOLUME VMSTIME id nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --security-groups ${SGROUPS[1]} --nic net-id=\${NETS[$((\$\$no%$NONETS))]} ${RPRE}VM_VM\$no
   fi
 }
-createVMs()
-{
-  createResources $NOVMS NOVASTATS VM PORT VOLUME VMSTIME id nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --security-groups ${SGROUPS[1]} --nic port-id=\$VAL ${RPRE}VM_VM\$no
-}
 waitVMs()
 {
   #waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" nova show
