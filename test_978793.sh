@@ -71,8 +71,9 @@ fi
 
 usage()
 {
-  echo "Usage: test_978793.sh [-n NUMVM] [-l LOGFILE] [CLEANUP]"
+  echo "Usage: test_978793.sh [-n NUMVM] [-l LOGFILE] [-p] CLEANUP|DEPLOY"
   echo " CLEANUP cleans up all resources with prefix $RPRE"
+  echo " -p sets up ports manually"
   exit 0
 }
 
@@ -81,7 +82,7 @@ if test "$1" = "-n"; then NOVMS=$2; shift; shift; fi
 if test "${1:0:2}" = "-n"; then NOVMS=${1:2}; shift; fi
 if test "$1" = "-l"; then LOGFILE=$2; shift; shift; fi
 if test "$1" = "help" -o "$1" = "-h"; then usage; fi
-
+if test "$1" = "-p"; then MANUALPORTSETUP=1; shift; fi
 
 # Command wrapper for openstack commands
 # Collecting timing, logging, and extracting id
@@ -159,11 +160,6 @@ declare -a VOLSTIME
 declare -a JVOLSTIME
 declare -a VMSTIME
 declare -a JVMSTIME
-
-# Image IDs
-JHIMGID=$(glance image-list $JHIMGFILT | grep "$JHIMG" | head -n1 | sed 's/| \([0-9a-f-]*\).*$/\1/')
-IMGID=$(glance image-list $IMGFILT | grep "$IMG" | head -n1 | sed 's/| \([0-9a-f-]*\).*$/\1/')
-#echo "Image $IMGID"
 
 # Create a number of resources and keep track of them
 # $1 => quantity of resources
@@ -512,7 +508,9 @@ createJHPorts()
 
 createPorts()
 {
-  createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
+  if test -n "$MANUALPORTSETUP"; then
+    createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
+  fi
 }
 
 deleteJHPorts()
@@ -652,7 +650,8 @@ addip:
 
 waitJHVMs()
 {
-  waitResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NA" "status" nova show
+  #waitResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NA" "status" nova show
+  waitlistResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NONONO" 2 nova list
 }
 deleteJHVMs()
 {
@@ -668,11 +667,21 @@ waitdelJHVMs()
 
 createVMs()
 {
+  if test -n "$MANUALPORTSETUP"; then
+    createResources $NOVMS NOVASTATS VM PORT VOLUME VMSTIME id nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --nic port-id=\$VAL ${RPRE}VM_VM\$no
+  else
+    # SAVE: createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
+    createResources $NOVMS NOVASTATS VM NET VOLUME VMSTIME id nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --security-groups ${SGROUPS[1]} --nic net-id=\${NETS[$((\$\$no%$NONETS))]} ${RPRE}VM_VM\$no
+  fi
+}
+createVMs()
+{
   createResources $NOVMS NOVASTATS VM PORT VOLUME VMSTIME id nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --security-groups ${SGROUPS[1]} --nic port-id=\$VAL ${RPRE}VM_VM\$no
 }
 waitVMs()
 {
-  waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" nova show
+  #waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" nova show
+  waitlistResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NONONO" 2 nova list
 }
 deleteVMs()
 {
@@ -757,54 +766,60 @@ if test "$1" = "CLEANUP"; then
   echo -e "$BOLD *** Start cleanup *** $NORM"
   cleanup
   echo -e "$BOLD *** Cleanup complete *** $NORM"
+elif test "$1" = "DEPLOY"; then
+ # Complete setup
+ echo -e "$BOLD *** Start deployment $NONETS SNAT JumpHosts + $NOVMS VMs *** $NORM"
+ # Image IDs
+ JHIMGID=$(glance image-list $JHIMGFILT | grep "$JHIMG" | head -n1 | sed 's/| \([0-9a-f-]*\).*$/\1/')
+ IMGID=$(glance image-list $IMGFILT | grep "$IMG" | head -n1 | sed 's/| \([0-9a-f-]*\).*$/\1/')
+ #echo "Image $IMGID $JHIMGID"
+ if createRouters; then
+  if createNets; then
+   if createSubNets; then
+    if createRIfaces; then
+     if createSGroups; then
+      if createVIPs; then
+       if createJHPorts && createPorts; then
+        if createJHVols; then
+         if createVols; then
+          waitJHVols
+          if createKeypairs; then
+           if createJHVMs; then
+            if createFIPs; then
+             waitJHVMs
+             waitVols
+             if createVMs; then
+              waitVMs
+              setmetaVMs
+              MSTOP=$(date +%s)
+              # We should be able to log in to FIP port 222 now ...
+              echo -en "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), HIT ENTER TO STOP $NORM"
+              read ANS
+              MSTART=$(($MSTART+$(date +%s)-$MSTOP))
+             fi; deleteVMs
+            fi; deleteFIPs
+           fi; deleteJHVMs
+          fi; deleteKeypairs
+         fi; waitdelVMs; deleteVols
+        fi; waitdelJHVMs; deleteJHVols
+       fi;
+       echo -e "${BOLD}Ignore port del errors; VM cleanup took care already.${NORM}"
+       deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
+      fi; deleteVIPs
+     fi; deleteSGroups
+    fi; deleteRIfaces
+   fi; deleteSubNets
+  fi; deleteNets
+ fi; deleteRouters
+ #echo "${NETSTATS[*]}"
+ echo -e "$BOLD *** Cleanup complete *** $NORM"
+ stats NETSTATS
+ stats NOVASTATS
+ stats VMCSTATS 0
+ stats VMDSTATS 0
+ stats VOLSTATS
+ stats VOLCSTATS 0
+ echo "Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s"
 else
-# Complete setup
-echo -e "$BOLD *** Start deployment $NONETS SNAT JumpHosts + $NOVMS VMs *** $NORM"
-if createRouters; then
- if createNets; then
-  if createSubNets; then
-   if createRIfaces; then
-    if createSGroups; then
-     if createVIPs; then
-      if createJHPorts && createPorts; then
-       if createJHVols; then
-        if createVols; then
-         waitJHVols
-         if createKeypairs; then
-          if createJHVMs; then
-           if createFIPs; then
-            waitJHVMs
-            waitVols
-            if createVMs; then
-             waitVMs
-             setmetaVMs
-             MSTOP=$(date +%s)
-             # We should be able to log in to FIP port 222 now ...
-             echo -en "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), HIT ENTER TO STOP $NORM"
-             read ANS
-             MSTART=$(($MSTART+$(date +%s)-$MSTOP))
-            fi; deleteVMs
-           fi; deleteFIPs
-          fi; deleteJHVMs
-         fi; deleteKeypairs
-        fi; waitdelVMs; deleteVols
-       fi; waitdelJHVMs; deleteJHVols
-      fi;
-      echo -e "${BOLD}Ignore port del errors; VM cleanup took care already.${NORM}"
-      deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
-     fi; deleteVIPs
-    fi; deleteSGroups
-   fi; deleteRIfaces
-  fi; deleteSubNets
- fi; deleteNets
-fi; deleteRouters
-#echo "${NETSTATS[*]}"
-echo -e "$BOLD *** Cleanup complete *** $NORM"
-stats NETSTATS
-stats NOVASTATS
-stats VMCSTATS 0
-stats VMDSTATS 0
+  usage
 fi
-stats VOLSTATS
-stats VOLCSTATS 0
-echo "Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s"
