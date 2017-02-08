@@ -188,7 +188,7 @@ createResources()
   shift; shift; shift; shift; shift; shift; shift
   eval LIST=( \"\${${ORNM}S[@]}\" )
   eval MLIST=( \"\${${MRNM}S[@]}\" )
-  if test "$RNM" != "NONE"; then echo -n "New $RNM:"; fi
+  if test "$RNM" != "NONE"; then echo -n "New $RNM: "; fi
   # FIXME: Should we get a token once here and reuse it?
   for no in `seq 0 $(($QUANT-1))`; do
     AZ=$(($no%$NOAZS+1))
@@ -203,7 +203,7 @@ createResources()
     eval ${STATNM}+="($TM)"
     let ctr+=1
     if test $RC != 0; then echo "ERROR: $RNM creation failed" 1>&2; return 1; fi
-    if test -n "$ID" -a "$RNM" != "NONE"; then echo -n " $ID"; fi
+    if test -n "$ID" -a "$RNM" != "NONE"; then echo -n "$ID "; fi
     eval ${RNM}S+="($ID)"
   done
   if test "$RNM" != "NONE"; then echo; fi
@@ -224,12 +224,12 @@ deleteResources()
   #eval varAlias=( \"\${myvar${varname}[@]}\" )
   eval LIST=( \"\${${RNM}S[@]}\" )
   #echo $LIST
-  test -n "$LIST" && echo -n "Del $RNM:"
+  test -n "$LIST" && echo -n "Del $RNM: "
   #for rsrc in $LIST; do
   LN=${#LIST[@]}
   while test ${#LIST[@]} -gt 0; do
     rsrc=${LIST[-1]}
-    echo -n " $rsrc"
+    echo -n "$rsrc "
     DTM=$(date +%s)
     if test -n "$DTIME"; then eval "${DTIME}+=( $DTM )"; fi
     read TM < <(ostackcmd_id id $@ $rsrc)
