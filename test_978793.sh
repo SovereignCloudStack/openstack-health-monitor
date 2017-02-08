@@ -676,7 +676,7 @@ createVMs()
     createResources $NOVMS NOVASTATS VM PORT VOLUME VMSTIME id nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --nic port-id=\$VAL ${RPRE}VM_VM\$no
   else
     # SAVE: createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
-    createResources $NOVMS NOVASTATS VM NET VOLUME VMSTIME id nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --security-groups ${SGROUPS[1]} --nic net-id=\${NETS[\$((\$no%$NONETS))]} ${RPRE}VM_VM\$no
+    createResources $NOVMS NOVASTATS VM NET VOLUME VMSTIME id nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" ${RPRE}VM_VM\$no
   fi
 }
 waitVMs()
