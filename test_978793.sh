@@ -314,10 +314,9 @@ waitlistResources()
   while test -n "${SLIST[*]}"; do
     STATSTR=""
     CMD=`eval echo $@ 2>&1`
-    ostackcmd_tm ${STATNM} $CMD
+    ostackcmd_tm $STATNM $CMD
     if test $? != 0; then echo "ERROR: $CMD => $OSTACKRESP" 1>&2; return 1; fi
-    read TM  < <(echo "$OSTACKRESP")
-    eval ${STATNM}+="( $TM )"
+    read TM REST < <(echo "$OSTACKRESP")
     for i in $(seq 0 $LAST ); do
       rsrc=${RLIST[$i]}
       if test -z "${SLIST[$i]}"; then STATSTR+='x'; continue; fi
