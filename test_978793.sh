@@ -623,10 +623,15 @@ createJHVMs()
   REDIRS=()
   ostackcmd_tm NETSTATS neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
-  ostackcmd_tm NETSTATS neutron port-show ${PORTS[-2]}
-  REDIRS+=( $(extract_ip "$OSTACKRESP") )
-  ostackcmd_tm NETSTATS neutron port-show ${PORTS[-1]}
-  REDIRS+=( $(extract_ip "$OSTACKRESP") )
+  if test ${#PORTS[*]} -gt 0; then
+    ostackcmd_tm NETSTATS neutron port-show ${PORTS[-2]}
+    REDIRS+=( $(extract_ip "$OSTACKRESP") )
+    ostackcmd_tm NETSTATS neutron port-show ${PORTS[-1]}
+    REDIRS+=( $(extract_ip "$OSTACKRESP") )
+  else
+    # We don't know the IP addresses yet -- rely on sequential alloc starting at .4 (OTC)
+    REDIRS=( 100.250.0.$((4+($NOVMS-1)/$NONETS)) 100.250.1.$((4+($NOVMS-2)/$NONETS)) )
+  fi
   #echo "$VIP ${REDIRS[*]}"
   USERDATA="#cloud-config
 internalnet:
