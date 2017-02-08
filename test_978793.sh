@@ -142,6 +142,7 @@ declare -a VOLUMES
 declare -a KEYPAIRS
 declare -a VMS
 declare -a JHVMS
+SNATROUTE=""
 
 # Statistics
 # API performance neutron, cinder, nova
@@ -271,6 +272,60 @@ waitResources()
       if test $RC != 0; then echo "ERROR: Querying $RNM $rsrc failed" 1>&2; return 1; fi
       STATSTR+=${STAT:0:1}
       echo -en "Wait $RNM: $STATSTR\r"
+      if test "$STAT" == "$COMP1" -o "$STAT" == "$COMP2"; then
+        TM=$(date +%s)
+	TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
+	eval ${CSTAT}+="($TM)"
+	unset SLIST[$i]
+      elif test "$STAT" == "error"; then
+        echo "ERROR: $NM $rsrc status $STAT" 1>&2; return 1
+      fi
+    done
+    echo -en "Wait $RNM: $STATSTR\r"
+    test -z "${SLIST[*]}" && return 0
+    sleep 2
+  done
+}
+
+# Wait for resources reaching a desired state
+# $1 => name of timing statistics array
+# $2 => name of array containing resources ("S" appended)
+# $3 => name of array to collect completion timing stats
+# $4 => name of array with start times
+# $5 => value to wait for (special XDELX)
+# $6 => alternative value to wait for
+# $7 => number of column (0 based)
+# $8- > openstack command for querying status
+# The values from $2 get appended to the command
+#
+# STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
+waitlistResources()
+{
+  STATNM=$1; RNM=$2; CSTAT=$3; STIME=$4
+  COMP1=$5; COMP2=$6; COL=$7
+  shift; shift; shift; shift; shift; shift; shift
+  eval RLIST=( \"\${${RNM}S[@]}\" )
+  eval SLIST=( \"\${${STIME}[@]}\" )
+  LAST=$(( ${#RLIST[@]} - 1 ))
+  PARSE="^|"
+  for no in $(seq 1 $COL); do PARSE="$PARSE[^|]*|"; done
+  PARSE="$PARSE *\([^|]*\)|.*\$"
+  #echo "$PARSE"
+  while test -n "${SLIST[*]}"; do
+    STATSTR=""
+    CMD=`eval echo $@ 2>&1`
+    ostackcmd_tm ${STATNM} $CMD
+    if test $? != 0; then echo "ERROR: $CMD => $OSTACKRESP" 1>&2; return 1; fi
+    read TM  < <(echo "$OSTACKRESP")
+    eval ${STATNM}+="( $TM )"
+    for i in $(seq 0 $LAST ); do
+      rsrc=${RLIST[$i]}
+      if test -z "${SLIST[$i]}"; then STATSTR+='x'; continue; fi
+      STAT=$(echo "$OSTACKRESP" | grep "^| $rsrc" | sed -e "s@$PARSE@\1@" -e 's/ *$//')
+      #echo "STATUS: \"$STAT\""
+      if test -n "$STAT"; then STATSTR+=${STAT:0:1}; else STATSTR+="X"; fi
+      #echo -en "Wait $RNM: $STATSTR\r"
+      if test "$COMP1" == "XDELX" -a -z "$STAT"; then STAT="XDELX"; fi
       if test "$STAT" == "$COMP1" -o "$STAT" == "$COMP2"; then
         TM=$(date +%s)
 	TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
@@ -480,7 +535,8 @@ createJHVols()
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
 waitJHVols()
 {
-  waitResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" "status" cinder show
+  #waitResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" "status" cinder show
+  waitlistResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" 1 cinder list
 }
 
 deleteJHVols()
@@ -497,7 +553,8 @@ createVols()
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
 waitVols()
 {
-  waitResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" "status" cinder show
+  #waitResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" "status" cinder show
+  waitlistResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" 1 cinder list
 }
 
 deleteVols()
@@ -540,8 +597,14 @@ createFIPs()
   # TODO: Use API to tell VPC that the VIP is the next hop (route table)
   ostackcmd_tm NETSTATS neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
-  echo -e "$BOLD We lack the ability to set VPC route via SNAT gateways, will be fixed soon"
-  echo -e " Please set next hop $VIP to VPC ${RPRE}Router (${ROUTERS[0]}) routes $NORM"
+  ostackcmd_tm NETSTATS neutron router-update ${ROUTERS[0]} --routes type=dict list=true destination=0/0,nexthop=$VIP
+  if test $? != 0; then
+    echo -e "$BOLD We lack the ability to set VPC route via SNAT gateways by API, will be fixed soon"
+    echo -e " Please set next hop $VIP to VPC ${RPRE}Router (${ROUTERS[0]}) routes $NORM"
+  else
+    SNATROUTE=$(echo "$OSTACKRESP" | grep "^| *id *|" | sed -e "s/^| *id *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
+    echo "SNATROUTE: $SNATROUTE"
+  fi
   FLOAT=""
   ostackcmd_tm NETSTATS neutron floatingip-list || return 1
   for PORT in ${FIPS[*]}; do
@@ -552,6 +615,9 @@ createFIPs()
 
 deleteFIPs()
 {
+  if test -n "$SNATROUTE"; then
+    ostackcmd_tm NETSTATS neutron router-update ${ROUTERS[0]} --no-routes 
+  fi
   deleteResources NETSTATS FIP "" neutron floatingip-delete
 }
 
@@ -597,7 +663,8 @@ deleteJHVMs()
 
 waitdelJHVMs()
 {
-  waitdelResources NOVASTATS JHVM VMDSTATS JVMSTIME nova show
+  #waitdelResources NOVASTATS JHVM VMDSTATS JVMSTIME nova show
+  waitlistResources NOVASTATS JHVM VMDSTATS JVMSTIME "XDELX" "NONONO" 2 nova list
 }
 
 createVMs()
@@ -615,7 +682,8 @@ deleteVMs()
 }
 waitdelVMs()
 {
-  waitdelResources NOVASTATS VM VMDSTATS VMSTIME nova show
+  #waitdelResources NOVASTATS VM VMDSTATS VMSTIME nova show
+  waitlistResources NOVASTATS VM VMDSTATS VMSTIME XDELX NONONO 2 nova list
 }
 setmetaVMs()
 {
