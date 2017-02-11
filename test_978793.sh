@@ -634,15 +634,16 @@ createJHVMs()
   fi
   #echo "$VIP ${REDIRS[*]}"
   USERDATA="#cloud-config
-internalnet:
-   - 10.250/16
-snat:
-   masq:
-      - INTERNALNET
-   fwdmasq:
-      - 0/0,TGT,tcp,222,22
-addip:
-   eth0: $VIP
+otc:
+   internalnet:
+      - 10.250/16
+   snat:
+      masq:
+         - INTERNALNET
+      fwdmasq:
+         - 0/0,TGT,tcp,222,22
+   addip:
+      eth0: $VIP
 "
   echo "$USERDATA" | sed "s/TGT/${REDIRS[0]}/" > user_data.yaml
   cat user_data.yaml >> $LOGFILE
