@@ -47,9 +47,9 @@ NONETS=2
 NOAZS=2
 
 # Images, flavors, disk sizes
-JHIMG="Standard_openSUSE_42_JeOS_latest"
+JHIMG="${JHIMG:-Standard_openSUSE_42_JeOS_latest}"
 JHIMGFILT="--property-filter __platform=OpenSUSE"
-IMG="Standard_openSUSE_42_JeOS_latest"
+IMG="${IMG:-Standard_openSUSE_42_JeOS_latest}"
 IMGFILT="--property-filter __platform=OpenSUSE"
 JHFLAVOR="computev1-1"
 FLAVOR="computev1-1"
