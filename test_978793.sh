@@ -640,7 +640,7 @@ otc:
    internalnet:
       - 10.250/16
    snat:
-      masq:
+      masqnet:
          - INTERNALNET
       fwdmasq:
          - 0/0,TGT,tcp,222,22
