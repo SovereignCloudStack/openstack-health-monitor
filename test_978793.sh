@@ -223,13 +223,15 @@ deleteResources()
   test -n "$LIST" && echo -n "Del $RNM: "
   #for rsrc in $LIST; do
   LN=${#LIST[@]}
-  while test ${#LIST[@]} -gt 0; do
+  while test ${#LIST[*]} -gt 0; do
     rsrc=${LIST[-1]}
     echo -n "$rsrc "
     DTM=$(date +%s)
     if test -n "$DTIME"; then eval "${DTIME}+=( $DTM )"; fi
     read TM < <(ostackcmd_id id $@ $rsrc)
+    RC="$?"
     eval ${STATNM}+="($TM)"
+    if test $RC != 0; then echo "ERROR" 1>&2: return 1; fi
     unset LIST[-1]
   done
   test $LN -gt 0 && echo
@@ -774,6 +776,8 @@ elif test "$1" = "DEPLOY"; then
  # Image IDs
  JHIMGID=$(glance image-list $JHIMGFILT | grep "$JHIMG" | head -n1 | sed 's/| \([0-9a-f-]*\).*$/\1/')
  IMGID=$(glance image-list $IMGFILT | grep "$IMG" | head -n1 | sed 's/| \([0-9a-f-]*\).*$/\1/')
+ if test -z "$JHIMGID"; then echo "ERROR: No image $JHIMG found, aborting."; exit 1; fi
+ if test -z "$IMGID"; then echo "ERROR: No image $IMG found, aborting."; exit 1; fi
  #echo "Image $IMGID $JHIMGID"
  if createRouters; then
   if createNets; then
