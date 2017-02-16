@@ -592,7 +592,7 @@ createFIPs()
   EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| [0-9a-f-]* | \([^ ]*\).*$/\1/')
   # Actually this fails if the port is not assigned to a VM yet
   #  -- we can not associate a FIP to a port w/o dev owner
-  createResources $NONETS NETSTATS FIP JHPORT NONE "" id neutron floatingip-create --port-id \$VAL admin_external_net
+  createResources $NONETS NETSTATS FIP JHPORT NONE "" id neutron floatingip-create --port-id \$VAL $EXTNET
   # TODO: Use API to tell VPC that the VIP is the next hop (route table)
   ostackcmd_tm NETSTATS neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
