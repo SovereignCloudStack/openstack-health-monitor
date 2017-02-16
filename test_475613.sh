@@ -78,9 +78,13 @@ ostackcmd_id()
 
 createNet()
 {
+  echo -n "Router: "
   ROUTER=$(ostackcmd_id id neutron router-create ${RPRE}Router) || return 1
+  echo -ne "$ROUTER\nNet: "
   NET=$(ostackcmd_id id neutron net-create ${RPRE}Net) || return 1
-  SUBNET=$(ostackcmd_id id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name ${RPRE}Subnet $NET 192.168.250.0/0) || return 1
+  echo -ne "$NET\nSubnet: "
+  SUBNET=$(ostackcmd_id id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name ${RPRE}Subnet $NET 192.168.250.0/24) || return 1
+  echo -e "$SUBNET"
   RIFACE=$(ostackcmd_id id neutron router-interface-add $ROUTER $SUBNET) || return 1
 }
 
@@ -96,11 +100,17 @@ deleteNet()
 
 createSGroup()
 {
+  echo -n "SGroup: "
   SGID=$(ostackcmd_id id neutron security-group-create ${RPRE}SG) || return 1
+  echo -en "$SGID\nRules: "
   ID=$(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SGID $SGID)
+  echo -n "."
   ID=$(ostackcmd_id id neutron security-group-rule-create --direction egress  --ethertype IPv4 --remote-ip-prefix 0/0  $SGID)
+  echo -n "."
   ID=$(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SGID)
+  echo -n "."
   #ID=$(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SGID)
+  echo 
 }
 
 
@@ -134,13 +144,15 @@ createFIP()
 {
   EXTNET=$(neutron net-external-list | listid external)
   #EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| [0-9a-f-]* | \([^ ]*\).*$/\1/')
+  echo -n "FIP ($EXTET): "
   FIP=$(ostackcmd_id id neutron floatingip-create --port-id $PORTID $EXTNET)
+  echo -n "$FIP "
   FLOAT=""
   OSTACKRESP=(neutron floatingip-list) || return 1
   for PORT in ${FIPS[*]}; do
     FLOAT+=" $(echo "$OSTACKRESP" | grep $FIP | sed 's/^|[^|]*|[^|]*| \([0-9:.]*\).*$/\1/')"
   done
-  echo "Floating IPs: $FLOAT"
+  echo "$FLOAT"
 }
 
 deleteFIP()
@@ -151,8 +163,9 @@ deleteFIP()
 createVM()
 {
   # of course nova boot --image ... --nic net-id ... would be easier
+  echo -n "Boot VM: "
   VMID=$(nova boot --flavor $FLAVOR --image $IMGID --key-name $KEYPAIRS --availability-zone eu-de-01 --security-groups --nic net-id=$NET ${RPRE}VM) || return 1
-  echo -n "Wait for IP: "
+  echo -en "$VMID\nWait for IP: "
   while true; do
     sleep 5
     RESP=$(nova show $VMID | grep "$SUBNET network")
