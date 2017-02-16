@@ -175,7 +175,7 @@ waitVM()
 {
   echo -n "Waiting for VM "
   while true; do
-    nova list | grep $VMID | grep ACTIVE >/dev/null 2>&1 && { echo; sleep 5; return 0; }
+    nova list | grep $VMID | grep ACTIVE >/dev/null 2>&1 && { echo; sleep 15; return 0; }
     echo -n "."
     sleep 2
   done
@@ -185,7 +185,7 @@ deleteVM()
 {
   nova delete $VMID
   # FIXME: We should just wait ...
-  sleep 5
+  sleep 15
 }
 
 findres()
