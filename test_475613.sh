@@ -233,7 +233,7 @@ elif test "$1" = "DEPLOY"; then
      if createFIP; then
       waitVM
       #Now wait for ssh (should succeed)
-      sleep 30
+      echo "sleep 120"; sleep 120
       ssh -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg | tail
       #ping (should fail, SG not open)
       ping -c2 -i1 $FLOAT
