@@ -43,11 +43,10 @@ fi
 
 usage()
 {
-  echo "Usage: test_475613.sh [-l LOGFILE] CLEANUP|DEPLOY"
+  echo "Usage: test_475613.sh CLEANUP|DEPLOY"
   echo " CLEANUP cleans up all resources with prefix $RPRE"
   exit 0
 }
-if test "$1" = "-l"; then LOGFILE=$2; shift; shift; fi
 if test "$1" = "help" -o "$1" = "-h"; then usage; fi
 
 
@@ -65,26 +64,30 @@ ostackcmd_id()
   RC=$?
   if test "$IDNM" = "DELETE"; then
     ID=$(echo "$RESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
-    echo "$ID: $@ => $RC $RESP" >> $LOGFILE
+    echo "$@ => $RC $ID" 1>&2
   else
     ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed -e "s/^| *$IDNM *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
-    echo "$ID: $@ => $RC $RESP" >> $LOGFILE
+    echo "$@ => $RC $ID" 1>&2
     if test "$RC" != "0"; then echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
   fi
   echo "$ID"
   return $RC
 }
 
+ostackcmd()
+{
+  RESP=$($@ 2>&1)
+  RC=$?
+  echo "$@ => $RC" 1>&2
+  echo "$RESP"
+  return $RC
+}
 
 createNet()
 {
-  echo -n "Router: "
   ROUTER=$(ostackcmd_id id neutron router-create ${RPRE}Router) || return 1
-  echo -ne "$ROUTER\nNet: "
   NET=$(ostackcmd_id id neutron net-create ${RPRE}Net) || return 1
-  echo -ne "$NET\nSubnet: "
   SUBNET=$(ostackcmd_id id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name ${RPRE}Subnet $NET 192.168.250.0/24) || return 1
-  echo -e "$SUBNET"
   RIFACE=$(ostackcmd_id id neutron router-interface-add $ROUTER $SUBNET) || return 1
 }
 
@@ -100,17 +103,11 @@ deleteNet()
 
 createSGroup()
 {
-  echo -n "SGroup: "
   SGID=$(ostackcmd_id id neutron security-group-create ${RPRE}SG) || return 1
-  echo -en "$SGID\nRules: "
   ID=$(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SGID $SGID)
-  echo -n "."
   ID=$(ostackcmd_id id neutron security-group-rule-create --direction egress  --ethertype IPv4 --remote-ip-prefix 0/0  $SGID)
-  echo -n "."
   ID=$(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SGID)
-  echo -n "."
   #ID=$(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SGID)
-  echo 
 }
 
 
@@ -124,7 +121,7 @@ createKeypair()
 {
   UMASK=$(umask)
   umask 0077
-  OSTACKRESP=$(nova keypair-add ${RPRE}Keypair) || return 1
+  OSTACKRESP=$(ostackcmd nova keypair-add ${RPRE}Keypair) || return 1
   echo "$OSTACKRESP" > ${RPRE}Keypair.pem
   umask $UMASK
 }
@@ -147,41 +144,38 @@ createFIP()
   echo -n "FIP ($EXTET): "
   FIP=$(ostackcmd_id id neutron floatingip-create --port-id $PORTID $EXTNET)
   echo -n "$FIP "
-  FLOAT=""
-  OSTACKRESP=(neutron floatingip-list) || return 1
-  for PORT in ${FIPS[*]}; do
-    FLOAT+=" $(echo "$OSTACKRESP" | grep $FIP | sed 's/^|[^|]*|[^|]*| \([0-9:.]*\).*$/\1/')"
-  done
+  OSTACKRESP=$(neutron floatingip-list) || return 1
+  FLOAT=$(echo "$OSTACKRESP" | grep $FIP | sed 's/^|[^|]*|[^|]*| \([0-9:.]*\).*$/\1/')
   echo "$FLOAT"
 }
 
 deleteFIP()
 {
-  neutron floatingip-delete $FIP
+  ostackcmd neutron floatingip-delete $FIP
 }
 
 createVM()
 {
   # of course nova boot --image ... --nic net-id ... would be easier
   echo -n "Boot VM: "
-  VMID=$(nova boot --flavor $FLAVOR --image $IMGID --key-name $KEYPAIRS --availability-zone eu-de-01 --security-groups --nic net-id=$NET ${RPRE}VM) || return 1
+  VMID=$(ostackcmd_id id nova boot --flavor $FLAVOR --image $IMGID --key-name ${RPRE}Keypair --availability-zone eu-de-01 --security-groups $SGID --nic net-id=$NET ${RPRE}VM) || return 1
   echo -en "$VMID\nWait for IP: "
   while true; do
     sleep 5
-    RESP=$(nova show $VMID | grep "$SUBNET network")
+    RESP=$(nova show $VMID | grep "${RPRE}Net network")
     IP=$(echo "$RESP" | sed 's@|[^|]*| \([0-9\.]*\).*$@\1@')
     if test -n "$IP"; then break; fi
     echo -n "."
   done
   echo "$IP"
-  PORTID=$(neutron port-list | grep $IP | listid $SUBNET)
+  PORTID=$(ostackcmd neutron port-list | grep $IP | listid $SUBNET)
 }
 
 waitVM()
 {
   echo -n "Waiting for VM "
   while true; do
-    nova list | grep $VMID | grep ACTIVE >/dev/null 2>&1 && { echo; return 0; }
+    nova list | grep $VMID | grep ACTIVE >/dev/null 2>&1 && { echo; sleep 5; return 0; }
     echo -n "."
     sleep 2
   done
@@ -190,6 +184,8 @@ waitVM()
 deleteVM()
 {
   nova delete $VMID
+  # FIXME: We should just wait ...
+  sleep 5
 }
 
 findres()
@@ -225,7 +221,7 @@ if test "$1" = "CLEANUP"; then
   echo -e "$BOLD *** Cleanup complete *** $NORM"
 elif test "$1" = "DEPLOY"; then
  # Complete setup
- echo -e "$BOLD *** Start deployment $NORM"
+ echo -e "$BOLD *** Start deployment *** $NORM"
  # Image IDs
  IMGID=$(glance image-list $IMGFILT | grep "$IMG" | head -n1 | sed 's/| \([0-9a-f-]*\).*$/\1/')
  if test -z "$IMGID"; then echo "ERROR: No image $IMG found, aborting."; exit 1; fi
@@ -237,17 +233,26 @@ elif test "$1" = "DEPLOY"; then
      if createFIP; then
       waitVM
       #Now wait for ssh (should succeed)
+      sleep 30
+      ssh -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg | tail
       #ping (should fail, SG not open)
+      ping -c2 -i1 $FLOAT
       # allow-address-pair
+      ostackcmd neutron port-update $PORTID --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1
       #ping again
+      ping -c2 -i1 $FLOAT
       #telnet forbidden port
+      echo "quit" | telnet $FLOAT 100
+      ssh -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg | tail
       echo -en "$BOLD *** TEST DONE, HIT ENTER TO CLEANUP $NORM"
+      read ans
      fi; deleteFIP
     fi; deleteVM
    fi; deleteKeypair
   fi; deleteSGroup
  fi; deleteNet
- echo "Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s"
+ deleteSGroup
+ echo "Overall: $(($(date +%s)-$MSTART))s"
 else
   usage
 fi
