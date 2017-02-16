@@ -233,17 +233,20 @@ elif test "$1" = "DEPLOY"; then
      if createFIP; then
       waitVM
       #Now wait for ssh (should succeed)
-      echo "sleep 120"; sleep 120
-      ssh -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg | tail
+      while true; do
+        echo "quit" | nc -w2 $FLOAT 22 && break
+        sleep 2
+      done
+      ssh -o "StrictHostKeyChecking=no" -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg | tail -n4
       #ping (should fail, SG not open)
-      ping -c2 -i1 $FLOAT
+      sudo ping -c2 -i1 $FLOAT
       # allow-address-pair
       ostackcmd neutron port-update $PORTID --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1
       #ping again
-      ping -c2 -i1 $FLOAT
+      sudo ping -c2 -i1 $FLOAT
       #telnet forbidden port
-      echo "quit" | telnet $FLOAT 100
-      ssh -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg | tail
+      echo "quit" | nc -w2 $FLOAT 100 && break
+      ssh -o "StrictHostKeyChecking=no" -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg | tail -n4
       echo -en "$BOLD *** TEST DONE, HIT ENTER TO CLEANUP $NORM"
       read ans
      fi; deleteFIP
