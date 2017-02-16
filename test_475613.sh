@@ -242,10 +242,11 @@ elif test "$1" = "DEPLOY"; then
       sudo ping -c2 -i1 $FLOAT
       # allow-address-pair
       ostackcmd neutron port-update $PORTID --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1
+      #telnet forbidden port
+      sleep 2
+      echo "quit" | nc -w2 $FLOAT 100 && break
       #ping again
       sudo ping -c2 -i1 $FLOAT
-      #telnet forbidden port
-      echo "quit" | nc -w2 $FLOAT 100 && break
       ssh -o "StrictHostKeyChecking=no" -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg | tail -n4
       echo -en "$BOLD *** TEST DONE, HIT ENTER TO CLEANUP $NORM"
       read ans
