@@ -141,7 +141,7 @@ createFIP()
 {
   EXTNET=$(neutron net-external-list | listid external)
   #EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| [0-9a-f-]* | \([^ ]*\).*$/\1/')
-  echo -n "FIP ($EXTET): "
+  echo -n "FIP ($EXTNET): "
   FIP=$(ostackcmd_id id neutron floatingip-create --port-id $PORTID $EXTNET)
   echo -n "$FIP "
   OSTACKRESP=$(neutron floatingip-list) || return 1
