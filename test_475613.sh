@@ -206,20 +206,26 @@ findres()
 
 waitssh()
 {
-  while true; do
+  echo -n "Wait for ssh connectivity: "
+  declare -i ctr=0
+  while [ $ctr -lt 200 ]; do
     echo "quit" | nc -w2 $FLOAT 22 >/dev/null 2>&1 && break
+    echo -n "."
     sleep 2
+    let ctr+=1
   done
+  if [ $ctr -ge 200 ]; then echo "Timeout"; return 1; fi
+  echo
 }
 
 cleanup()
 {
-  VMID=$(findres ${RPRE}VM nova list)
-  [ -n "$VMID" ] && deleteVM || echo "No VM To be cleaned"
   FIP=$(neutron floatingip-list | grep '192\.168\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/')
   [ -n "$FIP" ] && deleteFIP
+  VMID=$(findres ${RPRE}VM nova list)
+  [ -n "$VMID" ] && deleteVM || echo "No VM To be cleaned"
   KEYPAIR=$(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/')
-  [ -n "$LEYPAIR" ] && deleteKeypair
+  [ -n "$KEYPAIR" ] && deleteKeypair
   SGID=$(findres "" neutron security-group-list)
   [ -n "$SGID" ] && deleteSGroup
   SUBNET=$(neutron subnet-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/')
