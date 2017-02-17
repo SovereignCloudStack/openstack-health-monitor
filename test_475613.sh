@@ -41,11 +41,13 @@ fi
 
 usage()
 {
-  echo "Usage: test_475613.sh CLEANUP|DEPLOY"
+  echo "Usage: test_475613.sh [-r ROUTER] CLEANUP|DEPLOY"
+  echo " Set router with -r to use existing Router"
   echo " CLEANUP cleans up all resources with prefix $RPRE"
   exit 0
 }
 if test "$1" = "help" -o "$1" = "-h"; then usage; fi
+if test "$1" = "-r"; then EXTROUTER=$2; shift; shift; fi
 
 
 getid() { FIELD=${1:-id}; grep "^| $FIELD " | sed -e 's/^|[^|]*| \([^|]*\) |.*$/\1/' -e 's/ *$//'; }
@@ -83,7 +85,11 @@ ostackcmd()
 
 createNet()
 {
-  ROUTER=$(ostackcmd_id id neutron router-create ${RPRE}Router) || return 1
+  if test -n "$EXTROUTER"; then
+    ROUTER=$EXTROUTER
+  else
+    ROUTER=$(ostackcmd_id id neutron router-create ${RPRE}Router) || return 1
+  fi
   NET=$(ostackcmd_id id neutron net-create ${RPRE}Net) || return 1
   SUBNET=$(ostackcmd_id id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name ${RPRE}Subnet $NET 192.168.250.0/24) || return 1
   RIFACE=$(ostackcmd_id id neutron router-interface-add $ROUTER $SUBNET) || return 1
@@ -96,7 +102,7 @@ deleteNet()
   [ -n "$SUBNET" ] && neutron router-interface-delete $ROUTER $SUBNET
   [ -n "$SUBNET" ] && neutron subnet-delete $SUBNET
   [ -n "$NET" ] && neutron net-delete $NET
-  [ -n "$ROUTER" ] && neutron router-delete $ROUTER
+  [ -n "$ROUTER" -a -z "$EXTROUTER" ] && neutron router-delete $ROUTER
 }
 
 createSGroup()
