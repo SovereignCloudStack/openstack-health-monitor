@@ -29,6 +29,7 @@ IMG="${IMG:-Standard_openSUSE_42_JeOS_latest}"
 IMGFILT="${IMGFILT:- --property-filter __platform=OpenSUSE}"
 FLAVOR=${FLAVOR:-computev1-1}
 AZ=${AZ:-eu-de-01}
+USERNAME=${USERNAME:-linux}
 
 # Nothing to change below here
 BOLD="\e[0;1m"
@@ -249,13 +250,15 @@ elif test "$1" = "DEPLOY"; then
       waitVM
       #Now wait for ssh (should succeed)
       waitssh
-      echo "ssh -o \"StrictHostKeyChecking=no\" -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg"
-      ssh -o "StrictHostKeyChecking=no" -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg | tail -n4
+      echo "ssh -o \"StrictHostKeyChecking=no\" -i ${RPRE}Keypair.pem $USERNAME@$FLOAT sudo dmesg"
+      ssh -o "StrictHostKeyChecking=no" -i ${RPRE}Keypair.pem $USERNAME@$FLOAT sudo dmesg | tail -n4
       #ping (should fail, SG not open)
       echo "ping -c2 -i1 $FLOAT"
       sudo ping -c2 -i1 $FLOAT
       # allow-address-pair
-      ostackcmd neutron port-update $PORTID --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1
+      #ostackcmd neutron port-update $PORTID --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1
+      #ostackcmd neutron port-update $PORTID --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/0
+      ostackcmd neutron port-update $PORTID --allowed-address-pairs type=dict list=true ip_address=1.1.1.1/0
       sleep 2
       #telnet forbidden port
       echo "nc -w2 $FLOAT 100"
@@ -263,8 +266,8 @@ elif test "$1" = "DEPLOY"; then
       #ping again
       echo "ping -c2 -i1 $FLOAT"
       sudo ping -c2 -i1 $FLOAT
-      echo "ssh -o \"StrictHostKeyChecking=no\" -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg"
-      ssh -o "StrictHostKeyChecking=no" -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg | tail -n4
+      echo "ssh -o \"StrictHostKeyChecking=no\" -i ${RPRE}Keypair.pem $USERNAME@$FLOAT sudo dmesg"
+      ssh -o "StrictHostKeyChecking=no" -i ${RPRE}Keypair.pem $USERNAME@$FLOAT sudo dmesg | tail -n4
       MSTOP=$(date +%s)
       echo -en "$BOLD *** TEST DONE, HIT ENTER TO CLEANUP $NORM"
       read ans
