@@ -259,14 +259,16 @@ elif test "$1" = "DEPLOY"; then
       sudo ping -c2 -i1 $FLOAT
       echo "ssh -o \"StrictHostKeyChecking=no\" -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg"
       ssh -o "StrictHostKeyChecking=no" -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg | tail -n4
+      MSTOP=$(date +%s)
       echo -en "$BOLD *** TEST DONE, HIT ENTER TO CLEANUP $NORM"
       read ans
+      MSTART=$(($MSTART+$(date +%s)-$MSTOP))
      fi; deleteFIP
     fi; deleteVM
    fi; deleteKeypair
   fi; deleteSGroup
  fi; deleteNet
- deleteSGroup
+ #deleteSGroup
  echo "Overall: $(($(date +%s)-$MSTART))s"
 else
   usage
