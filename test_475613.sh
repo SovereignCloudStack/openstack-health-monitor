@@ -100,6 +100,7 @@ createNet()
 
 deleteNet()
 {
+  if test -z "$ROUTER" -a -n "$EXTROUTER"; then ROUTER=$EXTROUTER; fi
   [ -n "$SUBNET" ] && neutron router-interface-delete $ROUTER $SUBNET
   [ -n "$SUBNET" ] && neutron subnet-delete $SUBNET
   [ -n "$NET" ] && neutron net-delete $NET
@@ -173,7 +174,7 @@ createVM()
     echo -n "."
   done
   echo "$IP"
-  PORTID=$(ostackcmd neutron port-list | grep $IP | listid $SUBNET)
+  PORTID=$(neutron port-list | grep $IP | listid $SUBNET)
 }
 
 waitVM()
@@ -256,9 +257,9 @@ elif test "$1" = "DEPLOY"; then
       echo "ping -c2 -i1 $FLOAT"
       sudo ping -c2 -i1 $FLOAT
       # allow-address-pair
-      #ostackcmd neutron port-update $PORTID --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1
-      #ostackcmd neutron port-update $PORTID --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/0
-      ostackcmd neutron port-update $PORTID --allowed-address-pairs type=dict list=true ip_address=1.1.1.1/0
+      ostackcmd neutron port-update $PORTID --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1
+      #ostackcmd neutron port-update $PORTID --allowed-address-pairs type=dict list=true ip_address=0/0
+      #ostackcmd neutron port-update $PORTID --allowed-address-pairs type=dict list=true ip_address=1.1.1.1/0
       sleep 2
       #telnet forbidden port
       echo "nc -w2 $FLOAT 100"
