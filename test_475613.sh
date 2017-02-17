@@ -26,11 +26,9 @@ RPRE=Test475613_
 
 # Images, flavors, disk sizes
 IMG="${IMG:-Standard_openSUSE_42_JeOS_latest}"
-IMGFILT="--property-filter __platform=OpenSUSE"
-FLAVOR="computev1-1"
-
-DATE=`date +%s`
-LOGFILE=$RPRE$DATE.log
+IMGFILT="${IMGFILT:- --property-filter __platform=OpenSUSE}"
+FLAVOR=${FLAVOR:-computev1-1}
+AZ=${AZ:-eu-de-01}
 
 # Nothing to change below here
 BOLD="\e[0;1m"
@@ -158,7 +156,7 @@ createVM()
 {
   # of course nova boot --image ... --nic net-id ... would be easier
   echo -n "Boot VM: "
-  VMID=$(ostackcmd_id id nova boot --flavor $FLAVOR --image $IMGID --key-name ${RPRE}Keypair --availability-zone eu-de-01 --security-groups $SGID --nic net-id=$NET ${RPRE}VM) || return 1
+  VMID=$(ostackcmd_id id nova boot --flavor $FLAVOR --image $IMGID --key-name ${RPRE}Keypair --availability-zone $AZ --security-groups $SGID --nic net-id=$NET ${RPRE}VM) || return 1
   echo -en "$VMID\nWait for IP: "
   while true; do
     sleep 5
@@ -175,17 +173,20 @@ waitVM()
 {
   echo -n "Waiting for VM "
   while true; do
-    nova list | grep $VMID | grep ACTIVE >/dev/null 2>&1 && { echo; sleep 15; return 0; }
+    nova list | grep $VMID | grep ACTIVE >/dev/null 2>&1 && break
     echo -n "."
     sleep 2
   done
+  echo
 }
 
 deleteVM()
 {
   nova delete $VMID
   # FIXME: We should just wait ...
-  sleep 15
+  while true; do
+    nova list | grep $VMID >/dev/null 2>&1 || break
+  done
 }
 
 findres()
@@ -193,6 +194,14 @@ findres()
   FILT=${1:-$RPRE}
   shift
   $@ | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
+}
+
+waitssh()
+{
+  while true; do
+    echo "quit" | nc -w2 $FLOAT 22 >/dev/null 2>&1 && break
+    sleep 2
+  done
 }
 
 cleanup()
@@ -233,20 +242,22 @@ elif test "$1" = "DEPLOY"; then
      if createFIP; then
       waitVM
       #Now wait for ssh (should succeed)
-      while true; do
-        echo "quit" | nc -w2 $FLOAT 22 && break
-        sleep 2
-      done
+      waitssh
+      echo "ssh -o \"StrictHostKeyChecking=no\" -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg"
       ssh -o "StrictHostKeyChecking=no" -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg | tail -n4
       #ping (should fail, SG not open)
+      echo "ping -c2 -i1 $FLOAT"
       sudo ping -c2 -i1 $FLOAT
       # allow-address-pair
       ostackcmd neutron port-update $PORTID --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1
-      #telnet forbidden port
       sleep 2
-      echo "quit" | nc -w2 $FLOAT 100 && break
+      #telnet forbidden port
+      echo "nc -w2 $FLOAT 100"
+      echo "quit" | nc -w2 $FLOAT 100
       #ping again
+      echo "ping -c2 -i1 $FLOAT"
       sudo ping -c2 -i1 $FLOAT
+      echo "ssh -o \"StrictHostKeyChecking=no\" -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg"
       ssh -o "StrictHostKeyChecking=no" -i ${RPRE}Keypair.pem linux@$FLOAT sudo dmesg | tail -n4
       echo -en "$BOLD *** TEST DONE, HIT ENTER TO CLEANUP $NORM"
       read ans
