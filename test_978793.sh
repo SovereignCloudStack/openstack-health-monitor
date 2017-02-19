@@ -138,6 +138,7 @@ declare -a JHPORTS
 declare -a PORTS
 declare -a VIPS
 declare -a FIPS
+declare -a FLOATS
 # cinder
 declare -a JHVOLUMES
 declare -a VOLUMES
@@ -709,15 +710,16 @@ setmetaVMs()
 
 wait222()
 {
-  echo -n "Wait for ssh 222 connectivity: "
+  FLIP=${FLOATS[0]}
+  echo -n "Wait for port 222 connectivity on $FLIP: "
   declare -i ctr=0
-  while [ $ctr -lt 200 ]; do
-    echo "quit" | nc -w2 ${FLOATS[0]} 222 >/dev/null 2>&1 && break
+  while [ $ctr -lt 80 ]; do
+    echo "quit" | nc -w2 $FLIP 222 >/dev/null 2>&1 && break
     echo -n "."
-    sleep 2
+    sleep 5
     let ctr+=1
   done
-  if [ $ctr -ge 200 ]; then echo "Timeout"; return 1; fi
+  if [ $ctr -ge 80 ]; then echo "Timeout"; return 1; fi
   echo
 }
 
@@ -725,8 +727,8 @@ testsnat()
 {
   unset SSH_AUTH_SOCK
   echo "Test outgoing ping (SNAT) ... "
-  ssh -p 222 -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
-  ssh -p 222 -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+  ssh -p 222 -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
+  ssh -p 222 -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
   if test $? = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $NORM"; fi
 }
 
@@ -763,6 +765,8 @@ cleanup()
 {
   VMS=( $(findres ${RPRE}VM_VM nova list) )
   deleteVMs
+  ROUTERS=( $(findres "" neutron router-list) )
+  SNATROUTE=1
   #FIPS=( $(findres "" neutron floatingip-list) )
   FIPS=( $(neutron floatingip-list | grep '10\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   deleteFIPs
@@ -781,7 +785,6 @@ cleanup()
   deleteVIPs
   SGROUPS=( $(findres "" neutron security-group-list) )
   deleteSGroups
-  ROUTERS=( $(findres "" neutron router-list) )
   SUBNETS=( $(findres "" neutron subnet-list) )
   deleteRIfaces
   deleteSubNets
