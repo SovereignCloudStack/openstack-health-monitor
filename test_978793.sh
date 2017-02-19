@@ -589,6 +589,7 @@ extract_ip()
   echo "$1" | grep '| fixed_ips ' | sed 's/^.*"ip_address": "\([0-9a-f:.]*\)".*$/\1/'
 }
 
+SNATROUTE=""
 createFIPs()
 {
   ostackcmd_tm NETSTATS neutron net-external-list || return 1
@@ -604,8 +605,9 @@ createFIPs()
     echo -e "$BOLD We lack the ability to set VPC route via SNAT gateways by API, will be fixed soon"
     echo -e " Please set next hop $VIP to VPC ${RPRE}Router (${ROUTERS[0]}) routes $NORM"
   else
-    SNATROUTE=$(echo "$OSTACKRESP" | grep "^| *id *|" | sed -e "s/^| *id *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
-    echo "SNATROUTE: $SNATROUTE"
+    #SNATROUTE=$(echo "$OSTACKRESP" | grep "^| *id *|" | sed -e "s/^| *id *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
+    echo "SNATROUTE: destination=0.0.0.0/0,nexthop=$VIP"
+    SNATROUTE=1
   fi
   FLOAT=""
   ostackcmd_tm NETSTATS neutron floatingip-list || return 1
@@ -713,13 +715,13 @@ wait222()
   FLIP=${FLOATS[0]}
   echo -n "Wait for port 222 connectivity on $FLIP: "
   declare -i ctr=0
-  while [ $ctr -lt 80 ]; do
+  while [ $ctr -lt 60 ]; do
     echo "quit" | nc -w2 $FLIP 222 >/dev/null 2>&1 && break
     echo -n "."
     sleep 5
     let ctr+=1
   done
-  if [ $ctr -ge 80 ]; then echo "Timeout"; return 1; fi
+  if [ $ctr -ge 60 ]; then echo "Timeout"; return 1; fi
   echo
 }
 
