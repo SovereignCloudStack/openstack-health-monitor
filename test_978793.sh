@@ -63,6 +63,8 @@ LOGFILE=$RPRE$DATE.log
 # Nothing to change below here
 BOLD="\e[0;1m"
 NORM="\e[0;0m"
+RED="\e[0;31m"
+GREEN="\e[0;32m"
 
 if test -z "$OS_USERNAME"; then
   echo "source OS_ settings file before running this test"
@@ -633,7 +635,7 @@ createJHVMs()
     REDIRS+=( $(extract_ip "$OSTACKRESP") )
   else
     # We don't know the IP addresses yet -- rely on sequential alloc starting at .4 (OTC)
-    REDIRS=( 100.250.0.$((4+($NOVMS-1)/$NONETS)) 100.250.1.$((4+($NOVMS-2)/$NONETS)) )
+    REDIRS=( 10.250.0.$((4+($NOVMS-1)/$NONETS)) 10.250.1.$((4+($NOVMS-2)/$NONETS)) )
   fi
   #echo "$VIP ${REDIRS[*]}"
   USERDATA="#cloud-config
@@ -722,8 +724,9 @@ wait222()
 testsnat()
 {
   echo "Test outgoing ping (SNAT) ... "
-  ssh -p 222 -i ${KEYPAIRS[1]} linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
-  ssh -p 222 -i ${KEYPAIRS[1]} linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+  ssh -p 222 -i ${KEYPAIRS[1]}.pem linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
+  ssh -p 222 -i ${KEYPAIRS[1]}.pem linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+  if test $? = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $NORM"; fi
 }
 
 
