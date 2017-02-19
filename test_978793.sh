@@ -596,7 +596,7 @@ createFIPs()
   # TODO: Use API to tell VPC that the VIP is the next hop (route table)
   ostackcmd_tm NETSTATS neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
-  ostackcmd_tm NETSTATS neutron router-update ${ROUTERS[0]} --routes type=dict list=true destination=0/0,nexthop=$VIP
+  ostackcmd_tm NETSTATS neutron router-update ${ROUTERS[0]} --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP
   if test $? != 0; then
     echo -e "$BOLD We lack the ability to set VPC route via SNAT gateways by API, will be fixed soon"
     echo -e " Please set next hop $VIP to VPC ${RPRE}Router (${ROUTERS[0]}) routes $NORM"
@@ -610,6 +610,7 @@ createFIPs()
     FLOAT+=" $(echo "$OSTACKRESP" | grep $PORT | sed 's/^|[^|]*|[^|]*| \([0-9:.]*\).*$/\1/')"
   done
   echo "Floating IPs: $FLOAT"
+  FLOATS=( $FLOAT )
 }
 
 deleteFIPs()
@@ -704,6 +705,28 @@ setmetaVMs()
   done
 }
 
+wait222()
+{
+  echo -n "Wait for ssh 222 connectivity: "
+  declare -i ctr=0
+  while [ $ctr -lt 200 ]; do
+    echo "quit" | nc -w2 $FLOATS[0] 222 >/dev/null 2>&1 && break
+    echo -n "."
+    sleep 2
+    let ctr+=1
+  done
+  if [ $ctr -ge 200 ]; then echo "Timeout"; return 1; fi
+  echo
+}
+
+testsnat()
+{
+  echo "Test outgoing ping (SNAT) ... "
+  ssh -p 222 -i ${KEYPAIRS[1]} linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
+  ssh -p 222 -i ${KEYPAIRS[1]} linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+}
+
+
 # STATLIST [DIGITS]
 stats()
 {
@@ -797,6 +820,8 @@ elif test "$1" = "DEPLOY"; then
              if createVMs; then
               waitVMs
               setmetaVMs
+              wait222
+              testsnat
               MSTOP=$(date +%s)
               # We should be able to log in to FIP port 222 now ...
               echo -en "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), HIT ENTER TO STOP $NORM"
