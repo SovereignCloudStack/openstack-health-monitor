@@ -712,7 +712,7 @@ wait222()
   echo -n "Wait for ssh 222 connectivity: "
   declare -i ctr=0
   while [ $ctr -lt 200 ]; do
-    echo "quit" | nc -w2 $FLOATS[0] 222 >/dev/null 2>&1 && break
+    echo "quit" | nc -w2 ${FLOATS[0]} 222 >/dev/null 2>&1 && break
     echo -n "."
     sleep 2
     let ctr+=1
@@ -723,9 +723,10 @@ wait222()
 
 testsnat()
 {
+  unset SSH_AUTH_SOCK
   echo "Test outgoing ping (SNAT) ... "
-  ssh -p 222 -i ${KEYPAIRS[1]}.pem linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
-  ssh -p 222 -i ${KEYPAIRS[1]}.pem linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+  ssh -p 222 -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
+  ssh -p 222 -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
   if test $? = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $NORM"; fi
 }
 
