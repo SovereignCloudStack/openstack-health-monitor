@@ -721,7 +721,14 @@ wait222()
     sleep 5
     let ctr+=1
   done
-  if [ $ctr -ge 60 ]; then echo "Timeout"; return 1; fi
+  if [ $ctr -ge 60 ]; then echo " timeout"; return 1; fi
+  while [ $ctr -lt 80 ]; do
+    echo "quit" | nc -w2 ${FLOATS[1]} 222 >/dev/null 2>&1 && break
+    echo -n "."
+    sleep 5
+    let ctr+=1
+  done
+  if [ $ctr -ge 80 ]; then echo " timeout"; return 1; fi
   echo
 }
 
