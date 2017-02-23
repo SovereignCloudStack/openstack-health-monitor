@@ -83,11 +83,11 @@ waitIP()
 create_snatinst()
 {
    create_snatsg || return
-   ostackcmd neutron net-create SNAT-NET || return
+   SNATNET=$(ostackcmd id neutron net-create SNAT-NET) || return
    SNATSUB=$(ostackcmd_id id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name SNAT-SUBNET SNAT-NET $2) || return
    ostackcmd neutron router-interface-add $1 $SNATSUB
    OUT=$(ostackcmd neutron port-create --name SNAT-VIP --security-group $SNAT_SG SNAT-NET) || return
-   VIP=$(echo "$OUT" | extract_ip)
+   VIP=$(extract_ip "$OUT")
    echo $VIP
    cat > user_data.yaml <<EOT
 #cloud-config
@@ -107,8 +107,8 @@ otc:
       categories: security recommended
 EOT
    IMGID=$(glance image-list $IMGFILT | listid $IMG) || return
-   SNAT1VM=$(ostackcmd_id id nova boot --image $IMGID --flavor computev1-1 --key-name $3 --user_data user_data.yaml --availability_zone eu-de-01 --security-groups $SNAT_SG --nic net-id=SNAT-NET SNAT-INST1) || return
-   SNAT2VM=$(ostackcmd_id id nova boot --image $IMGID --flavor computev1-1 --key-name $3 --user_data user_data.yaml --availability_zone eu-de-02 --security-groups $SNAT_SG --nic net-id=SNAT-NET SNAT-INST2) || return
+   SNAT1VM=$(ostackcmd_id id nova boot --image $IMGID --flavor computev1-1 --key-name $3 --user_data user_data.yaml --availability_zone eu-de-01 --security-groups $SNAT_SG --nic net-id=$SNATNET SNAT-INST1) || return
+   SNAT2VM=$(ostackcmd_id id nova boot --image $IMGID --flavor computev1-1 --key-name $3 --user_data user_data.yaml --availability_zone eu-de-02 --security-groups $SNAT_SG --nic net-id=$SNATNET SNAT-INST2) || return
    # Wait for IP_address
    SIP1=$(waitIP $SNAT1VM) || return
    SNAT_INST1_PORT=$(neutron port-list | grep $SIP1 | listid $SNATSUB) || return
