@@ -55,18 +55,27 @@ create_snatsg()
   SNAT_SG=$(ostackcmd_id id neutron security-group-create SNAT-SG) || return 1
   ID=$(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SNAT_SG $SNAT_SG) || return
   ID=$(ostackcmd_id id neutron security-group-rule-create --direction egress  --ethertype IPv4 --remote-ip-prefix 0/0  $SNAT_SG) || return
-  ID=$(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SNAT_SG) || return
+  ID=$(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max 222 --remote-ip-prefix 0/0 $SNAT_SG) || return
   ID=$(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SNAT_SG) || return
 }
 
+
+# Get fixed IP address from VM $1 in SNAT-NET network and report it back
+SNATVMIP()
+{
+  RESP=$(nova show $1 | grep 'SNAT-NET network') || return
+  IP=$(echo "$RESP" | sed 's@|[^|]*| \([0-9\.]*\).*$@\1@')
+  test -n "$IP" && echo "$IP"
+}
+
+# Wait for VM $1 to have a port with a fixed IP in SNAT-NET network (and report it back)
 waitIP()
 {
   declare -i ctr=0
   echo -n "Waiting for VM $1 " 1>&2
   while test $ctr -le 72; do
     sleep 5
-    RESP=$(nova show $1 | grep "SNAT-NET network")
-    IP=$(echo "$RESP" | sed 's@|[^|]*| \([0-9\.]*\).*$@\1@')
+    IP=$(SNATVMIP $1)
     if test -n "$IP"; then break; fi
     echo -n "." 1>&2
     let ctr+=1
@@ -76,6 +85,9 @@ waitIP()
 }
 
 
+# Main funtion to create a net, subnet with CIDR $2 connected to router $1
+# and boot two instances (with key $3) configured to do SNAT for all local nets
+# by assigning EIPs and settig a default route in router
 # INPUT:
 # $1 => Router name/ID
 # $2 => SNAT CIDR
@@ -101,6 +113,7 @@ otc:
          - INTERNALNET
    addip:
       eth0: $VIP
+   movessh: 222
 otc:
    autoupdate:
       frequency: daily
@@ -121,22 +134,69 @@ EOT
    ostackcmd neutron router-update $1 --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP || return
 }
 
+# Use an openstack list command and find resource IDs matching pattern
 findres()
 {
-  FILT=${1:-$RPRE}
+  FILT=${1:-SNAT}
   shift
   $@ | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
 }
 
+# Wait until VMs in $@ are gone
+WaitNoMore()
+{
+  if test -z "$@"; then return; fi
+  declare -i ctr=0
+  while test $ctr -le 100; do
+    FOUND=0
+    VMLIST=$(nova list)
+    for arg in "$@"; do
+      if echo "$VNLIST" | grep "$arg" >/dev/null 2>&1; then
+        FOUND=1; break
+      fi
+    done
+    if test "$FOUND" = "0"; then return; fi
+    sleep 2
+    let ctr+=1
+  done
+  echo "ERROR: VMs $@ still present" 1>&2
+}
+
 remove_snatinst()
 {
-  SNAT1VM=( $(findres SNAT-INST1 nova list) )
-  SNAT2VM=( $(findres SNAT-INST2 nova list) )
-  # TODO Look at ports and find floating IPs ...
-  FIPS=( $(neutron floatingip-list | grep '10\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
-  
-  deleteFIPs
-  
+  SNAT1VM=$(findres SNAT-INST1 nova list) 
+  if test -n "$SNAT1VM"; then 
+    SNAT1VMIP=$(SNATVMIP $SNAT1VM)
+    if test -n "$SNAT1VMIP"; then
+      FIP1=$(neutron floatingip-list | grep "$SNAT1VMIP" | sed 's/^| *\([^ ]*\) *|.*$/\1/')
+      if test -n "$FIP1"; then neutron floatingip-delete $FIP1; fi
+    fi
+    nova delete $SNAT1VM
+  fi
+  SNAT2VM=$(findres SNAT-INST2 nova list) 
+  if test -n "$SNAT2VM"; then 
+    SNAT2VMIP=$(SNATVMIP $SNAT2VM)
+    if test -n "$SNAT2VMIP"; then
+      FIP2=$(neutron floatingip-list | grep "$SNAT2VMIP" | sed 's/^| *\([^ ]*\) *|.*$/\1/')
+      if test -n "$FIP2"; then neutron floatingip-delete $FIP2; fi
+    fi
+    nova delete $SNAT2VM
+  fi
+  SNATVIP=$(findres SNAT-VIP neutron port-list)
+  if test -n "$SNATVIP"; then 
+    ostackcmd neutron router-update $1 --no-routes
+    ostackcmd neutron port-delete $SNATVIP
+  fi
+  WaitNoMore $SNAT1VM $SNAT2VM
+  SNATSG=$(findres SNAT-SG neutron security-group-list)
+  if test -n "$SNATSG"; then ostackcmd neutron security-group-delete $SNATSG; fi
+  SNATSUB=$(findres SNAT-SUBNET neutron subnet-list)
+  if test -n "$SNATSUB"; then 
+    ostackcmd neutron router-interface-delete $1 $SNATSUB
+    ostackcmd neutron subnet-delete $SNATSUB
+  fi
+  SNATNET=$(findres SNAT-NET neutron net-list)
+  if test -n "$SNATNET"; then ostackcmd neutron net-delete $SNATNET; fi
 }
  
 
@@ -147,10 +207,10 @@ usage()
   exit 1
 }
 
-test -z "$3" && usage
+test -z "$2" && usage
 
 if test "$1" != "REMOVE"; then
   create_snatinst "$@"
 else
-  remove_snatinst "$1"
+  remove_snatinst "$2"
 fi
