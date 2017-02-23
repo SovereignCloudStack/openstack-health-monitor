@@ -118,15 +118,39 @@ EOT
    SNAT_INST2_PORT=$(neutron port-list | grep $SIP2 | listid $SNATSUB) || return
    echo "$SNAT_INST2_PORT $SIP2"
    ostackcmd neutron floatingip-create --port-id $SNAT_INST2_PORT admin_external_net || return
-   ostackcmd neutron router-update VPC-ROUTER --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP || return
+   ostackcmd neutron router-update $1 --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP || return
 }
+
+findres()
+{
+  FILT=${1:-$RPRE}
+  shift
+  $@ | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
+}
+
+remove_snatinst()
+{
+  SNAT1VM=( $(findres SNAT-INST1 nova list) )
+  SNAT2VM=( $(findres SNAT-INST2 nova list) )
+  # TODO Look at ports and find floating IPs ...
+  FIPS=( $(neutron floatingip-list | grep '10\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  
+  deleteFIPs
+  
+}
+ 
 
 usage()
 {
   echo "Usage: sap_snat.sh ROUTER SNATCIDR KEYNAME"
+  echo "Usage: sap_snat.sh REMOVE ROUTER"
   exit 1
 }
 
 test -z "$3" && usage
 
-create_snatinst "$@"
+if test "$1" != "REMOVE"; then
+  create_snatinst "$@"
+else
+  remove_snatinst "$1"
+fi
