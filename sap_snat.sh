@@ -23,14 +23,9 @@ ostackcmd_id()
   IDNM=$1; shift
   RESP=$($@ 2>&1)
   RC=$?
-  if test "$IDNM" = "DELETE"; then
-    ID=$(echo "$RESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
-    echo "$@ => $RC $ID" 1>&2
-  else
-    ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed -e "s/^| *$IDNM *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
-    echo "$@ => $RC $ID" 1>&2
-    if test "$RC" != "0"; then echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
-  fi
+  ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed -e "s/^| *$IDNM *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
+  echo "$@ => $RC $ID" 1>&2
+  if test "$RC" != "0"; then echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
   echo "$ID"
   return $RC
 }
@@ -40,7 +35,7 @@ ostackcmd()
 {
   RESP=$($@ 2>&1)
   RC=$?
-  echo "$@ => $RC" 1>&2
+  if test $RC = 0; then echo "$@ => $RC" 1>&2; else echo "$@ => $RC $RESP" 1>&2; fi
   echo "$RESP"
   return $RC
 }
@@ -95,7 +90,7 @@ waitIP()
 create_snatinst()
 {
    create_snatsg || return
-   SNATNET=$(ostackcmd id neutron net-create SNAT-NET) || return
+   SNATNET=$(ostackcmd_id id neutron net-create SNAT-NET) || return
    SNATSUB=$(ostackcmd_id id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name SNAT-SUBNET SNAT-NET $2) || return
    ostackcmd neutron router-interface-add $1 $SNATSUB
    OUT=$(ostackcmd neutron port-create --name SNAT-VIP --security-group $SNAT_SG SNAT-NET) || return
@@ -114,7 +109,6 @@ otc:
    addip:
       eth0: $VIP
    movessh: 222
-otc:
    autoupdate:
       frequency: daily
       categories: security recommended
@@ -211,6 +205,7 @@ test -z "$2" && usage
 
 if test "$1" != "REMOVE"; then
   create_snatinst "$@"
+  if test $? != 0; then echo "Cleanup"; remove_snatinst "$1"; fi
 else
   remove_snatinst "$2"
 fi
