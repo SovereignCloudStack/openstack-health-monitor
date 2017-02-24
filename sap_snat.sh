@@ -139,7 +139,7 @@ findres()
 # Wait until VMs in $@ are gone
 WaitNoMore()
 {
-  if test -z "$@"; then return; fi
+  if test -z "$*"; then return 0; fi
   declare -i ctr=0
   while test $ctr -le 100; do
     FOUND=0
@@ -149,11 +149,12 @@ WaitNoMore()
         FOUND=1; break
       fi
     done
-    if test "$FOUND" = "0"; then return; fi
+    if test "$FOUND" = "0"; then return 0; fi
     sleep 2
     let ctr+=1
   done
   echo "ERROR: VMs $@ still present" 1>&2
+  return 1
 }
 
 remove_snatinst()
