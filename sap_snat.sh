@@ -140,6 +140,7 @@ findres()
 WaitNoMore()
 {
   if test -z "$*"; then return 0; fi
+  echo -n " wait for VMs $@ to be gone: "
   declare -i ctr=0
   while test $ctr -le 100; do
     FOUND=0
@@ -149,11 +150,13 @@ WaitNoMore()
         FOUND=1; break
       fi
     done
-    if test "$FOUND" = "0"; then return 0; fi
+    if test $FOUND == 0; then echo " OK"; return 0; fi
+    echo -n "."
     sleep 2
     let ctr+=1
   done
-  echo "ERROR: VMs $@ still present" 1>&2
+  echo " Timeout"
+  echo " ERROR: VMs $@ still present" 1>&2
   return 1
 }
 
