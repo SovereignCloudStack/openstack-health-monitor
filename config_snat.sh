@@ -1,12 +1,15 @@
 #!/bin/bash
+# config_snat.sh
 # Helper to create SNAT instances and set routing via them
 # (c) Kurt Garloff <t-systems@garloff.de>, 2/2017
-# Copyright: Artistic (v2)
-#
+# Copyright: CC-BY (4.0)
 
-# Images, flavors
+# Image
+# Note that SNAT instance depends on SuSEfirewall2-snat package,
+# only available in openSUSE_42_JeOS_latest (or _Docker_latest or SLES12_SP2_latest)
 IMG="${IMG:-Standard_openSUSE_42_JeOS_latest}"
 IMGFILT="${IMGFILT:- --property-filter __platform=OpenSUSE}"
+# Flavor - smallest is really enough ... for this task
 FLAVOR=${FLAVOR:-computev1-1}
 
 
