@@ -89,6 +89,7 @@ waitIP()
 # $3 => Keyname to inject
 create_snatinst()
 {
+   neutron router-show $1 >/dev/nill 2>&1 || { echo "Router $1 does not exist."; return 1; }
    create_snatsg || return
    SNATNET=$(ostackcmd_id id neutron net-create SNAT-NET) || return
    SNATSUB=$(ostackcmd_id id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name SNAT-SUBNET SNAT-NET $2) || return
@@ -120,15 +121,17 @@ EOT
    SIP1=$(waitIP $SNAT1VM) || return
    SNAT_INST1_PORT=$(neutron port-list | grep $SIP1 | listid $SNATSUB) || return
    echo "$SNAT_INST1_PORT $SIP1"
-   ostackcmd neutron port-update $SNAT_INST1_PORT --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 id_address=128.0.0.0/1 || return
+   ostackcmd neutron port-update $SNAT_INST1_PORT --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1 || return
    ostackcmd neutron floatingip-create --port-id $SNAT_INST1_PORT admin_external_net || return
    SIP2=$(waitIP $SNAT2VM) || return
    SNAT_INST2_PORT=$(neutron port-list | grep $SIP2 | listid $SNATSUB) || return
    echo "$SNAT_INST2_PORT $SIP2"
-   ostackcmd neutron port-update $SNAT_INST2_PORT --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 id_address=128.0.0.0/1 || return
+   ostackcmd neutron port-update $SNAT_INST2_PORT --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1 || return
    ostackcmd neutron floatingip-create --port-id $SNAT_INST2_PORT admin_external_net || return
    ostackcmd neutron router-update $1 --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP || return
 }
+
+# CLEANUP functions
 
 # Use an openstack list command and find resource IDs matching pattern
 findres()
@@ -198,20 +201,23 @@ remove_snatinst()
   SNATNET=$(findres SNAT-NET neutron net-list)
   if test -n "$SNATNET"; then ostackcmd neutron net-delete $SNATNET; fi
 }
- 
+
+
+# This assumes the usual OS_ variables have been configured, see https://slides/com/kgarloff
 
 usage()
 {
-  echo "Usage: sap_snat.sh ROUTER SNATCIDR KEYNAME"
-  echo "Usage: sap_snat.sh REMOVE ROUTER"
+  echo "Usage: config_snat.sh ROUTER SNATCIDR KEYNAME"
+  echo "Usage: config_snat.sh CLEANUP ROUTER"
   exit 1
 }
 
 test -z "$2" && usage
+test -z "$3" -a "$1" != "CLEANUP" && usage
 
-if test "$1" != "REMOVE"; then
+if test "$1" != "CLEANUP"; then
   create_snatinst "$@"
-  if test $? != 0; then echo "Cleanup"; remove_snatinst "$1"; fi
+  if test $? != 0; then echo "Error. Cleanup ... "; remove_snatinst "$1"; fi
 else
   remove_snatinst "$2"
 fi
