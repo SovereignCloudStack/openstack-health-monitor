@@ -120,10 +120,12 @@ EOT
    SIP1=$(waitIP $SNAT1VM) || return
    SNAT_INST1_PORT=$(neutron port-list | grep $SIP1 | listid $SNATSUB) || return
    echo "$SNAT_INST1_PORT $SIP1"
+   ostackcmd neutron port-update $SNAT_INST1_PORT --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 id_address=128.0.0.0/1 || return
    ostackcmd neutron floatingip-create --port-id $SNAT_INST1_PORT admin_external_net || return
    SIP2=$(waitIP $SNAT2VM) || return
    SNAT_INST2_PORT=$(neutron port-list | grep $SIP2 | listid $SNATSUB) || return
    echo "$SNAT_INST2_PORT $SIP2"
+   ostackcmd neutron port-update $SNAT_INST2_PORT --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 id_address=128.0.0.0/1 || return
    ostackcmd neutron floatingip-create --port-id $SNAT_INST2_PORT admin_external_net || return
    ostackcmd neutron router-update $1 --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP || return
 }
@@ -146,7 +148,7 @@ WaitNoMore()
     FOUND=0
     VMLIST=$(nova list)
     for arg in "$@"; do
-      if echo "$VNLIST" | grep "$arg" >/dev/null 2>&1; then
+      if echo "$VMLIST" | grep "$arg" >/dev/null 2>&1; then
         FOUND=1; break
       fi
     done
@@ -162,25 +164,25 @@ WaitNoMore()
 
 remove_snatinst()
 {
+  SNATVIP=$(findres SNAT-VIP neutron port-list)
   SNAT1VM=$(findres SNAT-INST1 nova list) 
   if test -n "$SNAT1VM"; then 
     SNAT1VMIP=$(SNATVMIP $SNAT1VM)
     if test -n "$SNAT1VMIP"; then
       FIP1=$(neutron floatingip-list | grep "$SNAT1VMIP" | sed 's/^| *\([^ ]*\) *|.*$/\1/')
-      if test -n "$FIP1"; then neutron floatingip-delete $FIP1; fi
+      if test -n "$FIP1"; then ostackcmd neutron floatingip-delete $FIP1; fi
     fi
-    nova delete $SNAT1VM
+    ostackcmd nova delete $SNAT1VM
   fi
   SNAT2VM=$(findres SNAT-INST2 nova list) 
   if test -n "$SNAT2VM"; then 
     SNAT2VMIP=$(SNATVMIP $SNAT2VM)
     if test -n "$SNAT2VMIP"; then
       FIP2=$(neutron floatingip-list | grep "$SNAT2VMIP" | sed 's/^| *\([^ ]*\) *|.*$/\1/')
-      if test -n "$FIP2"; then neutron floatingip-delete $FIP2; fi
+      if test -n "$FIP2"; then ostackcmd neutron floatingip-delete $FIP2; fi
     fi
-    nova delete $SNAT2VM
+    ostackcmd nova delete $SNAT2VM
   fi
-  SNATVIP=$(findres SNAT-VIP neutron port-list)
   if test -n "$SNATVIP"; then 
     ostackcmd neutron router-update $1 --no-routes
     ostackcmd neutron port-delete $SNATVIP
