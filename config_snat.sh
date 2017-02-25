@@ -89,7 +89,7 @@ waitIP()
 # $3 => Keyname to inject
 create_snatinst()
 {
-   neutron router-show $1 >/dev/nill 2>&1 || { echo "Router $1 does not exist."; return 1; }
+   neutron router-show $1 >/dev/null 2>&1 || { echo "Router $1 does not exist."; return 1; }
    create_snatsg || return
    SNATNET=$(ostackcmd_id id neutron net-create SNAT-NET) || return
    SNATSUB=$(ostackcmd_id id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name SNAT-SUBNET SNAT-NET $2) || return
