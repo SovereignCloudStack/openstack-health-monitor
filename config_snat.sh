@@ -210,8 +210,15 @@ remove_snatinst()
 
 usage()
 {
-  echo "Usage: config_snat.sh ROUTER SNATCIDR KEYNAME"
-  echo "Usage: config_snat.sh CLEANUP ROUTER"
+  echo "Usage: config_snat.sh <ROUTER> <SNATCIDR> <KEYNAME>"
+  echo "            Sets up a pair of SNAT instances in SNAT-SUBNET with CIDR <SNATCIDR>"
+  echo "            connected to the VPC <ROUTER> and injects keypair <KEYNAME> for ssh access"
+  echo "Usage: config_snat.sh CLEANUP <ROUTER>"
+  echo "            Tears down the SNAT instances again and removes them from <ROUTER> VPC"
+#  echo "Usage: config_snat.sh CONNECT <ROUTER>"
+#  echo "            Connect existing SNAT instaces to a secondary VPC <ROUTER>"
+#  echo "Usage: config_snat.sh DISCONNECT <ROUTER>"
+#  echo "            Disconnect existing SNAT instaces from a secondary VPC <ROUTER>"
   exit 1
 }
 
