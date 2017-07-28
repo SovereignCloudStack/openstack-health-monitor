@@ -62,6 +62,8 @@ VOLSIZE=10
 DATE=`date +%s`
 LOGFILE=$RPRE$DATE.log
 
+MAXITER=-1
+
 # Nothing to change below here
 BOLD="\e[0;1m"
 NORM="\e[0;0m"
@@ -76,16 +78,17 @@ fi
 usage()
 {
   #echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-p] CLEANUP|DEPLOY"
-  echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-p] [-s] [-e EMAIL] [-m SMN]"
+  echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-p] [-s] [-e EMAIL] [-m SMN] [-i maxiter]"
   echo " CLEANUP cleans up all resources with prefix $RPRE"
   echo " -p sets up ports manually"
   echo " -e sets eMail address for alarms (assumes working MTA)"
   echo " -m sets alarming by SMN (pass ID of queue)"
   echo " -s sends stats as well once per day, not just alarms"
+  echo " -i sets max number of iterations"
   exit 0
 }
 
-
+# TODO: Pos indep parser
 if test "$1" = "-n"; then NOVMS=$2; shift; shift; fi
 if test "${1:0:2}" = "-n"; then NOVMS=${1:2}; shift; fi
 if test "$1" = "-l"; then LOGFILE=$2; shift; shift; fi
@@ -94,6 +97,7 @@ if test "$1" = "-p"; then MANUALPORTSETUP=1; shift; fi
 if test "$1" = "-s"; then SENDSTATS=1; shift; fi
 if test "$1" = "-e"; then EMAIL=$2; shift; shift; fi
 if test "$1" = "-m"; then SMNID=$2; shift; shift; fi
+if test "$1" = "-i"; then MAXITER=$2; shift; shift; fi
 
 # Timeout killer
 # $1 => PID to kill
@@ -150,7 +154,11 @@ ostackcmd_tm()
   STATNM=$1; shift
   TIMEOUT=$1; shift
   LSTART=$(date +%s.%3N)
-  OSTACKRESP=$($@)
+  if test "$TIMEOUT" = "0"; then
+    OSTACKRESP=$($@ 2>&1)
+  else
+    OSTACKRESP=$($@ 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
+  fi
   RC=$?
   LEND=$(date +%s.%3N)
   TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
@@ -158,6 +166,10 @@ ostackcmd_tm()
   echo "$LSTART/$LEND/: $@ => $OSTACKRESP" >> $LOGFILE
   return $RC
 }
+
+declare -i ctr=0
+# MAIN LOOP
+while test $ctr -ne $MAXITER; do
 
 # List of resources - neutron
 declare -a ROUTERS
@@ -204,7 +216,8 @@ declare -a JVMSTIME
 # $5 => dito, use \$MVAL (optional, use NONE if unneeded)
 # $6 => name of array where we store the timestamp of the operation (opt)
 # $7 => id field from resource to be used for storing in $3
-# $8- > openstack command to be called
+# $8 => timeout
+# $9- > openstack command to be called
 #
 # In the command you can reference \$AZ (1 or 2), \$no (running number)
 # and \$VAL and \$MVAL (from $4 and $5).
@@ -217,6 +230,7 @@ createResources()
   ORNM=$4; MRNM=$5
   STIME=$6; IDNM=$7
   shift; shift; shift; shift; shift; shift; shift
+  TIMEOUT=$1; shift
   eval LIST=( \"\${${ORNM}S[@]}\" )
   eval MLIST=( \"\${${MRNM}S[@]}\" )
   if test "$RNM" != "NONE"; then echo -n "New $RNM: "; fi
@@ -228,7 +242,7 @@ createResources()
     CMD=`eval echo $@ 2>&1`
     STM=$(date +%s)
     if test -n "$STIME"; then eval "${STIME}+=( $STM )"; fi
-    RESP=$(ostackcmd_id $IDNM $CMD)
+    RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
     RC=$?
     read TM ID < <(echo "$RESP")
     eval ${STATNM}+="($TM)"
@@ -244,7 +258,8 @@ createResources()
 # $1 => name of timing statistics array
 # $2 => name of array containing resources ("S" appended)
 # $3 => name of array to store timestamps (optional, use "" if unneeded)
-# $4- > openstack command to be called
+# $4 => timeout
+# $5- > openstack command to be called
 # The UUID from the resource list ($2) is appended to the command.
 #
 # STATNM RSRCNM DTIME COMMAND
@@ -252,6 +267,8 @@ deleteResources()
 {
   STATNM=$1; RNM=$2; DTIME=$3
   shift; shift; shift
+  TIMEOUT=$1; shift
+  eval LIST=( \"\${${ORNM}S[@]}\" )
   #eval varAlias=( \"\${myvar${varname}[@]}\" )
   eval LIST=( \"\${${RNM}S[@]}\" )
   #echo $LIST
@@ -263,7 +280,7 @@ deleteResources()
     echo -n "$rsrc "
     DTM=$(date +%s)
     if test -n "$DTIME"; then eval "${DTIME}+=( $DTM )"; fi
-    read TM < <(ostackcmd_id id $@ $rsrc)
+    read TM < <(ostackcmd_id id $TIMEOUT $@ $rsrc)
     RC="$?"
     eval ${STATNM}+="($TM)"
     if test $RC != 0; then echo "ERROR" 1>&2: return 1; fi
@@ -280,7 +297,8 @@ deleteResources()
 # $5 => value to wait for
 # $6 => alternative value to wait for
 # $7 => field name to monitor
-# $8- > openstack command for querying status
+# $8 => timeout
+# $9- > openstack command for querying status
 # The values from $2 get appended to the command
 #
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
@@ -289,6 +307,7 @@ waitResources()
   STATNM=$1; RNM=$2; CSTAT=$3; STIME=$4
   COMP1=$5; COMP2=$6; IDNM=$7
   shift; shift; shift; shift; shift; shift; shift
+  TIMEOUT=$1; shift
   eval RLIST=( \"\${${RNM}S[@]}\" )
   eval SLIST=( \"\${${STIME}[@]}\" )
   LAST=$(( ${#RLIST[@]} - 1 ))
@@ -298,7 +317,7 @@ waitResources()
       rsrc=${RLIST[$i]}
       if test -z "${SLIST[$i]}"; then STATSTR+='a'; continue; fi
       CMD=`eval echo $@ $rsrc 2>&1`
-      RESP=$(ostackcmd_id $IDNM $CMD)
+      RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
       RC=$?
       read TM STAT < <(echo "$RESP")
       eval ${STATNM}+="( $TM )"
@@ -328,7 +347,8 @@ waitResources()
 # $5 => value to wait for (special XDELX)
 # $6 => alternative value to wait for
 # $7 => number of column (0 based)
-# $8- > openstack command for querying status
+# $8 => timeout
+# $9- > openstack command for querying status
 # The values from $2 get appended to the command
 #
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
@@ -337,6 +357,7 @@ waitlistResources()
   STATNM=$1; RNM=$2; CSTAT=$3; STIME=$4
   COMP1=$5; COMP2=$6; COL=$7
   shift; shift; shift; shift; shift; shift; shift
+  TIMEOUT=$1; shift
   eval RLIST=( \"\${${RNM}S[@]}\" )
   eval SLIST=( \"\${${STIME}[@]}\" )
   LAST=$(( ${#RLIST[@]} - 1 ))
@@ -347,7 +368,7 @@ waitlistResources()
   while test -n "${SLIST[*]}"; do
     STATSTR=""
     CMD=`eval echo $@ 2>&1`
-    ostackcmd_tm $STATNM $CMD
+    ostackcmd_tm $STATNM $TIMEOUT $CMD
     if test $? != 0; then echo "ERROR: $CMD => $OSTACKRESP" 1>&2; return 1; fi
     read TM REST < <(echo "$OSTACKRESP")
     for i in $(seq 0 $LAST ); do
@@ -378,7 +399,8 @@ waitlistResources()
 # $2 => name of array containing resources ("S" appended)
 # $3 => name of array to collect completion timing stats
 # $4 => name of array with deletion start times
-# $5- > openstack command for querying status
+# $5 => timeout
+# $6- > openstack command for querying status
 # The values from $2 get appended to the command
 #
 # STATNM RSRCNM DSTAT DTIME COMMAND
@@ -386,6 +408,7 @@ waitdelResources()
 {
   STATNM=$1; RNM=$2; DSTAT=$3; DTIME=$4
   shift; shift; shift; shift
+  TIMEOUT=$1; shift
   eval RLIST=( \"\${${RNM}S[@]}\" )
   eval DLIST=( \"\${${DTIME}[@]}\" )
   LAST=$(( ${#RLIST[@]} - 1 ))
@@ -396,7 +419,7 @@ waitdelResources()
       rsrc=${RLIST[$i]}
       if test -z "${DLIST[$i]}"; then STATSTR+='x'; continue; fi
       CMD=`eval echo $@ $rsrc`
-      RESP=$(ostackcmd_id DELETE $CMD)
+      RESP=$(ostackcmd_id DELETE $TIMEOUT $CMD)
       RC=$?
       read TM STAT < <(echo "$RESP")
       eval ${STATNM}+="( $TM )"
@@ -419,14 +442,18 @@ waitdelResources()
 
 # STATNM RESRNM COMMAND
 # Only for the log file
+# $1 => STATS
+# $2 => Resource listname
+# $3 => timeout
 showResources()
 {
   STATNM=$1
   RNM=$2
   shift; shift
+  TIMEOUT=$1; shift
   eval LIST=( \"\${$RNM}S[@]\" )
   while rsrc in ${LIST}; do
-    read TM ID < <(ostackcmd_id id $@ $rsrc)
+    read TM ID < <(ostackcmd_id id $TIMEOUT $@ $rsrc)
   done
 }
 
@@ -455,9 +482,11 @@ deleteNets()
   deleteResources NETSTATS JHNET "" neutron net-delete
 }
 
+JHSUBNETIP=10.250.250.0/24
+
 createSubNets()
 {
-  createResources 1 NETSTATS JHSUBNET JHNET NONE "" id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name "${RPRE}SUBNET_JH\$no" "\$VAL" "10.250.250.0/24"
+  createResources 1 NETSTATS JHSUBNET JHNET NONE "" id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
   createResources $NONETS NETSTATS SUBNET NET NONE "" id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
 }
 
@@ -486,11 +515,14 @@ createSGroups()
   # And set rules ... (we don't need to keep track of and delete them)
   SG0=${SGROUPS[0]}
   SG1=${SGROUPS[1]}
+  # Configure SGs: We can NOT allow any references to SG0, as the allowed-address-pair setting renders SGs useless
+  #  that reference the SG0
+  #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG0 $SG0)
+  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-ip-prefix $JHSUBNETIP $SG0 $SG0)
+  NETSTATS+=( $TM )
+  #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG0 $SG0)
+  #NETSTATS+=( $TM )
   # Configure SGs: Internal ingress allowed
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG0 $SG0)
-  NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG0 $SG0)
-  NETSTATS+=( $TM )
   read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG1)
   NETSTATS+=( $TM )
   read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG1 $SG1)
@@ -505,11 +537,14 @@ createSGroups()
   read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
   NETSTATS+=( $TM )
   # Configure RPRE_SG_Internal rule: ssh and https and ping from the other group
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-group-id $SG0 $SG1)
+  #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-group-id $SG0 $SG1)
+  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix $JHSUBNETIP $SG1)
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-group-id $SG0 $SG1)
+  #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-group-id $SG0 $SG1)
+  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-ip-prefix $JHSUBNETIP $SG1)
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-group-id $SG0 $SG1)
+  #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-group-id $SG0 $SG1)
+  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix $JHSUBNETIP $SG1)
   NETSTATS+=( $TM )
   #neutron security-group-show $SG0
   #neutron security-group-show $SG1
@@ -902,3 +937,5 @@ elif test "$1" = "DEPLOY"; then
 else
   usage
 fi
+
+done
