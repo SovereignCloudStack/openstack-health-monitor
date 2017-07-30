@@ -824,7 +824,9 @@ stats()
   eval LIST=( \"\${${1}[@]}\" )
   if test -z "${LIST[*]}"; then return; fi
   DIG=${2:-2}
-  IFS=$'\n' SLIST=($(sort -n <<<"${LIST[*]}"))
+  OLDIFS="$IFS"
+  IFS='\n' SLIST=($(sort -n <<<"${LIST[*]}"))
+  IFS="$OLDIFS"
   #echo ${SLIST[*]}
   MIN=${SLIST[0]}
   MAX=${SLIST[-1]}
@@ -933,8 +935,8 @@ else # test "$1" = "DEPLOY"; then
  echo -e "$BOLD *** Start deployment $NONETS SNAT JumpHosts + $NOVMS VMs *** $NORM"
  # Image IDs
  JHIMGID=$(ostackcmd_search $JHIMG $GLANCETIMEOUT glance image-list $JHIMGFILT | awk '{ print $2; }')
- IMGID=$(ostackcmd_search $IMG $GLANCETIMEOUT glance image-list $IMGFILT | awk '{ print $2; }')
  if test -z "$JHIMGID"; then echo "ERROR: No image $JHIMG found, aborting."; exit 1; fi
+ IMGID=$(ostackcmd_search $IMG $GLANCETIMEOUT glance image-list $IMGFILT | awk '{ print $2; }')
  if test -z "$IMGID"; then echo "ERROR: No image $IMG found, aborting."; exit 1; fi
  #echo "Image $IMGID $JHIMGID"
  if createRouters; then
@@ -963,7 +965,7 @@ else # test "$1" = "DEPLOY"; then
               # TODO: Create disk ... and attach to JH VMs ... and test access
               # TODO: Attach additional net interfaces to JHs ... and test IP addr
               MSTOP=$(date +%s)
-              echo "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN"
+              echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
               sleep 1
               #read ANS
               MSTART=$(($MSTART+$(date +%s)-$MSTOP))
