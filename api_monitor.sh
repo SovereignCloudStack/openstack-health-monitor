@@ -523,7 +523,7 @@ createSGroups()
   NETSTATS+=( $TM )
   read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG1 $SG1)
   NETSTATS+=( $TM )
-  # Configure RPRE_SG_JumpHost rule: All from the other group, port 222 and 443 from outside
+  # Configure RPRE_SG_JumpHost rule: All from the other group, port 22 and 222 from outside
   read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG0)
   NETSTATS+=( $TM )
   read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
@@ -659,7 +659,7 @@ createFIPs()
   EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| [0-9a-f-]* | \([^ ]*\).*$/\1/')
   # Actually this fails if the port is not assigned to a VM yet
   #  -- we can not associate a FIP to a port w/o dev owner
-  createResources $NONETS NETSTATS F2IP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL $EXTNET
+  createResources $NONETS NETSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL $EXTNET
   # TODO: Use API to tell VPC that the VIP is the next hop (route table)
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
