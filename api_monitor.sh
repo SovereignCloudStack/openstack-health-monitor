@@ -884,7 +884,7 @@ cleanup()
 declare -i ctr=0
 
 # MAIN LOOP
-while test $ctr -ne $MAXITER; do
+while test $ctr != $MAXITER; do
 
 # List of resources - neutron
 declare -a ROUTERS
