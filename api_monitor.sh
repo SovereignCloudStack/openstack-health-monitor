@@ -777,7 +777,7 @@ setmetaVMs()
 wait222()
 {
   PROXY=""
-  if test -n "$http_proxy"; then PROXY="-x $http_proxy"; fi
+  if test -n "$http_proxy"; then PROXY="-X connect -x $http_proxy"; fi
   FLIP=${FLOATS[0]}
   echo -n "Wait for port 222 connectivity on $FLIP: "
   declare -i ctr=0
@@ -803,8 +803,8 @@ testjhinet()
 {
   unset SSH_AUTH_SOCK
   #echo "Test JH outgoing inet ... "
-  ssh -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
-  ssh -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
+  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
   if test $? = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $NORM"; fi
 }
 
@@ -881,6 +881,22 @@ cleanup()
   deleteRouters
 }
 
+# Statistics
+# API performance neutron, cinder, nova
+declare -a NETSTATS
+declare -a VOLSTATS
+declare -a NOVASTATS
+# Resource creation stats (creation/deletion)
+declare -a VOLCSTATS
+declare -a VOLDSTATS
+declare -a VMCSTATS
+declare -a VMCDTATS
+# Arrays to store resource creation start times
+declare -a VOLSTIME
+declare -a JVOLSTIME
+declare -a VMSTIME
+declare -a JVMSTIME
+
 declare -i ctr=0
 
 # MAIN LOOP
@@ -906,22 +922,6 @@ declare -a KEYPAIRS
 declare -a VMS
 declare -a JHVMS
 SNATROUTE=""
-
-# Statistics
-# API performance neutron, cinder, nova
-declare -a NETSTATS
-declare -a VOLSTATS
-declare -a NOVASTATS
-# Resource creation stats (creation/deletion)
-declare -a VOLCSTATS
-declare -a VOLDSTATS
-declare -a VMCSTATS
-declare -a VMCDTATS
-# Arrays to store resource creation start times
-declare -a VOLSTIME
-declare -a JVOLSTIME
-declare -a VMSTIME
-declare -a JVMSTIME
 
 # Main
 MSTART=$(date +%s)
