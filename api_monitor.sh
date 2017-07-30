@@ -42,11 +42,21 @@
 # User settings
 
 # Prefix for test resources
-RPRE=APIMonitor_
+if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
 # Number of VMs and networks
 NOVMS=12
 NONETS=2
 NOAZS=2
+MAXITER=1
+
+# API timeouts
+NETTIMEOUT=12
+SGTIMEOUT=10
+FIPTIMEOUT=20
+NOVATIMEOUT=12
+CINDERTIMEOUT=12
+GLANCETIMEOUT=20
+DEFTIMEOUT=12
 
 # Images, flavors, disk sizes
 JHIMG="${JHIMG:-Standard_openSUSE_42_JeOS_latest}"
@@ -58,6 +68,7 @@ FLAVOR="computev1-1"
 
 JHVOLSIZE=4
 VOLSIZE=10
+ADDVOLSIZE=5
 
 DATE=`date +%s`
 LOGFILE=$RPRE$DATE.log
@@ -462,89 +473,89 @@ showResources()
 
 createRouters()
 {
-  createResources 1 NETSTATS ROUTER NONE NONE "" id neutron router-create ${RPRE}Router
+  createResources 1 NETSTATS ROUTER NONE NONE "" id 12 neutron router-create ${RPRE}Router
 }
 
 deleteRouters()
 {
-  deleteResources NETSTATS ROUTER "" neutron router-delete
+  deleteResources NETSTATS ROUTER "" $NETTIMEOUT neutron router-delete
 }
 
 createNets()
 {
-  createResources 1 NETSTATS JHNET NONE NONE "" id neutron net-create "${RPRE}NET_JH\$no"
-  createResources $NONETS NETSTATS NET NONE NONE "" id neutron net-create "${RPRE}NET_\$no"
+  createResources 1 NETSTATS JHNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_JH\$no"
+  createResources $NONETS NETSTATS NET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_\$no"
 }
 
 deleteNets()
 {
-  deleteResources NETSTATS NET "" neutron net-delete
-  deleteResources NETSTATS JHNET "" neutron net-delete
+  deleteResources NETSTATS NET "" 12 neutron net-delete
+  deleteResources NETSTATS JHNET "" 12 neutron net-delete
 }
 
 JHSUBNETIP=10.250.250.0/24
 
 createSubNets()
 {
-  createResources 1 NETSTATS JHSUBNET JHNET NONE "" id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
-  createResources $NONETS NETSTATS SUBNET NET NONE "" id neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
+  createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
+  createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
 }
 
 deleteSubNets()
 {
-  deleteResources NETSTATS SUBNET "" neutron subnet-delete
-  deleteResources NETSTATS JHSUBNET "" neutron subnet-delete
+  deleteResources NETSTATS SUBNET "" $NETTIMEOUT neutron subnet-delete
+  deleteResources NETSTATS JHSUBNET "" $NETTIMEOUT neutron subnet-delete
 }
 
 createRIfaces()
 {
-  createResources 1 NETSTATS NONE JHSUBNET NONE "" id neutron router-interface-add ${ROUTERS[0]} "\$VAL"
-  createResources $NONETS NETSTATS NONE SUBNET NONE "" id neutron router-interface-add ${ROUTERS[0]} "\$VAL"
+  createResources 1 NETSTATS NONE JHSUBNET NONE "" id $NETTIMEOUT neutron router-interface-add ${ROUTERS[0]} "\$VAL"
+  createResources $NONETS NETSTATS NONE SUBNET NONE "" id $NETTIMEOUT neutron router-interface-add ${ROUTERS[0]} "\$VAL"
 }
 
 deleteRIfaces()
 {
-  deleteResources NETSTATS SUBNET "" neutron router-interface-delete ${ROUTERS[0]}
-  deleteResources NETSTATS JHSUBNET "" neutron router-interface-delete ${ROUTERS[0]}
+  deleteResources NETSTATS SUBNET "" $NETTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
+  deleteResources NETSTATS JHSUBNET "" $NETTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
 }
 
 createSGroups()
 {
   NAMES=( ${RPRE}SG_JumpHost ${RPRE}SG_Internal )
-  createResources 2 NETSTATS SGROUP NAME NONE "" id neutron security-group-create "\$VAL" || return
+  createResources 2 NETSTATS SGROUP NAME NONE "" id $NETTIMEOUT neutron security-group-create "\$VAL" || return
   # And set rules ... (we don't need to keep track of and delete them)
   SG0=${SGROUPS[0]}
   SG1=${SGROUPS[1]}
   # Configure SGs: We can NOT allow any references to SG0, as the allowed-address-pair setting renders SGs useless
   #  that reference the SG0
   #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG0 $SG0)
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-ip-prefix $JHSUBNETIP $SG0 $SG0)
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-ip-prefix $JHSUBNETIP $SG0)
   NETSTATS+=( $TM )
-  #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG0 $SG0)
+  #read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG0 $SG0)
   #NETSTATS+=( $TM )
   # Configure SGs: Internal ingress allowed
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG1)
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG1)
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG1 $SG1)
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG1 $SG1)
   NETSTATS+=( $TM )
   # Configure RPRE_SG_JumpHost rule: All from the other group, port 222 and 443 from outside
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG0)
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG0)
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
   #NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max 222 --remote-ip-prefix 0/0 $SG0)
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max 222 --remote-ip-prefix 0/0 $SG0)
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
   NETSTATS+=( $TM )
   # Configure RPRE_SG_Internal rule: ssh and https and ping from the other group
-  #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-group-id $SG0 $SG1)
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix $JHSUBNETIP $SG1)
+  #read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-group-id $SG0 $SG1)
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix $JHSUBNETIP $SG1)
   NETSTATS+=( $TM )
-  #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-group-id $SG0 $SG1)
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-ip-prefix $JHSUBNETIP $SG1)
+  #read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-group-id $SG0 $SG1)
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-ip-prefix $JHSUBNETIP $SG1)
   NETSTATS+=( $TM )
-  #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-group-id $SG0 $SG1)
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix $JHSUBNETIP $SG1)
+  #read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-group-id $SG0 $SG1)
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix $JHSUBNETIP $SG1)
   NETSTATS+=( $TM )
   #neutron security-group-show $SG0
   #neutron security-group-show $SG1
@@ -552,25 +563,25 @@ createSGroups()
 
 deleteSGroups()
 {
-  deleteResources NETSTATS SGROUP "" neutron security-group-delete
+  deleteResources NETSTATS SGROUP "" $NETTIMEOUT neutron security-group-delete
 }
 
 createVIPs()
 {
-  createResources 1 NETSTATS VIP NONE NONE "" id neutron port-create --name ${RPRE}VirtualIP --security-group ${SGROUPS[0]} ${JHNETS[0]}
+  createResources 1 NETSTATS VIP NONE NONE "" id $NETTIMEOUT neutron port-create --name ${RPRE}VirtualIP --security-group ${SGROUPS[0]} ${JHNETS[0]}
   # FIXME: We should not need --allowed-adress-pairs here ...
 }
 
 deleteVIPs()
 {
-  deleteResources NETSTATS VIP "" neutron port-delete
+  deleteResources NETSTATS VIP "" $NETTIMEOUT neutron port-delete
 }
 
 createJHPorts()
 {
-  createResources $NONETS NETSTATS JHPORT NONE NONE "" id neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} ${JHNETS[0]} || return
+  createResources $NONETS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} ${JHNETS[0]} || return
   for i in `seq 0 $((NONETS-1))`; do
-    RESP=$(ostackcmd_id id neutron port-update ${JHPORTS[$i]} --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1)
+    RESP=$(ostackcmd_id id $NETTIMEOUT neutron port-update ${JHPORTS[$i]} --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1)
     RC=$?
     read TM ID < <(echo "$RESP")
     NETSTATS+=( $TM )
@@ -581,64 +592,64 @@ createJHPorts()
 createPorts()
 {
   if test -n "$MANUALPORTSETUP"; then
-    createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
+    createResources $NOVMS NETSTATS PORT NONE NONE "" id $NETTIMEOUT neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
   fi
 }
 
 deleteJHPorts()
 {
-  deleteResources NETSTATS JHPORT "" neutron port-delete
+  deleteResources NETSTATS JHPORT "" $NETTIMEOUT neutron port-delete
 }
 
 deletePorts()
 {
-  deleteResources NETSTATS PORT "" neutron port-delete
+  deleteResources NETSTATS PORT "" $NETTIMEOUT neutron port-delete
 }
 
 createJHVols()
 {
   JVOLSTIME=()
-  createResources $NONETS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id cinder create --image-id $JHIMGID --name ${RPRE}RootVol_JH\$no --availability-zone eu-de-0\$AZ $JHVOLSIZE
+  createResources $NONETS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id $CINDERTIMEOUT cinder create --image-id $JHIMGID --name ${RPRE}RootVol_JH\$no --availability-zone eu-de-0\$AZ $JHVOLSIZE
 }
 
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
 waitJHVols()
 {
   #waitResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" "status" cinder show
-  waitlistResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" 1 cinder list
+  waitlistResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" 1 $CINDERTIMEOUT cinder list
 }
 
 deleteJHVols()
 {
-  deleteResources VOLSTATS JHVOLUME "" cinder delete
+  deleteResources VOLSTATS JHVOLUME "" $CINDERTIMEOUT cinder delete
 }
 
 createVols()
 {
   VOLSTIME=()
-  createResources $NOVMS VOLSTATS VOLUME NONE NONE VOLSTIME id cinder create --image-id $IMGID --name ${RPRE}RootVol_VM\$no --availability-zone eu-de-0\$AZ $VOLSIZE
+  createResources $NOVMS VOLSTATS VOLUME NONE NONE VOLSTIME id $CINDERTIMEOUT cinder create --image-id $IMGID --name ${RPRE}RootVol_VM\$no --availability-zone eu-de-0\$AZ $VOLSIZE
 }
 
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
 waitVols()
 {
   #waitResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" "status" cinder show
-  waitlistResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" 1 cinder list
+  waitlistResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" 1 $CINDERTIMEOUT cinder list
 }
 
 deleteVols()
 {
-  deleteResources VOLSTATS VOLUME "" cinder delete
+  deleteResources VOLSTATS VOLUME "" $CINDERTIMEOUT cinder delete
 }
 
 createKeypairs()
 {
   UMASK=$(umask)
   umask 0077
-  ostackcmd_tm NOVASTATS nova keypair-add ${RPRE}Keypair_JH || return 1
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova keypair-add ${RPRE}Keypair_JH || return 1
   echo "$OSTACKRESP" > ${RPRE}Keypair_JH.pem
   KEYPAIRS+=( "${RPRE}Keypair_JH" )
-  ostackcmd_tm NOVASTATS nova keypair-add ${RPRE}Keypair_VM || return 1
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova keypair-add ${RPRE}Keypair_VM || return 1
   echo "$OSTACKRESP" > ${RPRE}Keypair_VM.pem
   KEYPAIRS+=( "${RPRE}Keypair_VM" )
   umask $UMASK
@@ -646,7 +657,7 @@ createKeypairs()
 
 deleteKeypairs()
 {
-  deleteResources NOVASTATS KEYPAIR "" nova keypair-delete
+  deleteResources NOVASTATS KEYPAIR "" $NOVATIMEOUT nova keypair-delete
   #rm ${RPRE}Keypair_VM.pem
   #rm ${RPRE}Keypair_JH.pem
 }
@@ -659,15 +670,15 @@ extract_ip()
 SNATROUTE=""
 createFIPs()
 {
-  ostackcmd_tm NETSTATS neutron net-external-list || return 1
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list || return 1
   EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| [0-9a-f-]* | \([^ ]*\).*$/\1/')
   # Actually this fails if the port is not assigned to a VM yet
   #  -- we can not associate a FIP to a port w/o dev owner
-  createResources $NONETS NETSTATS FIP JHPORT NONE "" id neutron floatingip-create --port-id \$VAL $EXTNET
+  createResources $NONETS NETSTATS F2IP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL $EXTNET
   # TODO: Use API to tell VPC that the VIP is the next hop (route table)
-  ostackcmd_tm NETSTATS neutron port-show ${VIPS[0]} || return 1
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
-  ostackcmd_tm NETSTATS neutron router-update ${ROUTERS[0]} --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP
   if test $? != 0; then
     echo -e "$BOLD We lack the ability to set VPC route via SNAT gateways by API, will be fixed soon"
     echo -e " Please set next hop $VIP to VPC ${RPRE}Router (${ROUTERS[0]}) routes $NORM"
@@ -677,7 +688,7 @@ createFIPs()
     SNATROUTE=1
   fi
   FLOAT=""
-  ostackcmd_tm NETSTATS neutron floatingip-list || return 1
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 1
   for PORT in ${FIPS[*]}; do
     FLOAT+=" $(echo "$OSTACKRESP" | grep $PORT | sed 's/^|[^|]*|[^|]*| \([0-9:.]*\).*$/\1/')"
   done
@@ -688,20 +699,20 @@ createFIPs()
 deleteFIPs()
 {
   if test -n "$SNATROUTE"; then
-    ostackcmd_tm NETSTATS neutron router-update ${ROUTERS[0]} --no-routes 
+    ostackcmd_tm NETSTATS neutron $NETTIMEOUT router-update ${ROUTERS[0]} --no-routes 
   fi
-  deleteResources NETSTATS FIP "" neutron floatingip-delete
+  deleteResources NETSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
 }
 
 createJHVMs()
 {
   REDIRS=()
-  ostackcmd_tm NETSTATS neutron port-show ${VIPS[0]} || return 1
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   if test ${#PORTS[*]} -gt 0; then
-    ostackcmd_tm NETSTATS neutron port-show ${PORTS[-2]}
+    ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${PORTS[-2]}
     REDIRS+=( $(extract_ip "$OSTACKRESP") )
-    ostackcmd_tm NETSTATS neutron port-show ${PORTS[-1]}
+    ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${PORTS[-1]}
     REDIRS+=( $(extract_ip "$OSTACKRESP") )
   else
     # We don't know the IP addresses yet -- rely on sequential alloc starting at .4 (OTC)
@@ -723,57 +734,57 @@ otc:
   echo "$USERDATA" | sed "s/TGT/${REDIRS[0]}/" > user_data.yaml
   cat user_data.yaml >> $LOGFILE
   # of course nova boot --image ... --nic net-id ... would be easier
-  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[0]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-01 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[0]} ${RPRE}VM_JH0 || return
+  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVATIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[0]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-01 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[0]} ${RPRE}VM_JH0 || return
   echo "$USERDATA" | sed "s/TGT/${REDIRS[1]}/" > user_data.yaml
-  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[1]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-02 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[1]} ${RPRE}VM_JH1 || return
+  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVATIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[1]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-02 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[1]} ${RPRE}VM_JH1 || return
   #rm user_data.yaml
 }
 
 waitJHVMs()
 {
   #waitResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NA" "status" nova show
-  waitlistResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NONONO" 2 nova list
+  waitlistResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
 }
 deleteJHVMs()
 {
   JVMSTIME=()
-  deleteResources NOVASTATS JHVM JVMSTIME nova delete
+  deleteResources NOVASTATS JHVM JVMSTIME $NOVATIMEOUT nova delete
 }
 
 waitdelJHVMs()
 {
   #waitdelResources NOVASTATS JHVM VMDSTATS JVMSTIME nova show
-  waitlistResources NOVASTATS JHVM VMDSTATS JVMSTIME "XDELX" "NONONO" 2 nova list
+  waitlistResources NOVASTATS JHVM VMDSTATS JVMSTIME "XDELX" "NONONO" 2 $NOVATIMEOUT nova list
 }
 
 createVMs()
 {
   if test -n "$MANUALPORTSETUP"; then
-    createResources $NOVMS NOVASTATS VM PORT VOLUME VMSTIME id nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --nic port-id=\$VAL ${RPRE}VM_VM\$no
+    createResources $NOVMS NOVASTATS VM PORT VOLUME VMSTIME id $NOVATIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --nic port-id=\$VAL ${RPRE}VM_VM\$no
   else
     # SAVE: createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
-    createResources $NOVMS NOVASTATS VM NET VOLUME VMSTIME id nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" ${RPRE}VM_VM\$no
+    createResources $NOVMS NOVASTATS VM NET VOLUME VMSTIME id $NOVATIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" ${RPRE}VM_VM\$no
   fi
 }
 waitVMs()
 {
   #waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" nova show
-  waitlistResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NONONO" 2 nova list
+  waitlistResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
 }
 deleteVMs()
 {
   VMSTIME=()
-  deleteResources NOVASTATS VM VMSTIME nova delete
+  deleteResources NOVASTATS VM VMSTIME $NOVATIMEOUT nova delete
 }
 waitdelVMs()
 {
   #waitdelResources NOVASTATS VM VMDSTATS VMSTIME nova show
-  waitlistResources NOVASTATS VM VMDSTATS VMSTIME XDELX NONONO 2 nova list
+  waitlistResources NOVASTATS VM VMDSTATS VMSTIME XDELX NONONO 2 $NOVATIMEOUT nova list
 }
 setmetaVMs()
 {
   for no in `seq 0 $(($NOVMS-1))`; do
-    ostackcmd_tm NOVASTATS nova meta ${VMS[$no]} set deployment=cf server=$no || return 1
+    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova meta ${VMS[$no]} set deployment=cf server=$no || return 1
   done
 }
 
@@ -789,8 +800,9 @@ wait222()
     let ctr+=1
   done
   if [ $ctr -ge 60 ]; then echo " timeout"; return 1; fi
+  FLIP=${FLOATS[1]}
   while [ $ctr -lt 80 ]; do
-    echo "quit" | nc -w2 ${FLOATS[1]} 222 >/dev/null 2>&1 && break
+    echo "quit" | nc -w2 $FLIP 222 >/dev/null 2>&1 && break
     echo -n "."
     sleep 5
     let ctr+=1
@@ -799,10 +811,19 @@ wait222()
   echo
 }
 
+testjhinet()
+{
+  unset SSH_AUTH_SOCK
+  #echo "Test JH outgoing inet ... "
+  ssh -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
+  ssh -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+  if test $? = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $NORM"; fi
+}
+
 testsnat()
 {
   unset SSH_AUTH_SOCK
-  echo "Test outgoing ping (SNAT) ... "
+  #echo "Test JH outgoing inet ... "
   ssh -p 222 -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
   ssh -p 222 -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
   if test $? = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $NORM"; fi
@@ -834,6 +855,7 @@ findres()
 {
   FILT=${1:-$RPRE}
   shift
+  # FIXME: Add timeout handling
   $@ | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
 }
 
@@ -876,10 +898,11 @@ if test "$1" = "CLEANUP"; then
   echo -e "$BOLD *** Start cleanup *** $NORM"
   cleanup
   echo -e "$BOLD *** Cleanup complete *** $NORM"
-elif test "$1" = "DEPLOY"; then
+else # test "$1" = "DEPLOY"; then
  # Complete setup
  echo -e "$BOLD *** Start deployment $NONETS SNAT JumpHosts + $NOVMS VMs *** $NORM"
  # Image IDs
+ # FIXME: Use wrapper for timeout
  JHIMGID=$(glance image-list $JHIMGFILT | grep "$JHIMG" | head -n1 | sed 's/| \([0-9a-f-]*\).*$/\1/')
  IMGID=$(glance image-list $IMGFILT | grep "$IMG" | head -n1 | sed 's/| \([0-9a-f-]*\).*$/\1/')
  if test -z "$JHIMGID"; then echo "ERROR: No image $JHIMG found, aborting."; exit 1; fi
@@ -904,12 +927,18 @@ elif test "$1" = "DEPLOY"; then
               waitVMs
               setmetaVMs
               wait222
+              testjhinet
               testsnat
+              # TODO: Test login to normal VMs
+              # TODO: Test outgoing SNAT of normal VMs
+              # TODO: Create disk ... and attach to JH VMs ... and test access
+              # TODO: Attach additional net interfaces to JHs ... and test IP addr
               MSTOP=$(date +%s)
-              # We should be able to log in to FIP port 222 now ...
-              echo -en "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), HIT ENTER TO STOP $NORM"
-              read ANS
+              echo -en "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN"
+              sleep 1
+              #read ANS
               MSTART=$(($MSTART+$(date +%s)-$MSTOP))
+              # TODO: Detach and delete disks again
              fi; deleteVMs
             fi; deleteFIPs
            fi; deleteJHVMs
@@ -934,8 +963,8 @@ elif test "$1" = "DEPLOY"; then
  stats VOLSTATS
  stats VOLCSTATS 0
  echo "Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s"
-else
-  usage
+#else
+#  usage
 fi
 
 done
