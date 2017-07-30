@@ -897,10 +897,10 @@ declare -a JVOLSTIME
 declare -a VMSTIME
 declare -a JVMSTIME
 
-declare -i ctr=0
+declare -i loop=0
 
 # MAIN LOOP
-while test $ctr != $MAXITER; do
+while test $loop != $MAXITER; do
 
 # List of resources - neutron
 declare -a ROUTERS
@@ -998,5 +998,5 @@ else # test "$1" = "DEPLOY"; then
 #  usage
 fi
 
-let ctr+=1
+let loop+=1
 done
