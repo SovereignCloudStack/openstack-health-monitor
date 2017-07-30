@@ -52,10 +52,11 @@ MAXITER=1
 # API timeouts
 NETTIMEOUT=12
 SGTIMEOUT=10
-FIPTIMEOUT=20
+FIPTIMEOUT=24
 NOVATIMEOUT=12
+NOVABOOTTIMEOUT=24
 CINDERTIMEOUT=12
-GLANCETIMEOUT=20
+GLANCETIMEOUT=24
 DEFTIMEOUT=12
 
 # Images, flavors, disk sizes
@@ -124,6 +125,31 @@ killin()
 	kill -SIGKILL $1
 }
 
+# Command wrapper for openstack list commands
+# $1 = search term
+# $2 = timeout (in s)
+# $3-oo => command
+ostackcmd_search()
+{
+  SEARCH=$1; shift
+  TIMEOUT=$1; shift
+  LSTART=$(date +%s.%3N)
+  if test "$TIMEOUT" = "0"; then
+    RESP=$($@ 2>&1)
+  else
+    RESP=$($@ 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
+  fi
+  RC=$?
+  LEND=$(date +%s.%3N)
+  ID=$(echo "$RESP" | grep "$SEARCH" | head -n1 | sed -e 's/^| *\([^ ]*\) *|.*$/\1/')
+  echo "$LSTART/$LEND/$SEARCH: $@ => $RC $RESP $ID" >> $LOGFILE
+  if test "$RC" != "0"; then echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
+  if test -z "$ID"; then echo "ERROR: $@ => $RC $RESP => $SEARCH not found" 1>&2; return $RC; fi
+  TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
+  echo "$TIM $ID"
+  return $RC
+}
+
 # Command wrapper for openstack commands
 # Collecting timing, logging, and extracting id
 # $1 = id to extract
@@ -177,47 +203,6 @@ ostackcmd_tm()
   echo "$LSTART/$LEND/: $@ => $OSTACKRESP" >> $LOGFILE
   return $RC
 }
-
-declare -i ctr=0
-# MAIN LOOP
-while test $ctr -ne $MAXITER; do
-
-# List of resources - neutron
-declare -a ROUTERS
-declare -a NETS
-declare -a SUBNETS
-declare -a JHNETS
-declare -a JHSUBNETS
-declare -a SGROUPS
-declare -a JHPORTS
-declare -a PORTS
-declare -a VIPS
-declare -a FIPS
-declare -a FLOATS
-# cinder
-declare -a JHVOLUMES
-declare -a VOLUMES
-# nova
-declare -a KEYPAIRS
-declare -a VMS
-declare -a JHVMS
-SNATROUTE=""
-
-# Statistics
-# API performance neutron, cinder, nova
-declare -a NETSTATS
-declare -a VOLSTATS
-declare -a NOVASTATS
-# Resource creation stats (creation/deletion)
-declare -a VOLCSTATS
-declare -a VOLDSTATS
-declare -a VMCSTATS
-declare -a VMCDTATS
-# Arrays to store resource creation start times
-declare -a VOLSTIME
-declare -a JVOLSTIME
-declare -a VMSTIME
-declare -a JVMSTIME
 
 # Create a number of resources and keep track of them
 # $1 => quantity of resources
@@ -682,6 +667,7 @@ createFIPs()
   if test $? != 0; then
     echo -e "$BOLD We lack the ability to set VPC route via SNAT gateways by API, will be fixed soon"
     echo -e " Please set next hop $VIP to VPC ${RPRE}Router (${ROUTERS[0]}) routes $NORM"
+    SNATROUTE=""
   else
     #SNATROUTE=$(echo "$OSTACKRESP" | grep "^| *id *|" | sed -e "s/^| *id *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
     echo "SNATROUTE: destination=0.0.0.0/0,nexthop=$VIP"
@@ -699,7 +685,7 @@ createFIPs()
 deleteFIPs()
 {
   if test -n "$SNATROUTE"; then
-    ostackcmd_tm NETSTATS neutron $NETTIMEOUT router-update ${ROUTERS[0]} --no-routes 
+    ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --no-routes
   fi
   deleteResources NETSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
 }
@@ -734,9 +720,9 @@ otc:
   echo "$USERDATA" | sed "s/TGT/${REDIRS[0]}/" > user_data.yaml
   cat user_data.yaml >> $LOGFILE
   # of course nova boot --image ... --nic net-id ... would be easier
-  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVATIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[0]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-01 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[0]} ${RPRE}VM_JH0 || return
+  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[0]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-01 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[0]} ${RPRE}VM_JH0 || return
   echo "$USERDATA" | sed "s/TGT/${REDIRS[1]}/" > user_data.yaml
-  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVATIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[1]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-02 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[1]} ${RPRE}VM_JH1 || return
+  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[1]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-02 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[1]} ${RPRE}VM_JH1 || return
   #rm user_data.yaml
 }
 
@@ -760,10 +746,10 @@ waitdelJHVMs()
 createVMs()
 {
   if test -n "$MANUALPORTSETUP"; then
-    createResources $NOVMS NOVASTATS VM PORT VOLUME VMSTIME id $NOVATIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --nic port-id=\$VAL ${RPRE}VM_VM\$no
+    createResources $NOVMS NOVASTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --nic port-id=\$VAL ${RPRE}VM_VM\$no
   else
     # SAVE: createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
-    createResources $NOVMS NOVASTATS VM NET VOLUME VMSTIME id $NOVATIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" ${RPRE}VM_VM\$no
+    createResources $NOVMS NOVASTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" ${RPRE}VM_VM\$no
   fi
 }
 waitVMs()
@@ -790,24 +776,26 @@ setmetaVMs()
 
 wait222()
 {
+  PROXY=""
+  if test -n "$http_proxy"; then PROXY="-x $http_proxy"; fi
   FLIP=${FLOATS[0]}
   echo -n "Wait for port 222 connectivity on $FLIP: "
   declare -i ctr=0
+  while [ $ctr -lt 40 ]; do
+    echo "quit" | nc -w2 $PROXY $FLIP 222 >/dev/null 2>&1 && break
+    echo -n "."
+    sleep 5
+    let ctr+=1
+  done
+  if [ $ctr -ge 40 ]; then echo " timeout"; return 1; fi
+  FLIP=${FLOATS[1]}
   while [ $ctr -lt 60 ]; do
-    echo "quit" | nc -w2 $FLIP 222 >/dev/null 2>&1 && break
+    echo "quit" | nc -w2 $PROXY $FLIP 222 >/dev/null 2>&1 && break
     echo -n "."
     sleep 5
     let ctr+=1
   done
   if [ $ctr -ge 60 ]; then echo " timeout"; return 1; fi
-  FLIP=${FLOATS[1]}
-  while [ $ctr -lt 80 ]; do
-    echo "quit" | nc -w2 $FLIP 222 >/dev/null 2>&1 && break
-    echo -n "."
-    sleep 5
-    let ctr+=1
-  done
-  if [ $ctr -ge 80 ]; then echo " timeout"; return 1; fi
   echo
 }
 
@@ -891,6 +879,48 @@ cleanup()
   deleteRouters
 }
 
+declare -i ctr=0
+
+# MAIN LOOP
+while test $ctr -ne $MAXITER; do
+
+# List of resources - neutron
+declare -a ROUTERS
+declare -a NETS
+declare -a SUBNETS
+declare -a JHNETS
+declare -a JHSUBNETS
+declare -a SGROUPS
+declare -a JHPORTS
+declare -a PORTS
+declare -a VIPS
+declare -a FIPS
+declare -a FLOATS
+# cinder
+declare -a JHVOLUMES
+declare -a VOLUMES
+# nova
+declare -a KEYPAIRS
+declare -a VMS
+declare -a JHVMS
+SNATROUTE=""
+
+# Statistics
+# API performance neutron, cinder, nova
+declare -a NETSTATS
+declare -a VOLSTATS
+declare -a NOVASTATS
+# Resource creation stats (creation/deletion)
+declare -a VOLCSTATS
+declare -a VOLDSTATS
+declare -a VMCSTATS
+declare -a VMCDTATS
+# Arrays to store resource creation start times
+declare -a VOLSTIME
+declare -a JVOLSTIME
+declare -a VMSTIME
+declare -a JVMSTIME
+
 # Main
 MSTART=$(date +%s)
 # Debugging: Start with volume step
@@ -902,9 +932,8 @@ else # test "$1" = "DEPLOY"; then
  # Complete setup
  echo -e "$BOLD *** Start deployment $NONETS SNAT JumpHosts + $NOVMS VMs *** $NORM"
  # Image IDs
- # FIXME: Use wrapper for timeout
- JHIMGID=$(glance image-list $JHIMGFILT | grep "$JHIMG" | head -n1 | sed 's/| \([0-9a-f-]*\).*$/\1/')
- IMGID=$(glance image-list $IMGFILT | grep "$IMG" | head -n1 | sed 's/| \([0-9a-f-]*\).*$/\1/')
+ JHIMGID=$(ostackcmd_search $JHIMG $GLANCETIMEOUT glance image-list $JHIMGFILT | awk '{ print $2; }')
+ IMGID=$(ostackcmd_search $IMG $GLANCETIMEOUT glance image-list $IMGFILT | awk '{ print $2; }')
  if test -z "$JHIMGID"; then echo "ERROR: No image $JHIMG found, aborting."; exit 1; fi
  if test -z "$IMGID"; then echo "ERROR: No image $IMG found, aborting."; exit 1; fi
  #echo "Image $IMGID $JHIMGID"
@@ -934,7 +963,7 @@ else # test "$1" = "DEPLOY"; then
               # TODO: Create disk ... and attach to JH VMs ... and test access
               # TODO: Attach additional net interfaces to JHs ... and test IP addr
               MSTOP=$(date +%s)
-              echo -en "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN"
+              echo "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN"
               sleep 1
               #read ANS
               MSTART=$(($MSTART+$(date +%s)-$MSTOP))
@@ -967,4 +996,5 @@ else # test "$1" = "DEPLOY"; then
 #  usage
 fi
 
+let ctr+=1
 done
