@@ -45,6 +45,7 @@ if test -z "$RPRE"; then RPRE=Test978793_; fi
 NOVMS=30
 NONETS=2
 NOAZS=2
+MANUALPORTSETUP=1
 
 # Images, flavors, disk sizes
 JHIMG="${JHIMG:-Standard_openSUSE_42_JeOS_latest}"

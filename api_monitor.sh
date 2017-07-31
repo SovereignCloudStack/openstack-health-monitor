@@ -58,7 +58,8 @@ if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
 NOVMS=12
 NONETS=2
 NOAZS=2
-MAXITER=1
+MAXITER=2
+MANUALPORTSETUP=1
 
 # API timeouts
 NETTIMEOUT=12
@@ -974,8 +975,7 @@ else # test "$1" = "DEPLOY"; then
               wait222
               testjhinet
               testsnat
-              # TODO: Test login to normal VMs
-              # TODO: Test outgoing SNAT of normal VMs
+              # TODO: Test login to all normal VMs (not just the last two)
               # TODO: Create disk ... and attach to JH VMs ... and test access
               # TODO: Attach additional net interfaces to JHs ... and test IP addr
               MSTOP=$(date +%s)
