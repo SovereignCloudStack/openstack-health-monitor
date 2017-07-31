@@ -1038,7 +1038,7 @@ else # test "$1" = "DEPLOY"; then
  stats VMDSTATS 0
  stats VOLSTATS
  stats VOLCSTATS 0
- stats WAITIME 0
+ stats WAITTIME 0
  stats TOTTIME 0
  echo "This run: Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s"
 #else
