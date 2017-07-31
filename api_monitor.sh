@@ -735,11 +735,11 @@ createJHVMs()
       STR="0/0,$IP,tcp,$ptn,22"
       if test "$odd" = 0; then
         odd=1
-        RE0="$STR
+        RE0="$RE0$STR
 "
       else
         odd=0
-        RE1="$STR
+        RE1="$RE1$STR
 "
         let ptn+=1
       fi
@@ -753,6 +753,7 @@ createJHVMs()
     REDIRS=( 10.250.0.$((4+($NOVMS-1)/$NONETS)) 10.250.1.$((4+($NOVMS-2)/$NONETS)) )
   fi
   #echo "$VIP ${REDIRS[*]}"
+  RD=$(echo "${REDIRS[0]}" |  sed 's@^0@         - 0@')
   USERDATA="#cloud-config
 otc:
    internalnet:
@@ -761,7 +762,7 @@ otc:
       masqnet:
          - INTERNALNET
       fwdmasq:
-$(echo $REDIRS[0] | sed 's@^0@         - 0@')
+$RD
    addip:
       eth0: $VIP
 "
@@ -769,6 +770,7 @@ $(echo $REDIRS[0] | sed 's@^0@         - 0@')
   cat user_data.yaml >> $LOGFILE
   # of course nova boot --image ... --nic net-id ... would be easier
   createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[0]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-01 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[0]} ${RPRE}VM_JH0 || return
+  RD=$(echo "${REDIRS[1]}" |  sed 's@^0@         - 0@')
   USERDATA="#cloud-config
 otc:
    internalnet:
@@ -777,7 +779,7 @@ otc:
       masqnet:
          - INTERNALNET
       fwdmasq:
-$(echo $REDIRS[1] | sed 's@^0@         - 0@')
+$RD
    addip:
       eth0: $VIP
 "
@@ -875,12 +877,13 @@ testsnat()
   #echo "Test VM outgoing SNAT inet ... "
   declare -i FAIL=0
   for red in ${REDIRS[0]}; do
-    pno=${red#0/0,}
+    pno=${red#*tcp,}
     pno=${pno%%,*}
+    echo "ssh -p $pno -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8"
     ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8 || let FAIL+=1
   done
   for red in ${REDIRS[1]}; do
-    pno=${red#0/0,}
+    pno=${red#*tcp,}
     pno=${pno%%,*}
     ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8 || let FAIL+=1
   done
@@ -908,7 +911,9 @@ stats()
   NFQ=$(scale=3; echo "(($NO-1)*95)/100" | bc -l)
   NFQL=${NFQ%.*}; NFQR=$((NFQL+1)); NFQF=0.${NFQ#*.}
   echo "DEBUG 95%: $NFQ $NFQL $NFR $NFQF"
-  NFP=`python -c "printf \"%.${DIG}f\" % (${SLIST[$NFQL]}*$NFQF+${SLIST[$NFQR]}*(1-$NFQF))"`
+  if test $NO = 1; then NFP=S{SLIST[$NFQL]}; else
+    NFP=`python -c "print \"%.${DIG}f\" % (${SLIST[$NFQL]}*$NFQF+${SLIST[$NFQR]}*(1-$NFQF))"`
+  fi
   AVGC="($(echo ${LIST[*]}|sed 's/ /+/g'))/$NO"
   #echo "$AVGC"
   AVG=`python -c "print \"%.${DIG}f\" % ($AVGC)"`
