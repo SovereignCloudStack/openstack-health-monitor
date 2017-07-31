@@ -54,6 +54,7 @@
 
 # Prefix for test resources
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
+echo "Using $RPRE prefix for api_monitor resources"
 # Number of VMs and networks
 NOVMS=12
 NONETS=2
@@ -711,7 +712,7 @@ createJHVMs()
     REDIRS+=( $(extract_ip "$OSTACKRESP") )
     ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${PORTS[-1]}
     REDIRS+=( $(extract_ip "$OSTACKRESP") )
-    echo "Extracted IPs from ${#PORTS[*]} Ports: ${REDIRS[#]}"
+    echo "Extracted IPs from ${#PORTS[*]} Ports: ${REDIRS[*]}"
   else
     echo "NOT GOOD: GUESSING VM IPs due to empty PORTS ${PORTS[*]}"
     # We don't know the IP addresses yet -- rely on sequential alloc starting at .4 (OTC)
