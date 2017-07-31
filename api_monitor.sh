@@ -125,13 +125,13 @@ if test $? != 0; then
 fi
 
 type -p otc.sh >/dev/null 2>&1
-if test $? != 0 -a -n "SMNID"; then
+if test $? != 0 -a -n "$SMNID"; then
   echo "Need otc.sh for SMN notifications"
   exit 1
 fi
 
 test -x /usr/sbin/sendmail
-if test $? != 0 -a -n "EMAIL"; then
+if test $? != 0 -a -n "$EMAIL"; then
   echo "Need /usr/sbin/sendmail for email notifications"
   exit 1
 fi
