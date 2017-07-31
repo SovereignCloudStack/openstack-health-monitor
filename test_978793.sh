@@ -40,7 +40,7 @@
 # User settings
 
 # Prefix for test resources
-RPRE=Test978793_
+if test -z "$RPRE"; then RPRE=Test978793_; fi
 # Number of VMs and networks
 NOVMS=30
 NONETS=2
@@ -450,34 +450,40 @@ deleteRIfaces()
 createSGroups()
 {
   NAMES=( ${RPRE}SG_JumpHost ${RPRE}SG_Internal )
-  createResources 2 NETSTATS SGROUP NAME NONE "" id neutron security-group-create "\$VAL" || return
+  createResources 2 NETSTATS SGROUP NAME NONE "" id $NETTIMEOUT neutron security-group-create "\$VAL" || return
   # And set rules ... (we don't need to keep track of and delete them)
   SG0=${SGROUPS[0]}
   SG1=${SGROUPS[1]}
-  # Configure SGs: Internal ingress allowed
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG0 $SG0)
+  # Configure SGs: We can NOT allow any references to SG0, as the allowed-address-pair setting renders SGs useless
+  #  that reference the SG0
+  #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG0 $SG0)
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-ip-prefix $JHSUBNETIP $SG0)
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG0 $SG0)
-  NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG1)
-  NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG1 $SG1)
-  NETSTATS+=( $TM )
-  # Configure RPRE_SG_JumpHost rule: All from the other group, port 222 and 443 from outside
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG0)
-  NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
+  #read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG0 $SG0)
   #NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max 222 --remote-ip-prefix 0/0 $SG0)
+  # Configure SGs: Internal ingress allowed
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG1)
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG1 $SG1)
+  NETSTATS+=( $TM )
+  # Configure RPRE_SG_JumpHost rule: All from the other group, port 22 and 222 and 443 from outside
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG0)
+  NETSTATS+=( $TM )
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
+  #NETSTATS+=( $TM )
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max 222 --remote-ip-prefix 0/0 $SG0)
+  NETSTATS+=( $TM )
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
   NETSTATS+=( $TM )
   # Configure RPRE_SG_Internal rule: ssh and https and ping from the other group
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-group-id $SG0 $SG1)
+  #read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-group-id $SG0 $SG1)
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix $JHSUBNETIP $SG1)
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-group-id $SG0 $SG1)
+  #read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-group-id $SG0 $SG1)
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-ip-prefix $JHSUBNETIP $SG1)
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-group-id $SG0 $SG1)
+  #read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-group-id $SG0 $SG1)
+  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix $JHSUBNETIP $SG1)
   NETSTATS+=( $TM )
   #neutron security-group-show $SG0
   #neutron security-group-show $SG1
@@ -748,7 +754,9 @@ stats()
   eval LIST=( \"\${${1}[@]}\" )
   if test -z "${LIST[*]}"; then return; fi
   DIG=${2:-2}
+  OLDIFS="$IFS"
   IFS=$'\n' SLIST=($(sort -n <<<"${LIST[*]}"))
+  IFS="$OLDIFS"
   #echo ${SLIST[*]}
   MIN=${SLIST[0]}
   MAX=${SLIST[-1]}
