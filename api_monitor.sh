@@ -1,9 +1,20 @@
 #!/bin/bash
 # api_monitor.sh
-# Testcase trying to test reliability and performance of API
-# Creating a large number (30) of VMs and see whether we observe API call timeouts
+# 
+# Testscript testing the reliability and performance of OpenStack API
+# It works by doing a real scenario test: Setting up a real environment
+# With routers, nets, jumphosts, disks, VMs, ...
+# 
+# We collect statistics on API call performance as well as on resource
+# creation times.
+# Failures are noted and alarms are generated.
 #
-# (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017
+# Status:
+# - Environment setup works (once)
+# - Errors not yet handled everywhere
+# - Infrastructure to reports stats and alarms via emails & SMN still lacking
+#
+# (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017-7/2017
 # License: CC-BY-SA (2.0)
 #
 # General approach:
@@ -891,18 +902,18 @@ declare -a VOLCSTATS
 declare -a VOLDSTATS
 declare -a VMCSTATS
 declare -a VMCDTATS
-# Arrays to store resource creation start times
-declare -a VOLSTIME
-declare -a JVOLSTIME
-declare -a VMSTIME
-declare -a JVMSTIME
-
 declare -a TOTTIME
 
 declare -i loop=0
 
 # MAIN LOOP
 while test $loop != $MAXITER; do
+
+# Arrays to store resource creation start times
+declare -a VOLSTIME=()
+declare -a JVOLSTIME=()
+declare -a VMSTIME=()
+declare -a JVMSTIME=()
 
 # List of resources - neutron
 declare -a ROUTERS=()
