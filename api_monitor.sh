@@ -897,30 +897,32 @@ declare -a JVOLSTIME
 declare -a VMSTIME
 declare -a JVMSTIME
 
+declare -a TOTTIME
+
 declare -i loop=0
 
 # MAIN LOOP
 while test $loop != $MAXITER; do
 
 # List of resources - neutron
-declare -a ROUTERS
-declare -a NETS
-declare -a SUBNETS
-declare -a JHNETS
-declare -a JHSUBNETS
-declare -a SGROUPS
-declare -a JHPORTS
-declare -a PORTS
-declare -a VIPS
-declare -a FIPS
-declare -a FLOATS
+declare -a ROUTERS=()
+declare -a NETS=()
+declare -a SUBNETS=()
+declare -a JHNETS=()
+declare -a JHSUBNETS=()
+declare -a SGROUPS=()
+declare -a JHPORTS=()
+declare -a PORTS=()
+declare -a VIPS=()
+declare -a FIPS=()
+declare -a FLOATS=()
 # cinder
-declare -a JHVOLUMES
-declare -a VOLUMES
+declare -a JHVOLUMES=()
+declare -a VOLUMES=()
 # nova
-declare -a KEYPAIRS
-declare -a VMS
-declare -a JHVMS
+declare -a KEYPAIRS=()
+declare -a VMS=()
+declare -a JHVMS=()
 SNATROUTE=""
 
 # Main
@@ -968,6 +970,7 @@ else # test "$1" = "DEPLOY"; then
               echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
               sleep 1
               #read ANS
+              # Subtract waiting time (1s here)
               MSTART=$(($MSTART+$(date +%s)-$MSTOP))
               # TODO: Detach and delete disks again
              fi; deleteVMs
@@ -993,7 +996,9 @@ else # test "$1" = "DEPLOY"; then
  stats VMDSTATS 0
  stats VOLSTATS
  stats VOLCSTATS 0
- echo "Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s"
+ TOTTIME+=($(($(date +%s)-$MSTART)))
+ stats TOTTIME 0
+ echo "This run: Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s"
 #else
 #  usage
 fi
