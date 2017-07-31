@@ -59,8 +59,9 @@ echo "Using $RPRE prefix for api_monitor resources"
 NOVMS=12
 NONETS=2
 NOAZS=2
-MAXITER=2
 MANUALPORTSETUP=1
+
+MAXITER=-1
 
 # API timeouts
 NETTIMEOUT=12
@@ -86,18 +87,11 @@ ADDVOLSIZE=5
 DATE=`date +%s`
 LOGFILE=$RPRE$DATE.log
 
-MAXITER=-1
-
 # Nothing to change below here
 BOLD="\e[0;1m"
 NORM="\e[0;0m"
 RED="\e[0;31m"
 GREEN="\e[0;32m"
-
-if test -z "$OS_USERNAME"; then
-  echo "source OS_ settings file before running this test"
-  exit 1
-fi
 
 usage()
 {
@@ -123,18 +117,42 @@ if test "$1" = "-e"; then EMAIL=$2; shift; shift; fi
 if test "$1" = "-m"; then SMNID=$2; shift; shift; fi
 if test "$1" = "-i"; then MAXITER=$2; shift; shift; fi
 
+# Test precondition
+type -p nova >/dev/null 2>&1
+if test $? != 0; then
+  echo "Need nova installed"
+  exit 1
+fi
+
+type -p otc.sh >/dev/null 2>&1
+if test $? != 0 -a -n "SMNID"; then
+  echo "Need otc.sh for SMN notifications"
+  exit 1
+fi
+
+test -x /usr/sbin/sendmail
+if test $? != 0 -a -n "EMAIL"; then
+  echo "Need /usr/sbin/sendmail for email notifications"
+  exit 1
+fi
+
+if test -z "$OS_USERNAME"; then
+  echo "source OS_ settings file before running this test"
+  exit 1
+fi
+
 # Timeout killer
 # $1 => PID to kill
 # $2 => timeout
 # waits $2, sends QUIT, 1s, HUP, 1s, KILL
 killin()
 {
-	sleep $2
-	kill -SIGQUIT $1
-	sleep 1
-	kill -SIGHUP $1
-	sleep 1	
-	kill -SIGKILL $1
+  sleep $2
+  kill -SIGQUIT $1
+  sleep 1
+  kill -SIGHUP $1
+  sleep 1	
+  kill -SIGKILL $1
 }
 
 # Command wrapper for openstack list commands
@@ -790,7 +808,7 @@ setmetaVMs()
 
 wait222()
 {
-  PROXY=""
+  unset PROXY
   #if test -n "$http_proxy"; then PROXY="-X connect -x $http_proxy"; fi
   FLIP=${FLOATS[0]}
   echo -n "Wait for port 222 connectivity on $FLIP: "
@@ -825,7 +843,7 @@ testjhinet()
 testsnat()
 {
   unset SSH_AUTH_SOCK
-  #echo "Test JH outgoing inet ... "
+  #echo "Test VM outgoing SNAT inet ... "
   ssh -p 222 -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
   ssh -p 222 -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
   if test $? = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $NORM"; fi
@@ -905,7 +923,9 @@ declare -a VOLCSTATS
 declare -a VOLDSTATS
 declare -a VMCSTATS
 declare -a VMCDTATS
+
 declare -a TOTTIME
+declare -a WAITTIME
 
 declare -i loop=0
 
@@ -941,6 +961,7 @@ SNATROUTE=""
 
 # Main
 MSTART=$(date +%s)
+ERROR=1
 # Debugging: Start with volume step
 if test "$1" = "CLEANUP"; then
   echo -e "$BOLD *** Start cleanup *** $NORM"
@@ -973,15 +994,22 @@ else # test "$1" = "DEPLOY"; then
              if createVMs; then
               waitVMs
               setmetaVMs
+              WSTART=$(date +%s)
               wait222
               testjhinet
               testsnat
+              ERROR=$?
               # TODO: Test login to all normal VMs (not just the last two)
               # TODO: Create disk ... and attach to JH VMs ... and test access
               # TODO: Attach additional net interfaces to JHs ... and test IP addr
               MSTOP=$(date +%s)
+              WAITTIME+=($(($MSTOP-$WSTART)))
               echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
-              sleep 1
+              if test $ERROR = 0; then
+                sleep 1
+              else
+                sleep 600
+              fi
               #read ANS
               # Subtract waiting time (1s here)
               MSTART=$(($MSTART+$(date +%s)-$MSTOP))
@@ -1003,18 +1031,22 @@ else # test "$1" = "DEPLOY"; then
  fi; deleteRouters
  #echo "${NETSTATS[*]}"
  echo -e "$BOLD *** Cleanup complete *** $NORM"
+ TOTTIME+=($(($(date +%s)-$MSTART)))
  stats NETSTATS
  stats NOVASTATS
  stats VMCSTATS 0
  stats VMDSTATS 0
  stats VOLSTATS
  stats VOLCSTATS 0
- TOTTIME+=($(($(date +%s)-$MSTART)))
+ stats WAITIME 0
  stats TOTTIME 0
  echo "This run: Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s"
 #else
 #  usage
 fi
+
+# TODO: Determine whether there was an error => alert & details
+# TODO: Send regular stats if requested
 
 let loop+=1
 done
