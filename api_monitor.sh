@@ -62,7 +62,6 @@ MAXITER=1
 
 # API timeouts
 NETTIMEOUT=12
-SGTIMEOUT=10
 FIPTIMEOUT=24
 NOVATIMEOUT=12
 NOVABOOTTIMEOUT=24
@@ -525,33 +524,33 @@ createSGroups()
   # Configure SGs: We can NOT allow any references to SG0, as the allowed-address-pair setting renders SGs useless
   #  that reference the SG0
   #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG0 $SG0)
-  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-ip-prefix $JHSUBNETIP $SG0)
+  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-ip-prefix $JHSUBNETIP $SG0)
   NETSTATS+=( $TM )
-  #read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG0 $SG0)
+  #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG0 $SG0)
   #NETSTATS+=( $TM )
   # Configure SGs: Internal ingress allowed
-  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG1)
+  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG1)
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG1 $SG1)
+  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG1 $SG1)
   NETSTATS+=( $TM )
   # Configure RPRE_SG_JumpHost rule: All from the other group, port 22 and 222 from outside
-  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG0)
+  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG0)
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
+  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
   #NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max 222 --remote-ip-prefix 0/0 $SG0)
+  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max 222 --remote-ip-prefix 0/0 $SG0)
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
+  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
   NETSTATS+=( $TM )
   # Configure RPRE_SG_Internal rule: ssh and https and ping from the other group
-  #read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-group-id $SG0 $SG1)
-  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix $JHSUBNETIP $SG1)
+  #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-group-id $SG0 $SG1)
+  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix $JHSUBNETIP $SG1)
   NETSTATS+=( $TM )
-  #read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-group-id $SG0 $SG1)
-  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-ip-prefix $JHSUBNETIP $SG1)
+  #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-group-id $SG0 $SG1)
+  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-ip-prefix $JHSUBNETIP $SG1)
   NETSTATS+=( $TM )
-  #read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-group-id $SG0 $SG1)
-  read TM ID < <(ostackcmd_id id $SGTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix $JHSUBNETIP $SG1)
+  #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-group-id $SG0 $SG1)
+  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix $JHSUBNETIP $SG1)
   NETSTATS+=( $TM )
   #neutron security-group-show $SG0
   #neutron security-group-show $SG1
@@ -711,7 +710,9 @@ createJHVMs()
     REDIRS+=( $(extract_ip "$OSTACKRESP") )
     ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${PORTS[-1]}
     REDIRS+=( $(extract_ip "$OSTACKRESP") )
+    echo "Extracted IPs from ${#PORTS[*]} Ports: ${REDIRS[#]}"
   else
+    echo "NOT GOOD: GUESSING VM IPs due to empty PORTS ${PORTS[*]}"
     # We don't know the IP addresses yet -- rely on sequential alloc starting at .4 (OTC)
     REDIRS=( 10.250.0.$((4+($NOVMS-1)/$NONETS)) 10.250.1.$((4+($NOVMS-2)/$NONETS)) )
   fi
