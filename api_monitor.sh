@@ -553,12 +553,12 @@ createSGroups()
   NETSTATS+=( $TM )
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG1 $SG1)
   NETSTATS+=( $TM )
-  # Configure RPRE_SG_JumpHost rule: All from the other group, port 22 and 222 from outside
+  # Configure RPRE_SG_JumpHost rule: All from the other group, port 22 and 222- from outside
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG0)
   NETSTATS+=( $TM )
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
   #NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max 222 --remote-ip-prefix 0/0 $SG0)
+  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max $((222+$NOVMS/2)) --remote-ip-prefix 0/0 $SG0)
   NETSTATS+=( $TM )
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
   NETSTATS+=( $TM )
@@ -720,17 +720,33 @@ deleteFIPs()
   deleteResources NETSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
 }
 
+REDIRS=()
 createJHVMs()
 {
-  REDIRS=()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   if test ${#PORTS[*]} -gt 0; then
-    ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${PORTS[-2]}
-    REDIRS+=( $(extract_ip "$OSTACKRESP") )
-    ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${PORTS[-1]}
-    REDIRS+=( $(extract_ip "$OSTACKRESP") )
-    echo "Extracted IPs from ${#PORTS[*]} Ports: ${REDIRS[*]}"
+    declare -i odd=0
+    declare -i ptn=222
+    RE0=""; RE1=""
+    for port in ${PORTS[*]}; do
+      ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show $port
+      IP=$(extract_ip "$OSTACKRESP")
+      STR="0/0,$IP,tcp,$ptn,22"
+      if test "$odd" = 0; then
+        odd=1
+        RE0="$STR
+"
+      else
+        odd=0
+        RE1="$STR
+"
+        let ptn+=1
+      fi
+    done
+    REDIRS[0]="$RE0"
+    REDIRS[1]="$RE1"
+    echo -e "$RE0$RE1"
   else
     echo "NOT GOOD: GUESSING VM IPs due to empty PORTS ${PORTS[*]}"
     # We don't know the IP addresses yet -- rely on sequential alloc starting at .4 (OTC)
@@ -745,15 +761,28 @@ otc:
       masqnet:
          - INTERNALNET
       fwdmasq:
-         - 0/0,TGT,tcp,222,22
+$(echo $REDIRS[0] | sed 's@^0@         - 0@')
    addip:
       eth0: $VIP
 "
-  echo "$USERDATA" | sed "s/TGT/${REDIRS[0]}/" > user_data.yaml
+  echo "$USERDATA" > user_data.yaml
   cat user_data.yaml >> $LOGFILE
   # of course nova boot --image ... --nic net-id ... would be easier
   createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[0]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-01 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[0]} ${RPRE}VM_JH0 || return
-  echo "$USERDATA" | sed "s/TGT/${REDIRS[1]}/" > user_data.yaml
+  USERDATA="#cloud-config
+otc:
+   internalnet:
+      - 10.250/16
+   snat:
+      masqnet:
+         - INTERNALNET
+      fwdmasq:
+$(echo $REDIRS[1] | sed 's@^0@         - 0@')
+   addip:
+      eth0: $VIP
+"
+  echo "$USERDATA" > user_data.yaml
+  cat user_data.yaml >> $LOGFILE
   createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[1]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-02 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[1]} ${RPRE}VM_JH1 || return
   #rm user_data.yaml
 }
@@ -808,13 +837,13 @@ setmetaVMs()
 
 wait222()
 {
-  unset PROXY
-  #if test -n "$http_proxy"; then PROXY="-X connect -x $http_proxy"; fi
+  unset NCPROXY
+  #if test -n "$http_proxy"; then NCPROXY="-X connect -x $http_proxy"; fi
   FLIP=${FLOATS[0]}
   echo -n "Wait for port 222 connectivity on $FLIP: "
   declare -i ctr=0
   while [ $ctr -lt 40 ]; do
-    echo "quit" | nc $PROXY -w 2 $FLIP 222 >/dev/null 2>&1 && break
+    echo "quit" | nc $NCPROXY -w 2 $FLIP 222 >/dev/null 2>&1 && break
     echo -n "."
     sleep 5
     let ctr+=1
@@ -822,7 +851,7 @@ wait222()
   if [ $ctr -ge 40 ]; then echo " timeout"; return 1; fi
   FLIP=${FLOATS[1]}
   while [ $ctr -lt 60 ]; do
-    echo "quit" | nc $PROXY -w 2 $FLIP 222 >/dev/null 2>&1 && break
+    echo "quit" | nc $NCPROXY -w 2 $FLIP 222 >/dev/null 2>&1 && break
     echo -n "."
     sleep 5
     let ctr+=1
@@ -844,9 +873,18 @@ testsnat()
 {
   unset SSH_AUTH_SOCK
   #echo "Test VM outgoing SNAT inet ... "
-  ssh -p 222 -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
-  ssh -p 222 -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
-  if test $? = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $NORM"; fi
+  declare -i FAIL=0
+  for red in ${REDIRS[0]}; do
+    pno=${red#0/0,}
+    pno=${pno%%,*}
+    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8 || let FAIL+=1
+  done
+  for red in ${REDIRS[1]}; do
+    pno=${red#0/0,}
+    pno=${pno%%,*}
+    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8 || let FAIL+=1
+  done
+  return $FAIL
 }
 
 
@@ -867,10 +905,14 @@ stats()
   if test $(($NO%2)) = 1; then MED=${SLIST[$MID]};
   else MED=`python -c "print \"%.${DIG}f\" % ((${SLIST[$MID]}+${SLIST[$(($MID-1))]})/2)"`
   fi
+  NFQ=$(scale=3; echo "(($NO-1)*95)/100" | bc -l)
+  NFQL=${NFQ%.*}; NFQR=$((NFQL+1)); NFQF=0.${NFQ#*.}
+  echo "DEBUG 95%: $NFQ $NFQL $NFR $NFQF"
+  NFP=`python -c "printf \"%.${DIG}f\" % (${SLIST[$NFQL]}*$NFQF+${SLIST[$NFQR]}*(1-$NFQF))"`
   AVGC="($(echo ${LIST[*]}|sed 's/ /+/g'))/$NO"
   #echo "$AVGC"
   AVG=`python -c "print \"%.${DIG}f\" % ($AVGC)"`
-  echo "$1: Min $MIN Max $MAX Med $MED Avg $AVG Num $NO" | tee -a $LOGFILE
+  echo "$1: Min $MIN Max $MAX Med $MED Avg $AVG 95%Q $NFP Num $NO" | tee -a $LOGFILE
 }
 
 findres()
