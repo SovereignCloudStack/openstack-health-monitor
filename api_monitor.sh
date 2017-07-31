@@ -746,14 +746,14 @@ createJHVMs()
     done
     REDIRS[0]="$RE0"
     REDIRS[1]="$RE1"
-    echo -e "$RE0$RE1"
+    #echo -e "$RE0$RE1"
   else
     echo "NOT GOOD: GUESSING VM IPs due to empty PORTS ${PORTS[*]}"
     # We don't know the IP addresses yet -- rely on sequential alloc starting at .4 (OTC)
     REDIRS=( 10.250.0.$((4+($NOVMS-1)/$NONETS)) 10.250.1.$((4+($NOVMS-2)/$NONETS)) )
   fi
   #echo "$VIP ${REDIRS[*]}"
-  RD=$(echo "${REDIRS[0]}" |  sed 's@^0@         - 0@')
+  RD=$(echo -n "${REDIRS[0]}" |  sed 's@^0@         - 0@')
   USERDATA="#cloud-config
 otc:
    internalnet:
@@ -770,7 +770,7 @@ $RD
   cat user_data.yaml >> $LOGFILE
   # of course nova boot --image ... --nic net-id ... would be easier
   createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[0]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-01 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[0]} ${RPRE}VM_JH0 || return
-  RD=$(echo "${REDIRS[1]}" |  sed 's@^0@         - 0@')
+  RD=$(echo -n "${REDIRS[1]}" |  sed 's@^0@         - 0@')
   USERDATA="#cloud-config
 otc:
    internalnet:
@@ -844,21 +844,23 @@ wait222()
   FLIP=${FLOATS[0]}
   echo -n "Wait for port 222 connectivity on $FLIP: "
   declare -i ctr=0
-  while [ $ctr -lt 40 ]; do
+  while [ $ctr -lt 50 ]; do
     echo "quit" | nc $NCPROXY -w 2 $FLIP 222 >/dev/null 2>&1 && break
     echo -n "."
     sleep 5
     let ctr+=1
   done
-  if [ $ctr -ge 40 ]; then echo " timeout"; return 1; fi
+  if [ $ctr -ge 50 ]; then echo " timeout"; return 1; fi
+  echo -n " "
+  ctr=0
   FLIP=${FLOATS[1]}
-  while [ $ctr -lt 60 ]; do
+  while [ $ctr -lt 30 ]; do
     echo "quit" | nc $NCPROXY -w 2 $FLIP 222 >/dev/null 2>&1 && break
     echo -n "."
     sleep 5
     let ctr+=1
   done
-  if [ $ctr -ge 60 ]; then echo " timeout"; return 1; fi
+  if [ $ctr -ge 30 ]; then echo " timeout"; return 1; fi
   echo
 }
 
@@ -885,6 +887,7 @@ testsnat()
   for red in ${REDIRS[1]}; do
     pno=${red#*tcp,}
     pno=${pno%%,*}
+    echo "ssh -p $pno -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8"
     ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8 || let FAIL+=1
   done
   return $FAIL
@@ -910,7 +913,7 @@ stats()
   fi
   NFQ=$(scale=3; echo "(($NO-1)*95)/100" | bc -l)
   NFQL=${NFQ%.*}; NFQR=$((NFQL+1)); NFQF=0.${NFQ#*.}
-  echo "DEBUG 95%: $NFQ $NFQL $NFR $NFQF"
+  #echo "DEBUG 95%: $NFQ $NFQL $NFR $NFQF"
   if test $NO = 1; then NFP=S{SLIST[$NFQL]}; else
     NFP=`python -c "print \"%.${DIG}f\" % (${SLIST[$NFQL]}*$NFQF+${SLIST[$NFQR]}*(1-$NFQF))"`
   fi
