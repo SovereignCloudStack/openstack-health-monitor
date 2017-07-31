@@ -777,12 +777,12 @@ setmetaVMs()
 wait222()
 {
   PROXY=""
-  if test -n "$http_proxy"; then PROXY="-X connect -x $http_proxy"; fi
+  #if test -n "$http_proxy"; then PROXY="-X connect -x $http_proxy"; fi
   FLIP=${FLOATS[0]}
   echo -n "Wait for port 222 connectivity on $FLIP: "
   declare -i ctr=0
   while [ $ctr -lt 40 ]; do
-    echo "quit" | nc -w2 $PROXY $FLIP 222 >/dev/null 2>&1 && break
+    echo "quit" | nc $PROXY -w 2 $FLIP 222 >/dev/null 2>&1 && break
     echo -n "."
     sleep 5
     let ctr+=1
@@ -790,7 +790,7 @@ wait222()
   if [ $ctr -ge 40 ]; then echo " timeout"; return 1; fi
   FLIP=${FLOATS[1]}
   while [ $ctr -lt 60 ]; do
-    echo "quit" | nc -w2 $PROXY $FLIP 222 >/dev/null 2>&1 && break
+    echo "quit" | nc $PROXY -w 2 $FLIP 222 >/dev/null 2>&1 && break
     echo -n "."
     sleep 5
     let ctr+=1
@@ -825,7 +825,7 @@ stats()
   if test -z "${LIST[*]}"; then return; fi
   DIG=${2:-2}
   OLDIFS="$IFS"
-  IFS='\n' SLIST=($(sort -n <<<"${LIST[*]}"))
+  IFS=$'\n' SLIST=($(sort -n <<<"${LIST[*]}"))
   IFS="$OLDIFS"
   #echo ${SLIST[*]}
   MIN=${SLIST[0]}
