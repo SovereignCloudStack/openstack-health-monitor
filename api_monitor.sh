@@ -67,7 +67,7 @@ MAXITER=-1
 NETTIMEOUT=12
 FIPTIMEOUT=24
 NOVATIMEOUT=12
-NOVABOOTTIMEOUT=24
+NOVABOOTTIMEOUT=32
 CINDERTIMEOUT=12
 GLANCETIMEOUT=24
 DEFTIMEOUT=12
@@ -86,6 +86,7 @@ ADDVOLSIZE=5
 
 DATE=`date +%s`
 LOGFILE=$RPRE$DATE.log
+declare -i ERRORS=0
 
 # Nothing to change below here
 BOLD="\e[0;1m"
@@ -143,6 +144,7 @@ if test -z "$OS_USERNAME"; then
   exit 1
 fi
 
+
 # Alarm notification
 sendalarm()
 {
@@ -177,6 +179,24 @@ $3" | otc.sh notifications publish $URN "$PRE $1 from $(hostname)"
   fi
 }
 
+declare -i EXITED=0
+exithandler()
+{
+  loop=$(($MAXITER-1))
+  if test "$EXITED" = "0"; then
+    echo -e "\nSIGINT received, exiting after this iteration"
+  elif test "$EXITED" = "1"; then
+    echo -e "\n$BOLD OK, cleaning up right away $NORM"
+    cleanup
+    kill -TERM 0
+  else
+    echo e "\n$RED OK, OK, exiting without cleanup. Use RPRE=$RPRE api_monitor.sh CLEANUP to do so.$NORM"
+    kill -TERM 0
+  fi
+  let EXITED+=1
+}
+
+trap exithandler SIGINT
 
 # Timeout killer
 # $1 => PID to kill
@@ -215,8 +235,8 @@ ostackcmd_search()
     sendalarm $RC "$*" "$RESP"
   fi
   TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
-  if test "$RC" != "0"; then echo "$TIM ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
-  if test -z "$ID"; then echo "$TIM ERROR: $@ => $RC $RESP => $SEARCH not found" 1>&2; return $RC; fi
+  if test "$RC" != "0"; then echo "$TIM $RC"; echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
+  if test -z "$ID"; then echo "$TIM $RC"; echo "ERROR: $@ => $RC $RESP => $SEARCH not found" 1>&2; return $RC; fi
   echo "$TIM $ID"
   return $RC
 }
@@ -249,7 +269,7 @@ ostackcmd_id()
   else
     ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed -e "s/^| *$IDNM *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
     echo "$LSTART/$LEND/$ID: $@ => $RC $RESP" >> $LOGFILE
-    if test "$RC" != "0"; then echo "$TIM ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
+    if test "$RC" != "0"; then echo "$TIM $RC"; echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
   fi
   echo "$TIM $ID"
   return $RC
@@ -965,9 +985,11 @@ stats()
   IFS=$'\n' SLIST=($(sort -n <<<"${LIST[*]}"))
   IFS="$OLDIFS"
   #echo ${SLIST[*]}
-  MIN=${SLIST[0]}
-  MAX=${SLIST[-1]}
   NO=${#SLIST[@]}
+  MIN=${SLIST[0]}
+  if test "$MIN" = "{"; then MIN=0.1; SLIST[0]=0.1; fi
+  if test $NO -gt 1 -a "${SLIST[1]}" = "{"; then SLIST[1]=0.1; fi
+  MAX=${SLIST[-1]}
   MID=$(($NO/2))
   if test $(($NO%2)) = 1; then MED=${SLIST[$MID]};
   else MED=`python -c "print \"%.${DIG}f\" % ((${SLIST[$MID]}+${SLIST[$(($MID-1))]})/2)"`
@@ -1096,6 +1118,7 @@ if test "$1" = "CLEANUP"; then
   echo -e "$BOLD *** Start cleanup *** $NORM"
   cleanup
   echo -e "$BOLD *** Cleanup complete *** $NORM"
+  exit 0
 else # test "$1" = "DEPLOY"; then
  # Complete setup
  echo -e "$BOLD *** Start deployment $NONETS SNAT JumpHosts + $NOVMS VMs *** $NORM"
@@ -1188,4 +1211,7 @@ $(allstats)"
 fi
 
 let loop+=1
+# TODO: Clean up residuals, if any
+cleanup
+sleep 5
 done
