@@ -98,9 +98,8 @@ usage()
   #echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-p] CLEANUP|DEPLOY"
   echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-p] [-s] [-e EMAIL] [-m SMN] [-i maxiter]"
   echo " CLEANUP cleans up all resources with prefix $RPRE"
-  echo " -p sets up ports manually"
   echo " -e sets eMail address for alarms (assumes working MTA)"
-  echo " -m sets alarming by SMN (pass ID of queue)"
+  echo " -m sets alarming by SMN (pass URN of queue)"
   echo " -s sends stats as well once per day, not just alarms"
   echo " -i sets max number of iterations"
   exit 0
@@ -111,7 +110,6 @@ if test "$1" = "-n"; then NOVMS=$2; shift; shift; fi
 if test "${1:0:2}" = "-n"; then NOVMS=${1:2}; shift; fi
 if test "$1" = "-l"; then LOGFILE=$2; shift; shift; fi
 if test "$1" = "help" -o "$1" = "-h"; then usage; fi
-if test "$1" = "-p"; then MANUALPORTSETUP=1; shift; fi
 if test "$1" = "-s"; then SENDSTATS=1; shift; fi
 if test "$1" = "-e"; then EMAIL=$2; shift; shift; fi
 if test "$1" = "-m"; then SMNID=$2; shift; shift; fi
@@ -140,6 +138,32 @@ if test -z "$OS_USERNAME"; then
   echo "source OS_ settings file before running this test"
   exit 1
 fi
+
+# Alarm notification
+sendalarm()
+{
+  if test $1 = 0; then PRE="Note"; else PRE="ALARM"; fi
+  echo "$PRE on ${RPRE%_} on $(hostname): $2 => $1\n$3" 1>&2
+  if test -n "$EMAIL"; then
+    echo "From: ${RPRE%_} $(hostname) <$LOGNAME@$(hostname -f)>
+To: $EMAIL
+Subject: $PRE: $2 => $1
+Date: $(date -R)
+
+$PRE
+
+${RPRE%_} on $(hostname):
+$2 => $1
+$3" | /usr/sbin/sendmail -t -f kurt@garloff.de
+  fi
+  if test -n "$SMNID"; then
+    echo "$PRE:
+${RPRE%_} on $(hostame):
+$2 => $1
+$3" | otc.sh notifications publish $SMNID "$PRE $1 from $(hostname)"
+  fi
+}
+
 
 # Timeout killer
 # $1 => PID to kill
@@ -173,6 +197,10 @@ ostackcmd_search()
   LEND=$(date +%s.%3N)
   ID=$(echo "$RESP" | grep "$SEARCH" | head -n1 | sed -e 's/^| *\([^ ]*\) *|.*$/\1/')
   echo "$LSTART/$LEND/$SEARCH: $@ => $RC $RESP $ID" >> $LOGFILE
+  if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
+    let ERRORS+=1
+    sendalarm $RC "$@" "$RESP"
+  fi
   if test "$RC" != "0"; then echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
   if test -z "$ID"; then echo "ERROR: $@ => $RC $RESP => $SEARCH not found" 1>&2; return $RC; fi
   TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
@@ -197,6 +225,10 @@ ostackcmd_id()
   fi
   RC=$?
   LEND=$(date +%s.%3N)
+  if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
+    let ERRORS+=1
+    sendalarm $RC "$@" "$RESP"
+  fi
   if test "$IDNM" = "DELETE"; then
     ID=$(echo "$RESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
     echo "$LSTART/$LEND/$ID: $@ => $RC $RESP" >> $LOGFILE
@@ -227,6 +259,10 @@ ostackcmd_tm()
     OSTACKRESP=$($@ 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
   fi
   RC=$?
+  if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
+    let ERRORS+=1
+    sendalarm $RC "$@" "$OSTACKRESP"
+  fi
   LEND=$(date +%s.%3N)
   TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
   eval "${STATNM}+=( $TIM )"
@@ -979,8 +1015,15 @@ declare -a WAITTIME
 
 declare -i loop=0
 
+declare -i CUMERRORS=0
+declare -i RUNS=0
+
+LASTREP=$(date +%Y-%m-%d)
+
 # MAIN LOOP
 while test $loop != $MAXITER; do
+
+declare -i ERRORS=0
 
 # Arrays to store resource creation start times
 declare -a VOLSTIME=()
@@ -1011,7 +1054,6 @@ SNATROUTE=""
 
 # Main
 MSTART=$(date +%s)
-ERROR=1
 # Debugging: Start with volume step
 if test "$1" = "CLEANUP"; then
   echo -e "$BOLD *** Start cleanup *** $NORM"
@@ -1048,17 +1090,21 @@ else # test "$1" = "DEPLOY"; then
               wait222
               testjhinet
               testsnat
-              ERROR=$?
+              RC=$?
+              let ERRORS+=$RC
+              if test $RC != 0; then
+                sendalarm $RC "ssh VM ping 8.8.8.8" ""
+              fi
               # TODO: Test login to all normal VMs (not just the last two)
               # TODO: Create disk ... and attach to JH VMs ... and test access
               # TODO: Attach additional net interfaces to JHs ... and test IP addr
               MSTOP=$(date +%s)
               WAITTIME+=($(($MSTOP-$WSTART)))
               echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
-              if test $ERROR = 0; then
+              if test $ERRORS = 0; then
                 sleep 1
               else
-                sleep 600
+                sleep 60
               fi
               #read ANS
               # Subtract waiting time (1s here)
@@ -1072,7 +1118,9 @@ else # test "$1" = "DEPLOY"; then
         fi; waitdelJHVMs; deleteJHVols
        fi;
        echo -e "${BOLD}Ignore port del errors; VM cleanup took care already.${NORM}"
+       IGNORE_ERRORS=1
        deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
+       unset IGNORE_ERRORS
       fi; deleteVIPs
      fi; deleteSGroups
     fi; deleteRIfaces
@@ -1090,13 +1138,30 @@ else # test "$1" = "DEPLOY"; then
  stats VOLCSTATS 0
  stats WAITTIME 0
  stats TOTTIME 0
- echo "This run: Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s"
+ echo "This run: Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s, $ERRORS errors"
 #else
 #  usage
 fi
+let CUMERRORS+=$ERRORS
+let RUNS+=1
 
-# TODO: Determine whether there was an error => alert & details
-# TODO: Send regular stats if requested
+CDATE=$(date +%Y-%m-%d)
+if test -n "$SENDSTATS" -a "$CDATE" != "$LASTREP" -o $(($loop+1)) == $MAXITER; then
+  sendalarm 0 "Statistics for $LASTREP" "
+$RUNS deployments
+$CUMERRORS ERRORS
+ $(stats NETSTATS)
+ $(stats NOVASTATS)
+ $(stats VMCSTATS 0)
+ $(stats VMDSTATS 0)
+ $(stats VOLSTATS)
+ $(stats VOLCSTATS 0)
+ $(stats WAITTIME 0)
+ $(stats TOTTIME 0)"
+ CUMERRORS=0
+ LASTREP="$CDATE"
+ RUNS=0
+fi
 
 let loop+=1
 done
