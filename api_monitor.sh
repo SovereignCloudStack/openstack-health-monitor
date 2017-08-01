@@ -96,10 +96,12 @@ GREEN="\e[0;32m"
 usage()
 {
   #echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-p] CLEANUP|DEPLOY"
-  echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-s] [-e EMAIL] [-m SMN] [-i maxiter]"
+  echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-s] [-e EMAIL [-e ALARMMAIL]] [-m SMNURN [-m ALARMSMNURN]] [-i maxiter]"
   echo " CLEANUP cleans up all resources with prefix $RPRE"
-  echo " -e sets eMail address for alarms (assumes working MTA)"
-  echo " -m sets alarming by SMN (pass URN of queue)"
+  echo " -e sets eMail address for notes/alarms (assumes working MTA)"
+  echo "    second -e splits eMails; notes got to first, alarms to second eMail"
+  echo " -m sets notes/alarms by SMN (pass URN of queue)"
+  echo "    second -m splits notifications; notes to first, alarms to second URN"
   echo " -s sends stats as well once per day, not just alarms"
   echo " -i sets max number of iterations"
   exit 0
@@ -112,7 +114,9 @@ if test "$1" = "-l"; then LOGFILE=$2; shift; shift; fi
 if test "$1" = "help" -o "$1" = "-h"; then usage; fi
 if test "$1" = "-s"; then SENDSTATS=1; shift; fi
 if test "$1" = "-e"; then EMAIL="$2"; shift; shift; fi
+if test "$1" = "-e"; then EMAIL2="$2"; shift; shift; fi
 if test "$1" = "-m"; then SMNID="$2"; shift; shift; fi
+if test "$1" = "-m"; then SMNID2="$2"; shift; shift; fi
 if test "$1" = "-i"; then MAXITER=$2; shift; shift; fi
 
 # Test precondition
@@ -144,28 +148,32 @@ sendalarm()
 {
   if test $1 = 0; then
     PRE="Note"
-    echo -e "$BOLD$PRE on ${RPRE%_} on $(hostname): $2 => $1\n$3$NORM" 1>&2
+    RES=""
+    echo -e "$BOLD$PRE on ${RPRE%_} on $(hostname): $2\n$3$NORM" 1>&2
   else
     PRE="ALARM"
-    echo -e "$RED$PRE on ${RPRE%_} on $(hostname): $2 => $1\n$3$NORM" 1>&2
+    RES=" => $1"
+    echo -e "$RED$PRE on ${RPRE%_} on $(hostname): $2$RES\n$3$NORM" 1>&2
   fi
   if test -n "$EMAIL"; then
+    if test -n "$EMAIL2" -a $1 != 0; then EM="$EMAIL2"; else EM="$EMAIL"; fi
     echo "From: ${RPRE%_} $(hostname) <$LOGNAME@$(hostname -f)>
-To: $EMAIL
-Subject: $PRE: $2 => $1
+To: $EM
+Subject: $PRE: $2$RES
 Date: $(date -R)
 
 $PRE
 
 ${RPRE%_} on $(hostname):
-$2 => $1
+$2$RES
 $3" | /usr/sbin/sendmail -t -f kurt@garloff.de
   fi
   if test -n "$SMNID"; then
+    if test -n "$SMNID2" -a $1 != 0; then URN="$SMNID2"; else URN="$SMNID"; fi
     echo "$PRE:
-${RPRE%_} on $(hostame):
-$2 => $1
-$3" | otc.sh notifications publish $SMNID "$PRE $1 from $(hostname)"
+${RPRE%_} on $(hostname):
+$2$RES
+$3" | otc.sh notifications publish $URN "$PRE $1 from $(hostname)"
   fi
 }
 
@@ -204,11 +212,11 @@ ostackcmd_search()
   echo "$LSTART/$LEND/$SEARCH: $@ => $RC $RESP $ID" >> $LOGFILE
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
     let ERRORS+=1
-    sendalarm $RC "$@" "$RESP"
+    sendalarm $RC "$*" "$RESP"
   fi
-  if test "$RC" != "0"; then echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
-  if test -z "$ID"; then echo "ERROR: $@ => $RC $RESP => $SEARCH not found" 1>&2; return $RC; fi
   TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
+  if test "$RC" != "0"; then echo "$TIM ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
+  if test -z "$ID"; then echo "$TIM ERROR: $@ => $RC $RESP => $SEARCH not found" 1>&2; return $RC; fi
   echo "$TIM $ID"
   return $RC
 }
@@ -232,17 +240,17 @@ ostackcmd_id()
   LEND=$(date +%s.%3N)
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
     let ERRORS+=1
-    sendalarm $RC "$@" "$RESP"
+    sendalarm $RC "$*" "$RESP"
   fi
+  TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
   if test "$IDNM" = "DELETE"; then
     ID=$(echo "$RESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
     echo "$LSTART/$LEND/$ID: $@ => $RC $RESP" >> $LOGFILE
   else
     ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed -e "s/^| *$IDNM *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
     echo "$LSTART/$LEND/$ID: $@ => $RC $RESP" >> $LOGFILE
-    if test "$RC" != "0"; then echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
+    if test "$RC" != "0"; then echo "$TIM ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
   fi
-  TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
   echo "$TIM $ID"
   return $RC
 }
@@ -266,7 +274,7 @@ ostackcmd_tm()
   RC=$?
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
     let ERRORS+=1
-    sendalarm $RC "$@" "$OSTACKRESP"
+    sendalarm $RC "$*" "$OSTACKRESP"
   fi
   LEND=$(date +%s.%3N)
   TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
