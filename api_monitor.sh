@@ -1215,7 +1215,7 @@ else # test "$1" = "DEPLOY"; then
  echo -e "$BOLD *** Cleanup complete *** $NORM"
  THISRUNTIME=$(($(date +%s)-$MSTART))
  TOTTIME+=($THISRUNTIME)
- if test $THISRUNTIME -gt $((960+20*$NOVM)); then
+ if test $THISRUNTIME -gt $((960+20*$NOVMS)); then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME"
  fi
  allstats
