@@ -10,9 +10,8 @@
 # Failures are noted and alarms are generated.
 #
 # Status:
-# - Environment setup works (once)
 # - Errors not yet handled everywhere
-# - Infrastructure to reports stats and alarms via emails & SMN still lacking
+# - Volume and NIC attachment not yet implemented
 #
 # (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017-7/2017
 # License: CC-BY-SA (2.0)
@@ -51,9 +50,11 @@
 # - Use cinder list and nova list for polling resource creation progress
 
 # User settings
+VERSION=1.0
 
 # Prefix for test resources
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
+echo "Running api_monitor.sh v$VERSION"
 echo "Using $RPRE prefix for api_monitor resources"
 # Number of VMs and networks
 NOVMS=12
@@ -909,6 +910,7 @@ setmetaVMs()
 
 wait222()
 {
+  # Wait for VMs being accessible behind fwdmasq (ports 222+)
   unset NCPROXY
   #if test -n "$http_proxy"; then NCPROXY="-X connect -x $http_proxy"; fi
   MAXWAIT=48
@@ -948,7 +950,7 @@ wait222()
 testjhinet()
 {
   unset SSH_AUTH_SOCK
-  #echo "Test JH outgoing inet ... "
+  #echo "Test JH access and outgoing inet ... "
   ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
   ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
   if test $? = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $NORM"; fi
@@ -957,7 +959,7 @@ testjhinet()
 testsnat()
 {
   unset SSH_AUTH_SOCK
-  #echo "Test VM outgoing SNAT inet ... "
+  #echo "Test VM access (fwdmasq) and outgoing SNAT inet ... "
   declare -i FAIL=0
   for red in ${REDIRS[0]}; do
     pno=${red#*tcp,}
@@ -978,13 +980,16 @@ testsnat()
 # STATLIST [DIGITS]
 stats()
 {
+  # Fixup "{" found after errors in time stats
   NM=$1
   NO=$(eval echo "\${#${NM}[@]}")
   for idx in `seq 0 $NO`; do
     VAL=$(echo eval "echo \${${NM}[$idx]}")
     if test "$VAL" = "{"; then eval $NM[$idx]=0.01; fi
   done
+  # Display name
   if test -n "$3"; then NAME=$3; else NAME=$1; fi
+  # Generate list and sorted list
   eval LIST=( \"\${${1}[@]}\" )
   if test -z "${LIST[*]}"; then return; fi
   DIG=${2:-2}
@@ -993,9 +998,8 @@ stats()
   IFS="$OLDIFS"
   #echo ${SLIST[*]}
   NO=${#SLIST[@]}
+  # Some easy stats, Min, Max, Med, Avg, 95% quantile ...
   MIN=${SLIST[0]}
-  if test "$MIN" = "{"; then MIN=0.1; SLIST[0]=0.1; fi
-  if test $NO -gt 1 -a "${SLIST[1]}" = "{"; then SLIST[1]=0.1; fi
   MAX=${SLIST[-1]}
   MID=$(($NO/2))
   if test $(($NO%2)) = 1; then MED=${SLIST[$MID]};
