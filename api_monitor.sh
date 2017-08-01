@@ -172,7 +172,7 @@ $3" | /usr/sbin/sendmail -t -f kurt@garloff.de
   fi
   if test -n "$SMNID"; then
     if test -n "$SMNID2" -a $1 != 0; then URN="$SMNID2"; else URN="$SMNID"; fi
-    echo "$PRE:
+    echo "$PRE: $(date)
 ${RPRE%_} on $(hostname):
 $2$RES
 $3" | otc.sh notifications publish $URN "$PRE $1 from $(hostname)"
@@ -599,6 +599,7 @@ createRIfaces()
 
 deleteRIfaces()
 {
+  if test -z "${ROUTERS[0]}"; then return 0; fi
   deleteResources NETSTATS SUBNET "" $NETTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
   deleteResources NETSTATS JHSUBNET "" $NETTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
 }
@@ -758,7 +759,7 @@ createFIPs()
   EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| [0-9a-f-]* | \([^ ]*\).*$/\1/')
   # Actually this fails if the port is not assigned to a VM yet
   #  -- we can not associate a FIP to a port w/o dev owner
-  createResources $NONETS NETSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL $EXTNET
+  createResources $NONETS FIPSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL $EXTNET
   # TODO: Use API to tell VPC that the VIP is the next hop (route table)
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
@@ -786,7 +787,7 @@ deleteFIPs()
   if test -n "$SNATROUTE"; then
     ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --no-routes
   fi
-  deleteResources NETSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
+  deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
 }
 
 REDIRS=()
@@ -838,7 +839,7 @@ $RD
   echo "$USERDATA" > user_data.yaml
   cat user_data.yaml >> $LOGFILE
   # of course nova boot --image ... --nic net-id ... would be easier
-  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[0]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-01 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[0]} ${RPRE}VM_JH0 || return
+  createResources 1 NOVABSTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[0]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-01 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[0]} ${RPRE}VM_JH0 || return
   RD=$(echo -n "${REDIRS[1]}" |  sed 's@^0@         - 0@')
   USERDATA="#cloud-config
 otc:
@@ -854,7 +855,7 @@ $RD
 "
   echo "$USERDATA" > user_data.yaml
   cat user_data.yaml >> $LOGFILE
-  createResources 1 NOVASTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[1]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-02 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[1]} ${RPRE}VM_JH1 || return
+  createResources 1 NOVABSTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[1]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone eu-de-02 --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[1]} ${RPRE}VM_JH1 || return
   #rm user_data.yaml
 }
 
@@ -878,10 +879,10 @@ waitdelJHVMs()
 createVMs()
 {
   if test -n "$MANUALPORTSETUP"; then
-    createResources $NOVMS NOVASTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --nic port-id=\$VAL ${RPRE}VM_VM\$no
+    createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --nic port-id=\$VAL ${RPRE}VM_VM\$no
   else
     # SAVE: createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
-    createResources $NOVMS NOVASTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" ${RPRE}VM_VM\$no
+    createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone eu-de-0\$AZ --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" ${RPRE}VM_VM\$no
   fi
 }
 waitVMs()
@@ -1014,14 +1015,16 @@ stats()
 
 allstats()
 {
- stats NETSTATS  2 "Neutron API Stats "
- stats NOVASTATS 2 "Nova API Stats    "
- stats VMCSTATS  0 "VM Creation Stats "
- stats VMDSTATS  0 "VM Deleteion Stats"
- stats VOLSTATS  2 "Cinder API Stats  "
- stats VOLCSTATS 0 "Vol Creation Stats"
- stats WAITTIME  0 "Wait for VM Stats "
- stats TOTTIME   0 "Total setup Stats "
+ stats NETSTATS   2 "Neutron API Stats "
+ stats FIPSTATS   2 "Neutron FIP Stats "
+ stats NOVASTATS  2 "Nova API Stats    "
+ stats NOVABSTATS 2 "Nova Boot Stats   "
+ stats VMCSTATS   0 "VM Creation Stats "
+ stats VMDSTATS   0 "VM Deletion Stats "
+ stats VOLSTATS   2 "Cinder API Stats  "
+ stats VOLCSTATS  0 "Vol Creation Stats"
+ stats WAITTIME   0 "Wait for VM Stats "
+ stats TOTTIME    0 "Total setup Stats "
 }
 
 findres()
@@ -1067,8 +1070,10 @@ cleanup()
 # Statistics
 # API performance neutron, cinder, nova
 declare -a NETSTATS
+declare -a FIPSTATS
 declare -a VOLSTATS
 declare -a NOVASTATS
+declare -a NOVABSTATS
 # Resource creation stats (creation/deletion)
 declare -a VOLCSTATS
 declare -a VOLDSTATS
@@ -1218,8 +1223,8 @@ fi
 
 let loop+=1
 # TODO: Clean up residuals, if any
+sleep 5
 IGNORE_ERRORS=1
 cleanup
 unset IGNORE_ERRORS
-sleep 5
 done
