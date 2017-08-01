@@ -96,7 +96,7 @@ GREEN="\e[0;32m"
 usage()
 {
   #echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-p] CLEANUP|DEPLOY"
-  echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-p] [-s] [-e EMAIL] [-m SMN] [-i maxiter]"
+  echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-s] [-e EMAIL] [-m SMN] [-i maxiter]"
   echo " CLEANUP cleans up all resources with prefix $RPRE"
   echo " -e sets eMail address for alarms (assumes working MTA)"
   echo " -m sets alarming by SMN (pass URN of queue)"
@@ -111,8 +111,8 @@ if test "${1:0:2}" = "-n"; then NOVMS=${1:2}; shift; fi
 if test "$1" = "-l"; then LOGFILE=$2; shift; shift; fi
 if test "$1" = "help" -o "$1" = "-h"; then usage; fi
 if test "$1" = "-s"; then SENDSTATS=1; shift; fi
-if test "$1" = "-e"; then EMAIL=$2; shift; shift; fi
-if test "$1" = "-m"; then SMNID=$2; shift; shift; fi
+if test "$1" = "-e"; then EMAIL="$2"; shift; shift; fi
+if test "$1" = "-m"; then SMNID="$2"; shift; shift; fi
 if test "$1" = "-i"; then MAXITER=$2; shift; shift; fi
 
 # Test precondition
