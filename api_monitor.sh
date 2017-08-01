@@ -48,9 +48,18 @@
 # Optimization possibilities:
 # - Cache token and reuse when creating a large number of resources in a loop
 # - Use cinder list and nova list for polling resource creation progress
+#
+# Prerequisites:
+# - Working python-XXXclient tools (glance, neutron, nova, cinder)
+# - otc.sh (for SMN)
+# - sendmail (if email notification is requested)
+#
+# Example:
+# ./api_monitor.sh -n 8 -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -s -i 100
+
+VERSION=1.0
 
 # User settings
-VERSION=1.0
 
 # Prefix for test resources
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
