@@ -557,12 +557,12 @@ showResources()
 
 createRouters()
 {
-  createResources 1 NETSTATS ROUTER NONE NONE "" id 12 neutron router-create ${RPRE}Router
+  createResources 1 NETSTATS ROUTER NONE NONE "" id $FIPTIMEOUT neutron router-create ${RPRE}Router
 }
 
 deleteRouters()
 {
-  deleteResources NETSTATS ROUTER "" $NETTIMEOUT neutron router-delete
+  deleteResources NETSTATS ROUTER "" $FIPTIMEOUT neutron router-delete
 }
 
 createNets()
@@ -977,6 +977,12 @@ testsnat()
 # STATLIST [DIGITS]
 stats()
 {
+  NM=$1
+  NO=$(eval echo "\${#${NM}[@]}")
+  for idx in `seq 0 $NO`; do
+    VAL=$(echo eval "echo \${${NM}[$idx]}")
+    if test "$VAL" = "{"; then eval $NM[$idx]=0.01; fi
+  done
   if test -n "$3"; then NAME=$3; else NAME=$1; fi
   eval LIST=( \"\${${1}[@]}\" )
   if test -z "${LIST[*]}"; then return; fi
@@ -1000,7 +1006,7 @@ stats()
   if test $NO = 1; then NFP=${SLIST[$NFQL]}; else
     NFP=`python -c "print \"%.${DIG}f\" % (${SLIST[$NFQL]}*(1-$NFQF)+${SLIST[$NFQR]}*$NFQF)"`
   fi
-  AVGC="($(echo ${LIST[*]}|sed 's/ /+/g'))/$NO"
+  AVGC="($(echo ${SLIST[*]}|sed 's/ /+/g'))/$NO"
   #echo "$AVGC"
   AVG=`python -c "print \"%.${DIG}f\" % ($AVGC)"`
   echo "$NAME: Num $NO Min $MIN Med $MED Avg $AVG 95% $NFP Max $MAX" | tee -a $LOGFILE
@@ -1212,6 +1218,8 @@ fi
 
 let loop+=1
 # TODO: Clean up residuals, if any
+IGNORE_ERRORS=1
 cleanup
+unset IGNORE_ERRORS
 sleep 5
 done
