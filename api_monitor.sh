@@ -142,8 +142,13 @@ fi
 # Alarm notification
 sendalarm()
 {
-  if test $1 = 0; then PRE="Note"; else PRE="ALARM"; fi
-  echo "$PRE on ${RPRE%_} on $(hostname): $2 => $1\n$3" 1>&2
+  if test $1 = 0; then
+    PRE="Note"
+    echo -e "$BOLD$PRE on ${RPRE%_} on $(hostname): $2 => $1\n$3$NORM" 1>&2
+  else
+    PRE="ALARM"
+    echo -e "$RED$PRE on ${RPRE%_} on $(hostname): $2 => $1\n$3$NORM" 1>&2
+  fi
   if test -n "$EMAIL"; then
     echo "From: ${RPRE%_} $(hostname) <$LOGNAME@$(hostname -f)>
 To: $EMAIL
@@ -877,27 +882,38 @@ wait222()
 {
   unset NCPROXY
   #if test -n "$http_proxy"; then NCPROXY="-X connect -x $http_proxy"; fi
-  FLIP=${FLOATS[0]}
-  echo -n "Wait for port 222 connectivity on $FLIP: "
-  declare -i ctr=0
-  while [ $ctr -lt 50 ]; do
-    echo "quit" | nc $NCPROXY -w 2 $FLIP 222 >/dev/null 2>&1 && break
-    echo -n "."
-    sleep 5
-    let ctr+=1
+  MAXWAIT=48
+  echo -n "${FLOATS[0]} "
+  for red in ${REDIRS[0]}; do
+    pno=${red#*tcp,}
+    pno=${pno%%,*}
+    declare -i ctr=0
+    echo -n "$pno "
+    while [ $ctr -le $MAXWAIT ]; do
+      echo "quit" | nc $NCPROXY -w 2 ${FLOATS[0]} $pno >/dev/null 2>&1 && break
+      echo -n "."
+      sleep 5
+      let ctr+=1
+    done
+    MAXWAIT=24
+    if [ $ctr -ge $MAXWAIT ]; then echo " timeout"; return 1; fi
   done
-  if [ $ctr -ge 50 ]; then echo " timeout"; return 1; fi
-  echo -n " "
-  ctr=0
-  FLIP=${FLOATS[1]}
-  while [ $ctr -lt 30 ]; do
-    echo "quit" | nc $NCPROXY -w 2 $FLIP 222 >/dev/null 2>&1 && break
-    echo -n "."
-    sleep 5
-    let ctr+=1
+  echo -n " ${FLOATS[1]} "
+  for red in ${REDIRS[1]}; do
+    pno=${red#*tcp,}
+    pno=${pno%%,*}
+    declare -i ctr=0
+    echo -n "$pno "
+    while [ $ctr -le $MAXWAIT ]; do
+      echo "quit" | nc $NCPROXY -w 2 ${FLOATS[1]} $pno >/dev/null 2>&1 && break
+      echo -n "."
+      sleep 5
+      let ctr+=1
+    done
+    MAXWAIT=24
+    if [ $ctr -ge $MAXWAIT ]; then echo " timeout"; return 1; fi
   done
-  if [ $ctr -ge 30 ]; then echo " timeout"; return 1; fi
-  echo
+  echo "OK"
 }
 
 testjhinet()
@@ -950,7 +966,7 @@ stats()
   NFQ=$(scale=3; echo "(($NO-1)*95)/100" | bc -l)
   NFQL=${NFQ%.*}; NFQR=$((NFQL+1)); NFQF=0.${NFQ#*.}
   #echo "DEBUG 95%: $NFQ $NFQL $NFR $NFQF"
-  if test $NO = 1; then NFP=S{SLIST[$NFQL]}; else
+  if test $NO = 1; then NFP=${SLIST[$NFQL]}; else
     NFP=`python -c "print \"%.${DIG}f\" % (${SLIST[$NFQL]}*$NFQF+${SLIST[$NFQR]}*(1-$NFQF))"`
   fi
   AVGC="($(echo ${LIST[*]}|sed 's/ /+/g'))/$NO"
