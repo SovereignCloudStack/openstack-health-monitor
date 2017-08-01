@@ -75,8 +75,8 @@ DEFTIMEOUT=12
 # Images, flavors, disk sizes
 JHIMG="${JHIMG:-Standard_openSUSE_42_JeOS_latest}"
 JHIMGFILT="--property-filter __platform=OpenSUSE"
-IMG="${IMG:-Standard_openSUSE_42_JeOS_latest}"
-IMGFILT="--property-filter __platform=OpenSUSE"
+IMG="${IMG:-Standard_CentOS_7_latest}"
+IMGFILT="--property-filter __platform=CentOS"
 JHFLAVOR="computev1-1"
 FLAVOR="computev1-1"
 
@@ -1223,8 +1223,9 @@ fi
 
 let loop+=1
 # TODO: Clean up residuals, if any
-sleep 5
+sleep 10
 IGNORE_ERRORS=1
 cleanup
 unset IGNORE_ERRORS
 done
+rm ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem
