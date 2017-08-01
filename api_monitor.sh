@@ -1200,7 +1200,11 @@ else # test "$1" = "DEPLOY"; then
  fi; deleteRouters
  #echo "${NETSTATS[*]}"
  echo -e "$BOLD *** Cleanup complete *** $NORM"
- TOTTIME+=($(($(date +%s)-$MSTART)))
+ THISRUNTIME=$(($(date +%s)-$MSTART))
+ TOTTIME+=($THISRUNTIME)
+ if test $THISRUNTIME -gt $((960+20*$NOVM)); then
+    sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME"
+ fi
  allstats
  echo "This run: Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s, $ERRORS errors"
 #else
