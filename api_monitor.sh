@@ -949,6 +949,7 @@ testsnat()
 # STATLIST [DIGITS]
 stats()
 {
+  if test -n "$3"; then NAME=$3; else NAME=$1; fi
   eval LIST=( \"\${${1}[@]}\" )
   if test -z "${LIST[*]}"; then return; fi
   DIG=${2:-2}
@@ -967,12 +968,24 @@ stats()
   NFQL=${NFQ%.*}; NFQR=$((NFQL+1)); NFQF=0.${NFQ#*.}
   #echo "DEBUG 95%: $NFQ $NFQL $NFR $NFQF"
   if test $NO = 1; then NFP=${SLIST[$NFQL]}; else
-    NFP=`python -c "print \"%.${DIG}f\" % (${SLIST[$NFQL]}*$NFQF+${SLIST[$NFQR]}*(1-$NFQF))"`
+    NFP=`python -c "print \"%.${DIG}f\" % (${SLIST[$NFQL]}*(1-$NFQF)+${SLIST[$NFQR]}*$NFQF)"`
   fi
   AVGC="($(echo ${LIST[*]}|sed 's/ /+/g'))/$NO"
   #echo "$AVGC"
   AVG=`python -c "print \"%.${DIG}f\" % ($AVGC)"`
-  echo "$1: Min $MIN Max $MAX Med $MED Avg $AVG 95%Q $NFP Num $NO" | tee -a $LOGFILE
+  echo "$NAME: Num $NO Min $MIN Med $MED Avg $AVG 95% $NFP Max $MAX" | tee -a $LOGFILE
+}
+
+allstats()
+{
+ stats NETSTATS  2 "Neutron API Stats "
+ stats NOVASTATS 2 "Nova API Stats    "
+ stats VMCSTATS  0 "VM Creation Stats "
+ stats VMDSTATS  0 "VM Deleteion Stats"
+ stats VOLSTATS  2 "Cinder API Stats  "
+ stats VOLCSTATS 0 "Vol Creation Stats"
+ stats WAITTIME  0 "Wait for VM Stats "
+ stats TOTTIME   0 "Total setup Stats "
 }
 
 findres()
@@ -1146,14 +1159,7 @@ else # test "$1" = "DEPLOY"; then
  #echo "${NETSTATS[*]}"
  echo -e "$BOLD *** Cleanup complete *** $NORM"
  TOTTIME+=($(($(date +%s)-$MSTART)))
- stats NETSTATS
- stats NOVASTATS
- stats VMCSTATS 0
- stats VMDSTATS 0
- stats VOLSTATS
- stats VOLCSTATS 0
- stats WAITTIME 0
- stats TOTTIME 0
+ allstats
  echo "This run: Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s, $ERRORS errors"
 #else
 #  usage
@@ -1162,18 +1168,12 @@ let CUMERRORS+=$ERRORS
 let RUNS+=1
 
 CDATE=$(date +%Y-%m-%d)
-if test -n "$SENDSTATS" -a "$CDATE" != "$LASTREP" -o $(($loop+1)) == $MAXITER; then
+if test -n "$SENDSTATS" -a "$CDATE" != "$LASTREP" || test $(($loop+1)) == $MAXITER; then
   sendalarm 0 "Statistics for $LASTREP" "
 $RUNS deployments
 $CUMERRORS ERRORS
- $(stats NETSTATS)
- $(stats NOVASTATS)
- $(stats VMCSTATS 0)
- $(stats VMDSTATS 0)
- $(stats VOLSTATS)
- $(stats VOLCSTATS 0)
- $(stats WAITTIME 0)
- $(stats TOTTIME 0)"
+
+$(allstats)"
  CUMERRORS=0
  LASTREP="$CDATE"
  RUNS=0
