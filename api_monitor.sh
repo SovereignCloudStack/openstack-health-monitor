@@ -962,12 +962,20 @@ testjhinet()
   ERR=""
   RC=0
   #echo "Test JH access and outgoing inet ... "
-  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8 || sleep 2 && ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
+  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
+  if test $? != 0; then
+    sleep 2
+    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
+  fi
   if test $? != 0; then
     RC=1
     ERR="ssh JH0 ping 8.8.8.8; "
   fi
-  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8 || sleep 2 && ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+  if test $? != 0; then
+    sleep 2
+    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+  fi
   if test $? != 0; then
     RC=1
     ERR="${ERR}ssh JH1 ping 8.8.8.8; "
@@ -985,21 +993,29 @@ testsnat()
     pno=${red#*tcp,}
     pno=${pno%%,*}
     echo "ssh -p $pno -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8"
-    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8 || sleep 2 && ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
-  if test $? != 0; then
-    let FAIL+=1
-    ERR="${ERR}ssh VM0 $red ping 8.8.8.8; "
-  fi
+    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
+    if test $? != 0; then
+       sleep 2
+       ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
+    fi
+    if test $? != 0; then
+      let FAIL+=1
+      ERR="${ERR}ssh VM0 $red ping 8.8.8.8; "
+    fi
   done
   for red in ${REDIRS[1]}; do
     pno=${red#*tcp,}
     pno=${pno%%,*}
     echo "ssh -p $pno -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8"
-    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8 || sleep 2 && ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
-  if test $? != 0; then
-    let FAIL+=1
-    ERR="${ERR}ssh VM1 $red ping 8.8.8.8; "
-  fi
+    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+    if test $? != 0; then
+      sleep 2
+      ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+    fi
+    if test $? != 0; then
+      let FAIL+=1
+      ERR="${ERR}ssh VM1 $red ping 8.8.8.8; "
+    fi
   done
   return $FAIL
 }
