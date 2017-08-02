@@ -57,7 +57,7 @@
 # Example:
 # ./api_monitor.sh -n 8 -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -s -i 100
 
-VERSION=1.02
+VERSION=1.03
 
 # User settings
 
@@ -960,16 +960,27 @@ testjhinet()
 {
   unset SSH_AUTH_SOCK
   ERR=""
-  RC=0
+  declare -i RC=0
   #echo "Test JH access and outgoing inet ... "
+  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ls
+  if test $? != 0; then
+    RC=2
+    ERR="ssh JH0 ls; "
+  fi
   ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
   if test $? != 0; then
     sleep 2
     ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
   fi
   if test $? != 0; then
-    RC=1
-    ERR="ssh JH0 ping 8.8.8.8; "
+    #let RC+=1
+    let CUMPINGERRORS+=1
+    ERR="${ERR}ssh JH0 ping 8.8.8.8; "
+  fi
+  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ls
+  if test $? != 0; then
+    let RC+=2
+    ERR="${ERR}ssh JH1 ls; "
   fi
   ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
   if test $? != 0; then
@@ -977,10 +988,12 @@ testjhinet()
     ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
   fi
   if test $? != 0; then
-    RC=1
+    #let RC+=1
+    let CUMPINGERRORS+=1
     ERR="${ERR}ssh JH1 ping 8.8.8.8; "
   fi
-  if test $RC = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $ERR $NORM"; return 1; fi
+  if test $RC = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $ERR $NORM"; return $RC; fi
+  if test -n "$ERR"; then echo "$RED $ERR $NORM"; fi
 }
 
 testsnat()
@@ -992,6 +1005,11 @@ testsnat()
   for red in ${REDIRS[0]}; do
     pno=${red#*tcp,}
     pno=${pno%%,*}
+    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ls
+    if test $? != 0; then
+      let FAIL+=2
+      ERR="ssh VM0 $red ls; "
+    fi
     echo "ssh -p $pno -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8"
     ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
     if test $? != 0; then
@@ -999,13 +1017,19 @@ testsnat()
        ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
     fi
     if test $? != 0; then
-      let FAIL+=1
+      #let FAIL+=1
+      let CUMPINGERRORS+=1
       ERR="${ERR}ssh VM0 $red ping 8.8.8.8; "
     fi
   done
   for red in ${REDIRS[1]}; do
     pno=${red#*tcp,}
     pno=${pno%%,*}
+    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ls
+    if test $? != 0; then
+      let FAIL+=2
+      ERR="ssh VM1 $red ls; "
+    fi
     echo "ssh -p $pno -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8"
     ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
     if test $? != 0; then
@@ -1013,10 +1037,12 @@ testsnat()
       ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
     fi
     if test $? != 0; then
-      let FAIL+=1
+      #let FAIL+=1
+      let CUMPINGERRORS+=1
       ERR="${ERR}ssh VM1 $red ping 8.8.8.8; "
     fi
   done
+  if test -n "$ERR"; then echo "$RED $ERR $NORM"; fi
   return $FAIL
 }
 
@@ -1133,6 +1159,7 @@ declare -a WAITTIME
 
 declare -i loop=0
 
+declare -i CUMPINGERRORS=0
 declare -i CUMERRORS=0
 declare -i RUNS=0
 
@@ -1270,9 +1297,11 @@ if test -n "$SENDSTATS" -a "$CDATE" != "$LASTREP" || test $(($loop+1)) == $MAXIT
   sendalarm 0 "Statistics for $LASTREP" "
 $RUNS deployments
 $CUMERRORS ERRORS
+$CUMPINGERRORS Ping failures
 
 $(allstats)"
  CUMERRORS=0
+ CUMPINGERRORS=0
  LASTREP="$CDATE"
  RUNS=0
 fi
