@@ -57,7 +57,7 @@
 # Example:
 # ./api_monitor.sh -n 8 -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -s -i 100
 
-VERSION=1.01
+VERSION=1.02
 
 # User settings
 
@@ -968,10 +968,9 @@ testjhinet()
     ERR="ssh JH0 ping 8.8.8.8; "
   fi
   ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8 || sleep 2 && ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
-8
   if test $? != 0; then
     RC=1
-    ERR="${ERR}ssh JH0 ping 8.8.8.8; "
+    ERR="${ERR}ssh JH1 ping 8.8.8.8; "
   fi
   if test $RC = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $ERR $NORM"; return 1; fi
 }
@@ -996,7 +995,7 @@ testsnat()
     pno=${red#*tcp,}
     pno=${pno%%,*}
     echo "ssh -p $pno -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8"
-    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8 || sleep 2 && ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[2]} ping -i1 -c2 8.8.8.8
+    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8 || sleep 2 && ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
   if test $? != 0; then
     let FAIL+=1
     ERR="${ERR}ssh VM1 $red ping 8.8.8.8; "
@@ -1195,13 +1194,13 @@ else # test "$1" = "DEPLOY"; then
               testjhinet
               if test $? != 0; then
                 let ERRORS+=1
-                sendalarm $RC "ssh JH ping 8.8.8.8" ""
+                sendalarm $RC "$ERR" ""
               fi
               testsnat
               RC=$?
               let ERRORS+=$RC
               if test $RC != 0; then
-                sendalarm $RC "ssh VM ping 8.8.8.8" ""
+                sendalarm $RC "$ERR" ""
               fi
               # TODO: Test login to all normal VMs (not just the last two)
               # TODO: Create disk ... and attach to JH VMs ... and test access
