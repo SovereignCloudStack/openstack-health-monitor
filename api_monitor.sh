@@ -997,7 +997,7 @@ testjhinet()
     ERR="${ERR}ssh JH1 ping $PINGTARGET; "
   fi
   if test $RC = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $ERR $NORM"; return $RC; fi
-  if test -n "$ERR"; then echo "$RED $ERR $NORM"; fi
+  if test -n "$ERR"; then echo -e "$RED $ERR $NORM"; fi
 }
 
 testsnat()
@@ -1048,7 +1048,7 @@ testsnat()
       ERR="${ERR}ssh VM1 $red ping $PINGTARGET; "
     fi
   done
-  if test -n "$ERR"; then echo "$RED $ERR $NORM"; fi
+  if test -n "$ERR"; then echo -e "$RED $ERR $NORM"; fi
   return $FAIL
 }
 
@@ -1287,7 +1287,7 @@ else # test "$1" = "DEPLOY"; then
  echo -e "$BOLD *** Cleanup complete *** $NORM"
  THISRUNTIME=$(($(date +%s)-$MSTART))
  TOTTIME+=($THISRUNTIME)
- if test $THISRUNTIME -gt $((960+20*$NOVMS)); then
+ if test $THISRUNTIME -gt $((900+30*$NOVMS)); then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME"
  fi
  allstats
