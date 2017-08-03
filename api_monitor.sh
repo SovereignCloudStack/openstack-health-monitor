@@ -994,7 +994,7 @@ testlsandping()
 
 testjhinet()
 {
-  local ERR RC R
+  local RC R
   unset SSH_AUTH_SOCK
   ERR=""
   #echo "Test JH access and outgoing inet ... "
@@ -1019,7 +1019,7 @@ testjhinet()
 
 testsnat()
 {
-  local ERR FAIL ERR0 ERR1 pno RC
+  local FAIL ERR0 ERR1 pno RC
   unset SSH_AUTH_SOCK
   ERR=""
   ERR0=""; ERR1=""
@@ -1057,8 +1057,8 @@ testsnat()
     testlsandping ${KEYPAIRS[1]} ${FLOATS[0]} $pno
     RC=$?
     if test $RC == 2; then
-      ERR="ssh VM0 $red ls; "
       let FAIL+=2
+      ERR="ssh VM0 $red ls; "
     elif test $RC == 1; then
       let CUMPINGERRORS+=1
       ERR="${ERR}ssh VM0 $red ping $PINGTARGET; "
@@ -1071,7 +1071,7 @@ testsnat()
     RC=$?
     if test $RC == 2; then
       let FAIL+=2
-      ERR="ssh VM1 $red ls; "
+      ERR="${ERR}ssh VM1 $red ls; "
     elif test $RC == 1; then
       let CUMPINGERRORS+=1
       ERR="${ERR}ssh VM1 $red ping $PINGTARGET; "
