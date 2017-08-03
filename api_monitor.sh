@@ -12,6 +12,7 @@
 # Status:
 # - Errors not yet handled everywhere
 # - Volume and NIC attachment not yet implemented
+# - Log too verbose for permament operation ...
 #
 # (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017-7/2017
 # License: CC-BY-SA (2.0)
@@ -55,11 +56,12 @@
 # - sendmail (if email notification is requested)
 #
 # Example:
-# ./api_monitor.sh -n 8 -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -s -i 100
+# ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.03
+VERSION=1.04
 
 # User settings
+PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE
 
 # Prefix for test resources
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
@@ -108,13 +110,13 @@ usage()
 {
   #echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-p] CLEANUP|DEPLOY"
   echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-s] [-e EMAIL [-e ALARMMAIL]] [-m SMNURN [-m ALARMSMNURN]] [-i maxiter]"
-  echo " CLEANUP cleans up all resources with prefix $RPRE"
   echo " -e sets eMail address for notes/alarms (assumes working MTA)"
   echo "    second -e splits eMails; notes got to first, alarms to second eMail"
   echo " -m sets notes/alarms by SMN (pass URN of queue)"
   echo "    second -m splits notifications; notes to first, alarms to second URN"
   echo " -s sends stats as well once per day, not just alarms"
   echo " -i sets max number of iterations"
+  echo "Or: RPRE=XXX api_monitor.sh CLEANUP  to clean up all resources with prefix XXX"
   exit 0
 }
 
@@ -591,8 +593,8 @@ JHSUBNETIP=10.250.250.0/24
 
 createSubNets()
 {
-  createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
-  createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.8.8 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
+  createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver $PINGTARGET --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
+  createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver $PINGTARGET --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
 }
 
 deleteSubNets()
@@ -960,37 +962,39 @@ testjhinet()
 {
   unset SSH_AUTH_SOCK
   ERR=""
-  declare -i RC=0
   #echo "Test JH access and outgoing inet ... "
+  declare -i RC=0
+  ssh-keygen -R ${FLOATS[0]} -f ~/.ssh/known_hosts
   ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ls
   if test $? != 0; then
     RC=2
     ERR="ssh JH0 ls; "
   fi
-  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
+  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 $PINGTARGET
   if test $? != 0; then
     sleep 2
-    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
+    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 $PINGTARGET
   fi
   if test $? != 0; then
     #let RC+=1
     let CUMPINGERRORS+=1
-    ERR="${ERR}ssh JH0 ping 8.8.8.8; "
+    ERR="${ERR}ssh JH0 ping $PINGTARGET; "
   fi
+  ssh-keygen -R ${FLOATS[1]} -f ~/.ssh/known_hosts
   ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ls
   if test $? != 0; then
     let RC+=2
     ERR="${ERR}ssh JH1 ls; "
   fi
-  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 $PINGTARGET
   if test $? != 0; then
     sleep 2
-    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 $PINGTARGET
   fi
   if test $? != 0; then
     #let RC+=1
     let CUMPINGERRORS+=1
-    ERR="${ERR}ssh JH1 ping 8.8.8.8; "
+    ERR="${ERR}ssh JH1 ping $PINGTARGET; "
   fi
   if test $RC = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $ERR $NORM"; return $RC; fi
   if test -n "$ERR"; then echo "$RED $ERR $NORM"; fi
@@ -1005,41 +1009,43 @@ testsnat()
   for red in ${REDIRS[0]}; do
     pno=${red#*tcp,}
     pno=${pno%%,*}
+    ssh-keygen -R [${FLOATS[0]}]:$pno -f ~/.ssh/known_hosts
     ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ls
     if test $? != 0; then
       let FAIL+=2
       ERR="ssh VM0 $red ls; "
     fi
-    echo "ssh -p $pno -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8"
-    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
+    echo "ssh -p $pno -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[0]} ping -i1 -c2 $PINGTARGET"
+    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 $PINGTARGET
     if test $? != 0; then
        sleep 2
-       ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 8.8.8.8
+       ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 $PINGTARGET
     fi
     if test $? != 0; then
       #let FAIL+=1
       let CUMPINGERRORS+=1
-      ERR="${ERR}ssh VM0 $red ping 8.8.8.8; "
+      ERR="${ERR}ssh VM0 $red ping $PINGTARGET; "
     fi
   done
   for red in ${REDIRS[1]}; do
     pno=${red#*tcp,}
     pno=${pno%%,*}
+    ssh-keygen -R [${FLOATS[1]}]:$pno -f ~/.ssh/known_hosts
     ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ls
     if test $? != 0; then
       let FAIL+=2
       ERR="ssh VM1 $red ls; "
     fi
-    echo "ssh -p $pno -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8"
-    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+    echo "ssh -p $pno -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[1]} ping -i1 -c2 $PINGTARGET"
+    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 $PINGTARGET
     if test $? != 0; then
       sleep 2
-      ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 8.8.8.8
+      ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 $PINGTARGET
     fi
     if test $? != 0; then
       #let FAIL+=1
       let CUMPINGERRORS+=1
-      ERR="${ERR}ssh VM1 $red ping 8.8.8.8; "
+      ERR="${ERR}ssh VM1 $red ping $PINGTARGET; "
     fi
   done
   if test -n "$ERR"; then echo "$RED $ERR $NORM"; fi
@@ -1300,10 +1306,10 @@ $CUMERRORS ERRORS
 $CUMPINGERRORS Ping failures
 
 $(allstats)"
- CUMERRORS=0
- CUMPINGERRORS=0
- LASTREP="$CDATE"
- RUNS=0
+  CUMERRORS=0
+  CUMPINGERRORS=0
+  LASTREP="$CDATE"
+  RUNS=0
 fi
 
 let loop+=1
