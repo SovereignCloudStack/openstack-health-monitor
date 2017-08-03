@@ -987,9 +987,9 @@ testlsandping()
     ssh-keygen -R [$2]:$3 -f ~/.ssh/known_hosts
   fi
   ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2 ls || return 2
-  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2 ping -i1 -c2 $PINGTARGET && return 0
+  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2 ping -c1 $PINGTARGET && return 0
   sleep 2
-  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2 ping -i1 -c2 $PINGTARGET
+  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2 ping -c1 $PINGTARGET
 }
 
 testjhinet()
