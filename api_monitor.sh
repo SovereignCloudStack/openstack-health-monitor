@@ -987,32 +987,30 @@ testlsandping()
     ssh-keygen -R [$2]:$3 -f ~/.ssh/known_hosts
   fi
   ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2 ls || return 2
-  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2  ping -i1 -c2 $PINGTARGET
-  if test $? != 0; then
-    sleep 2
-    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2  ping -i1 -c2 $PINGTARGET
-  else
-    true
-  fi
+  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2 ping -i1 -c2 $PINGTARGET && return 0
+  sleep 2
+  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2 ping -i1 -c2 $PINGTARGET
 }
 
 testjhinet()
 {
-  local ERR RC
+  local ERR RC R
   unset SSH_AUTH_SOCK
   ERR=""
   #echo "Test JH access and outgoing inet ... "
   declare -i RC=0
   testlsandping ${KEYPAIRS[0]} ${FLOATS[0]}
-  if test $? = 2; then
+  R=$?
+  if test $R == 2; then
     RC=2; ERR="ssh JH0 ls; "
-  elif test $? = 1; then
+  elif test $R == 1; then
     let CUMPINGERRORS+=1; ERR="${ERR}ssh JH0 ping $PINGTARGET; "
   fi
   testlsandping ${KEYPAIRS[0]} ${FLOATS[1]}
-  if test $? = 2; then
+  R=$?
+  if test $R == 2; then
     let RC+=2; ERR="${ERR}ssh JH1 ls; "
-  elif test $? = 1; then
+  elif test $R == 1; then
     let CUMPINGERRORS+=1; ERR="${ERR}ssh JH1 ping $PINGTARGET; "
   fi
   if test $RC = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $ERR $NORM"; return $RC; fi
@@ -1021,7 +1019,7 @@ testjhinet()
 
 testsnat()
 {
-  local ERR FAIL ERR0 ERR1 pno
+  local ERR FAIL ERR0 ERR1 pno RC
   unset SSH_AUTH_SOCK
   ERR=""
   ERR0=""; ERR1=""
@@ -1031,9 +1029,10 @@ testsnat()
     pno=${red#*tcp,}
     pno=${pno%%,*}
     testlsandping ${KEYPAIRS[1]} ${FLOATS[0]} $pno
-    if test $? = 2; then
+    RC=$?
+    if test $RC == 2; then
       ERR0="${ERR0}$red "
-    elif test $? = 1; then
+    elif test $RC == 1; then
       let CUMPINGERRORS+=1
       ERR="${ERR}ssh VM0 $red ping $PINGTARGET; "
     fi
@@ -1042,9 +1041,10 @@ testsnat()
     pno=${red#*tcp,}
     pno=${pno%%,*}
     testlsandping ${KEYPAIRS[1]} ${FLOATS[1]} $pno
-    if test $? = 2; then
+    RC=$?
+    if test $RC == 2; then
       ERR1="${ERR1}$red "
-    elif test $? = 1; then
+    elif test $RC == 1; then
       let CUMPINGERRORS+=1
       ERR="${ERR}ssh VM1 $red ping $PINGTARGET; "
     fi
@@ -1055,10 +1055,11 @@ testsnat()
     pno=${red#*tcp,}
     pno=${pno%%,*}
     testlsandping ${KEYPAIRS[1]} ${FLOATS[0]} $pno
-    if test $? = 2; then
+    RC=$?
+    if test $RC == 2; then
       ERR="ssh VM0 $red ls; "
       let FAIL+=2
-    elif test $? = 1; then
+    elif test $RC == 1; then
       let CUMPINGERRORS+=1
       ERR="${ERR}ssh VM0 $red ping $PINGTARGET; "
     fi
@@ -1067,10 +1068,11 @@ testsnat()
     pno=${red#*tcp,}
     pno=${pno%%,*}
     testlsandping ${KEYPAIRS[1]} ${FLOATS[1]} $pno
-    if test $? = 2; then
+    RC=$?
+    if test $RC == 2; then
       let FAIL+=2
       ERR="ssh VM1 $red ls; "
-    elif test $? = 1; then
+    elif test $RC == 1; then
       let CUMPINGERRORS+=1
       ERR="${ERR}ssh VM1 $red ping $PINGTARGET; "
     fi
