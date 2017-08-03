@@ -61,7 +61,7 @@
 VERSION=1.04
 
 # User settings
-PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE
+if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
 
 # Prefix for test resources
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
