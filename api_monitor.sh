@@ -58,7 +58,7 @@
 # Example:
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.04
+VERSION=1.05
 
 # User settings
 if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -958,43 +958,48 @@ wait222()
   echo "OK"
 }
 
+testlsandping()
+# $1 => Keypair
+# $2 => IP
+# $3 => Port
+# RC: 2 => ls failed
+#     1 => ping failed
+{
+  unset SSH_AUTH_SOCK
+  RC=0
+  if test -z "$3" -o "$3" = "22"; then
+    unset pport
+    ssh-keygen -R $IP -f ~/.ssh/known_hosts
+  else
+    pport="-p $3"
+    ssh-keygen -R [$2]:$3 -f ~/.ssh/known_hosts
+  fi
+  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2 ls || return 2
+  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2  ping -i1 -c2 $PINGTARGET
+  if test $? != 0; then
+    sleep 2
+    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2  ping -i1 -c2 $PINGTARGET
+  fi
+}
+
+
 testjhinet()
 {
   unset SSH_AUTH_SOCK
   ERR=""
   #echo "Test JH access and outgoing inet ... "
   declare -i RC=0
-  ssh-keygen -R ${FLOATS[0]} -f ~/.ssh/known_hosts
-  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ls
-  if test $? != 0; then
-    RC=2
-    ERR="ssh JH0 ls; "
+  testlsandping ${KEYPAIRS[0]} ${FLOATS[0]}
+  if test $? = 2; then
+    RC=2; ERR="ssh JH0 ls; "
+  elif test $? = 1; then
+    let CUMPINGERRORS+=1; ERR="${ERR}ssh JH0 ping $PINGTARGET; "
   fi
-  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 $PINGTARGET
-  if test $? != 0; then
-    sleep 2
-    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 $PINGTARGET
-  fi
-  if test $? != 0; then
-    #let RC+=1
-    let CUMPINGERRORS+=1
-    ERR="${ERR}ssh JH0 ping $PINGTARGET; "
-  fi
-  ssh-keygen -R ${FLOATS[1]} -f ~/.ssh/known_hosts
-  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ls
-  if test $? != 0; then
-    let RC+=2
-    ERR="${ERR}ssh JH1 ls; "
-  fi
-  ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 $PINGTARGET
-  if test $? != 0; then
-    sleep 2
-    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 $PINGTARGET
-  fi
-  if test $? != 0; then
-    #let RC+=1
-    let CUMPINGERRORS+=1
-    ERR="${ERR}ssh JH1 ping $PINGTARGET; "
+  testlsandping ${KEYPAIRS[0]} ${FLOATS[1]}
+  if test $? = 2; then
+    let RC+=2; ERR="${ERR}ssh JH1 ls; "
+  elif test $? = 1; then
+    let CUMPINGERRORS+=1; ERR="${ERR}ssh JH1 ping $PINGTARGET; "
   fi
   if test $RC = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $ERR $NORM"; return $RC; fi
   if test -n "$ERR"; then echo -e "$RED $ERR $NORM"; fi
@@ -1004,25 +1009,16 @@ testsnat()
 {
   unset SSH_AUTH_SOCK
   ERR=""
+  ERR0=""; ERR1=""
   #echo "Test VM access (fwdmasq) and outgoing SNAT inet ... "
   declare -i FAIL=0
   for red in ${REDIRS[0]}; do
     pno=${red#*tcp,}
     pno=${pno%%,*}
-    ssh-keygen -R [${FLOATS[0]}]:$pno -f ~/.ssh/known_hosts
-    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ls
-    if test $? != 0; then
-      let FAIL+=2
-      ERR="ssh VM0 $red ls; "
-    fi
-    echo "ssh -p $pno -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[0]} ping -i1 -c2 $PINGTARGET"
-    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 $PINGTARGET
-    if test $? != 0; then
-       sleep 2
-       ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[0]} ping -i1 -c2 $PINGTARGET
-    fi
-    if test $? != 0; then
-      #let FAIL+=1
+    testlsandping ${KEYPAIRS[1]} ${FLOATS[0]} $pno
+    if test $? = 2; then
+      ERR0="${ERR0}$red "
+    elif test $? = 1
       let CUMPINGERRORS+=1
       ERR="${ERR}ssh VM0 $red ping $PINGTARGET; "
     fi
@@ -1030,25 +1026,42 @@ testsnat()
   for red in ${REDIRS[1]}; do
     pno=${red#*tcp,}
     pno=${pno%%,*}
-    ssh-keygen -R [${FLOATS[1]}]:$pno -f ~/.ssh/known_hosts
-    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ls
-    if test $? != 0; then
+    testlsandping ${KEYPAIRS[1]} ${FLOATS[1]} $pno
+    if test $? = 2; then
+      ERR1="${ERR1}$red "
+    elif test $? = 1; then
+      let CUMPINGERRORS+=1
+      ERR="${ERR}ssh VM1 $red ping $PINGTARGET; "
+    fi
+  done
+  if test -n "$ERR0" -o -n "$ERR1"; then sleep 5; fi
+  # Process errors: Retry
+  for red in $ERR0; do
+    pno=${red#*tcp,}
+    pno=${pno%%,*}
+    testlsandping ${KEYPAIRS[1]} ${FLOATS[0]} $pno
+    if test $? = 2; then
+      ERR="ssh VM0 $red ls; "
+      let FAIL+=2
+    elif test $? = 1
+      let CUMPINGERRORS+=1
+      ERR="${ERR}ssh VM0 $red ping $PINGTARGET; "
+    fi
+  done
+  for red in $ERR1; do
+    pno=${red#*tcp,}
+    pno=${pno%%,*}
+    testlsandping ${KEYPAIRS[1]} ${FLOATS[1]} $pno
+    if test $? = 2; then
       let FAIL+=2
       ERR="ssh VM1 $red ls; "
-    fi
-    echo "ssh -p $pno -i ${KEYPAIRS[1]}.pem -o \"StrictHostKeyChecking=no\" linux@${FLOATS[1]} ping -i1 -c2 $PINGTARGET"
-    ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 $PINGTARGET
-    if test $? != 0; then
-      sleep 2
-      ssh -p $pno -i ${KEYPAIRS[1]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[1]} ping -i1 -c2 $PINGTARGET
-    fi
-    if test $? != 0; then
-      #let FAIL+=1
+    elif test $? = 1; then
       let CUMPINGERRORS+=1
       ERR="${ERR}ssh VM1 $red ping $PINGTARGET; "
     fi
   done
   if test -n "$ERR"; then echo -e "$RED $ERR $NORM"; fi
+  if test -n "$ERR0" -o -n "$ERR1"; then echo -e "$BOLD RETRIED: 0:$ERR0 1:$ERR1 $NORM"; fi
   return $FAIL
 }
 
@@ -1314,9 +1327,10 @@ fi
 
 let loop+=1
 # TODO: Clean up residuals, if any
-sleep 10
+sleep 8
 IGNORE_ERRORS=1
 cleanup
 unset IGNORE_ERRORS
+sleep 2
 done
 rm ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem
