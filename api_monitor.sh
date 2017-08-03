@@ -61,7 +61,8 @@
 VERSION=1.05
 
 # User settings
-if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
+#if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
+if test -z "$PINGTARGET"; then PINGTARGET=google-public-dns-b.google.com; fi
 
 # Prefix for test resources
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
@@ -776,7 +777,7 @@ extract_ip()
 SNATROUTE=""
 createFIPs()
 {
-  local VIP FLOAT SNATROUTE
+  local VIP FLOAT
   createResources $NONETS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} ${JHNETS[0]} || return
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list || return 1
   EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| [0-9a-f-]* | \([^ ]*\).*$/\1/')
@@ -1340,12 +1341,12 @@ $(allstats)"
   RUNS=0
 fi
 
-let loop+=1
 # TODO: Clean up residuals, if any
 sleep 8
 IGNORE_ERRORS=1
 cleanup
 unset IGNORE_ERRORS
 sleep 2
+let loop+=1
 done
 rm ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem
