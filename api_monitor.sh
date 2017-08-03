@@ -160,6 +160,7 @@ fi
 # Alarm notification
 sendalarm()
 {
+  local PRE RES RM URN
   if test $1 = 0; then
     PRE="Note"
     RES=""
@@ -230,23 +231,23 @@ killin()
 # $3-oo => command
 ostackcmd_search()
 {
-  SEARCH=$1; shift
-  TIMEOUT=$1; shift
-  LSTART=$(date +%s.%3N)
+  local SEARCH=$1; shift
+  local TIMEOUT=$1; shift
+  local LSTART=$(date +%s.%3N)
   if test "$TIMEOUT" = "0"; then
     RESP=$($@ 2>&1)
   else
     RESP=$($@ 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
   fi
-  RC=$?
-  LEND=$(date +%s.%3N)
+  local RC=$?
+  local LEND=$(date +%s.%3N)
   ID=$(echo "$RESP" | grep "$SEARCH" | head -n1 | sed -e 's/^| *\([^ ]*\) *|.*$/\1/')
   echo "$LSTART/$LEND/$SEARCH: $@ => $RC $RESP $ID" >> $LOGFILE
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
     let ERRORS+=1
     sendalarm $RC "$*" "$RESP"
   fi
-  TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
+  local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
   if test "$RC" != "0"; then echo "$TIM $RC"; echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
   if test -z "$ID"; then echo "$TIM $RC"; echo "ERROR: $@ => $RC $RESP => $SEARCH not found" 1>&2; return $RC; fi
   echo "$TIM $ID"
@@ -260,21 +261,21 @@ ostackcmd_search()
 # $3-oo => command
 ostackcmd_id()
 {
-  IDNM=$1; shift
-  TIMEOUT=$1; shift
-  LSTART=$(date +%s.%3N)
+  local IDNM=$1; shift
+  local TIMEOUT=$1; shift
+  local LSTART=$(date +%s.%3N)
   if test "$TIMEOUT" = "0"; then
     RESP=$($@ 2>&1)
   else
     RESP=$($@ 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
   fi
-  RC=$?
-  LEND=$(date +%s.%3N)
+  local RC=$?
+  local LEND=$(date +%s.%3N)
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
     let ERRORS+=1
     sendalarm $RC "$*" "$RESP"
   fi
-  TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
+  local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
   if test "$IDNM" = "DELETE"; then
     ID=$(echo "$RESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
     echo "$LSTART/$LEND/$ID: $@ => $RC $RESP" >> $LOGFILE
@@ -295,21 +296,21 @@ ostackcmd_id()
 OSTACKRESP=""
 ostackcmd_tm()
 {
-  STATNM=$1; shift
-  TIMEOUT=$1; shift
-  LSTART=$(date +%s.%3N)
+  local STATNM=$1; shift
+  local TIMEOUT=$1; shift
+  local LSTART=$(date +%s.%3N)
   if test "$TIMEOUT" = "0"; then
     OSTACKRESP=$($@ 2>&1)
   else
     OSTACKRESP=$($@ 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
   fi
-  RC=$?
+  local RC=$?
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
     let ERRORS+=1
     sendalarm $RC "$*" "$OSTACKRESP"
   fi
-  LEND=$(date +%s.%3N)
-  TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
+  local LEND=$(date +%s.%3N)
+  local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
   eval "${STATNM}+=( $TIM )"
   echo "$LSTART/$LEND/: $@ => $OSTACKRESP" >> $LOGFILE
   return $RC
@@ -332,25 +333,27 @@ ostackcmd_tm()
 # NUMBER STATNM RSRCNM OTHRSRC MORERSRC STIME IDNM COMMAND
 createResources()
 {
+  local ctr
   declare -i ctr=0
-  QUANT=$1; STATNM=$2; RNM=$3
-  ORNM=$4; MRNM=$5
-  STIME=$6; IDNM=$7
+  local QUANT=$1; local STATNM=$2; local RNM=$3
+  local ORNM=$4; local MRNM=$5
+  local STIME=$6; local IDNM=$7
   shift; shift; shift; shift; shift; shift; shift
-  TIMEOUT=$1; shift
-  eval LIST=( \"\${${ORNM}S[@]}\" )
-  eval MLIST=( \"\${${MRNM}S[@]}\" )
+  local TIMEOUT=$1; shift
+  eval local LIST=( \"\${${ORNM}S[@]}\" )
+  eval local MLIST=( \"\${${MRNM}S[@]}\" )
   if test "$RNM" != "NONE"; then echo -n "New $RNM: "; fi
   # FIXME: Should we get a token once here and reuse it?
   for no in `seq 0 $(($QUANT-1))`; do
-    AZ=$(($no%$NOAZS+1))
-    VAL=${LIST[$ctr]}
-    MVAL=${MLIST[$ctr]}
-    CMD=`eval echo $@ 2>&1`
-    STM=$(date +%s)
+    local AZ=$(($no%$NOAZS+1))
+    local VAL=${LIST[$ctr]}
+    local MVAL=${MLIST[$ctr]}
+    local CMD=`eval echo $@ 2>&1`
+    local STM=$(date +%s)
     if test -n "$STIME"; then eval "${STIME}+=( $STM )"; fi
-    RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
-    RC=$?
+    local RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
+    local RC=$?
+    local TM
     read TM ID < <(echo "$RESP")
     eval ${STATNM}+="($TM)"
     let ctr+=1
@@ -372,23 +375,24 @@ createResources()
 # STATNM RSRCNM DTIME COMMAND
 deleteResources()
 {
-  STATNM=$1; RNM=$2; DTIME=$3
+  local STATNM=$1; local RNM=$2; local DTIME=$3
   shift; shift; shift
-  TIMEOUT=$1; shift
-  eval LIST=( \"\${${ORNM}S[@]}\" )
-  #eval varAlias=( \"\${myvar${varname}[@]}\" )
-  eval LIST=( \"\${${RNM}S[@]}\" )
+  local TIMEOUT=$1; shift
+  eval local LIST=( \"\${${ORNM}S[@]}\" )
+  #eval local varAlias=( \"\${myvar${varname}[@]}\" )
+  eval local LIST=( \"\${${RNM}S[@]}\" )
   #echo $LIST
   test -n "$LIST" && echo -n "Del $RNM: "
   #for rsrc in $LIST; do
-  LN=${#LIST[@]}
+  local LN=${#LIST[@]}
   while test ${#LIST[*]} -gt 0; do
-    rsrc=${LIST[-1]}
+    local rsrc=${LIST[-1]}
     echo -n "$rsrc "
-    DTM=$(date +%s)
+    local DTM=$(date +%s)
     if test -n "$DTIME"; then eval "${DTIME}+=( $DTM )"; fi
+    local TM
     read TM < <(ostackcmd_id id $TIMEOUT $@ $rsrc)
-    RC="$?"
+    local RC="$?"
     eval ${STATNM}+="($TM)"
     if test $RC != 0; then echo "ERROR" 1>&2: return 1; fi
     unset LIST[-1]
@@ -411,21 +415,22 @@ deleteResources()
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
 waitResources()
 {
-  STATNM=$1; RNM=$2; CSTAT=$3; STIME=$4
-  COMP1=$5; COMP2=$6; IDNM=$7
+  local STATNM=$1; local RNM=$2; local CSTAT=$3; local STIME=$4
+  local COMP1=$5; local COMP2=$6; local IDNM=$7
   shift; shift; shift; shift; shift; shift; shift
-  TIMEOUT=$1; shift
-  eval RLIST=( \"\${${RNM}S[@]}\" )
-  eval SLIST=( \"\${${STIME}[@]}\" )
-  LAST=$(( ${#RLIST[@]} - 1 ))
+  local TIMEOUT=$1; shift
+  eval local RLIST=( \"\${${RNM}S[@]}\" )
+  eval local SLIST=( \"\${${STIME}[@]}\" )
+  local LAST=$(( ${#RLIST[@]} - 1 ))
   while test -n "${SLIST[*]}"; do
-    STATSTR=""
+    local STATSTR=""
     for i in $(seq 0 $LAST ); do
-      rsrc=${RLIST[$i]}
+      local rsrc=${RLIST[$i]}
       if test -z "${SLIST[$i]}"; then STATSTR+='a'; continue; fi
-      CMD=`eval echo $@ $rsrc 2>&1`
-      RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
-      RC=$?
+      local CMD=`eval echo $@ $rsrc 2>&1`
+      local RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
+      local RC=$?
+      local TM STAT
       read TM STAT < <(echo "$RESP")
       eval ${STATNM}+="( $TM )"
       if test $RC != 0; then echo "ERROR: Querying $RNM $rsrc failed" 1>&2; return 1; fi
@@ -461,27 +466,28 @@ waitResources()
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
 waitlistResources()
 {
-  STATNM=$1; RNM=$2; CSTAT=$3; STIME=$4
-  COMP1=$5; COMP2=$6; COL=$7
+  local STATNM=$1; local RNM=$2; local CSTAT=$3; local STIME=$4
+  local COMP1=$5; local COMP2=$6; local COL=$7
   shift; shift; shift; shift; shift; shift; shift
-  TIMEOUT=$1; shift
-  eval RLIST=( \"\${${RNM}S[@]}\" )
-  eval SLIST=( \"\${${STIME}[@]}\" )
-  LAST=$(( ${#RLIST[@]} - 1 ))
-  PARSE="^|"
+  local TIMEOUT=$1; shift
+  eval local RLIST=( \"\${${RNM}S[@]}\" )
+  eval local SLIST=( \"\${${STIME}[@]}\" )
+  local LAST=$(( ${#RLIST[@]} - 1 ))
+  local PARSE="^|"
   for no in $(seq 1 $COL); do PARSE="$PARSE[^|]*|"; done
   PARSE="$PARSE *\([^|]*\)|.*\$"
   #echo "$PARSE"
   while test -n "${SLIST[*]}"; do
-    STATSTR=""
-    CMD=`eval echo $@ 2>&1`
+    local STATSTR=""
+    local CMD=`eval echo $@ 2>&1`
     ostackcmd_tm $STATNM $TIMEOUT $CMD
     if test $? != 0; then echo "ERROR: $CMD => $OSTACKRESP" 1>&2; return 1; fi
+    local TM REST
     read TM REST < <(echo "$OSTACKRESP")
     for i in $(seq 0 $LAST ); do
-      rsrc=${RLIST[$i]}
+      local rsrc=${RLIST[$i]}
       if test -z "${SLIST[$i]}"; then STATSTR+='x'; continue; fi
-      STAT=$(echo "$OSTACKRESP" | grep "^| $rsrc" | sed -e "s@$PARSE@\1@" -e 's/ *$//')
+      local STAT=$(echo "$OSTACKRESP" | grep "^| $rsrc" | sed -e "s@$PARSE@\1@" -e 's/ *$//')
       #echo "STATUS: \"$STAT\""
       if test -n "$STAT"; then STATSTR+=${STAT:0:1}; else STATSTR+="X"; fi
       #echo -en "Wait $RNM: $STATSTR\r"
@@ -513,21 +519,22 @@ waitlistResources()
 # STATNM RSRCNM DSTAT DTIME COMMAND
 waitdelResources()
 {
-  STATNM=$1; RNM=$2; DSTAT=$3; DTIME=$4
+  local STATNM=$1; local RNM=$2; local DSTAT=$3; local DTIME=$4
   shift; shift; shift; shift
-  TIMEOUT=$1; shift
-  eval RLIST=( \"\${${RNM}S[@]}\" )
-  eval DLIST=( \"\${${DTIME}[@]}\" )
-  LAST=$(( ${#RLIST[@]} - 1 ))
+  local TIMEOUT=$1; shift
+  eval local RLIST=( \"\${${RNM}S[@]}\" )
+  eval local DLIST=( \"\${${DTIME}[@]}\" )
+  local LAST=$(( ${#RLIST[@]} - 1 ))
   #echo "waitdelResources $STATNM $RNM $DSTAT $DTIME - ${RLIST[*]} - ${DLIST[*]}"
   while test -n "${DLIST[*]}"; do
-    STATSTR=""
+    local STATSTR=""
     for i in $(seq 0 $LAST); do
-      rsrc=${RLIST[$i]}
+      local rsrc=${RLIST[$i]}
       if test -z "${DLIST[$i]}"; then STATSTR+='x'; continue; fi
-      CMD=`eval echo $@ $rsrc`
-      RESP=$(ostackcmd_id DELETE $TIMEOUT $CMD)
-      RC=$?
+      local CMD=`eval echo $@ $rsrc`
+      local RESP=$(ostackcmd_id DELETE $TIMEOUT $CMD)
+      local RC=$?
+      local TM STAT
       read TM STAT < <(echo "$RESP")
       eval ${STATNM}+="( $TM )"
       if test $RC != 0; then
@@ -554,11 +561,12 @@ waitdelResources()
 # $3 => timeout
 showResources()
 {
-  STATNM=$1
-  RNM=$2
+  local STATNM=$1
+  local RNM=$2
   shift; shift
-  TIMEOUT=$1; shift
-  eval LIST=( \"\${$RNM}S[@]\" )
+  local TIMEOUT=$1; shift
+  eval local LIST=( \"\${$RNM}S[@]\" )
+  local rsrc TM
   while rsrc in ${LIST}; do
     read TM ID < <(ostackcmd_id id $TIMEOUT $@ $rsrc)
   done
@@ -676,6 +684,7 @@ deleteVIPs()
 
 createJHPorts()
 {
+  local RESP RC TM ID
   createResources $NONETS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} ${JHNETS[0]} || return
   for i in `seq 0 $((NONETS-1))`; do
     RESP=$(ostackcmd_id id $NETTIMEOUT neutron port-update ${JHPORTS[$i]} --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1)
@@ -767,6 +776,8 @@ extract_ip()
 SNATROUTE=""
 createFIPs()
 {
+  local VIP FLOAT SNATROUTE
+  createResources $NONETS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} ${JHNETS[0]} || return
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list || return 1
   EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| [0-9a-f-]* | \([^ ]*\).*$/\1/')
   # Actually this fails if the port is not assigned to a VM yet
@@ -805,6 +816,7 @@ deleteFIPs()
 REDIRS=()
 createJHVMs()
 {
+  local VIP RE0 RE1 IP STR odd ptn RD USERDATA
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   if test ${#PORTS[*]} -gt 0; then
@@ -921,8 +933,8 @@ setmetaVMs()
 
 wait222()
 {
+  local NCPROXY pno MAXWAIT ctr
   # Wait for VMs being accessible behind fwdmasq (ports 222+)
-  unset NCPROXY
   #if test -n "$http_proxy"; then NCPROXY="-X connect -x $http_proxy"; fi
   MAXWAIT=48
   echo -n "${FLOATS[0]} "
@@ -958,18 +970,17 @@ wait222()
   echo "OK"
 }
 
-testlsandping()
 # $1 => Keypair
 # $2 => IP
 # $3 => Port
 # RC: 2 => ls failed
 #     1 => ping failed
+testlsandping()
 {
   unset SSH_AUTH_SOCK
-  RC=0
   if test -z "$3" -o "$3" = "22"; then
     unset pport
-    ssh-keygen -R $IP -f ~/.ssh/known_hosts
+    ssh-keygen -R $2 -f ~/.ssh/known_hosts
   else
     pport="-p $3"
     ssh-keygen -R [$2]:$3 -f ~/.ssh/known_hosts
@@ -979,12 +990,14 @@ testlsandping()
   if test $? != 0; then
     sleep 2
     ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2  ping -i1 -c2 $PINGTARGET
+  else
+    true
   fi
 }
 
-
 testjhinet()
 {
+  local ERR RC
   unset SSH_AUTH_SOCK
   ERR=""
   #echo "Test JH access and outgoing inet ... "
@@ -1007,6 +1020,7 @@ testjhinet()
 
 testsnat()
 {
+  local ERR FAIL ERR0 ERR1 pno
   unset SSH_AUTH_SOCK
   ERR=""
   ERR0=""; ERR1=""
@@ -1069,6 +1083,7 @@ testsnat()
 # STATLIST [DIGITS]
 stats()
 {
+  local NM NO VAL LIST DIG OLDIFS SLIST MIN MAX MID MED NFQ NFQL NFQR NFQF NFP AVGC AVG
   # Fixup "{" found after errors in time stats
   NM=$1
   NO=$(eval echo "\${#${NM}[@]}")
@@ -1122,7 +1137,7 @@ allstats()
 
 findres()
 {
-  FILT=${1:-$RPRE}
+  local FILT=${1:-$RPRE}
   shift
   # FIXME: Add timeout handling
   $@ | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
