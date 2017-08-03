@@ -93,7 +93,7 @@ JHFLAVOR="computev1-1"
 FLAVOR="computev1-1"
 
 JHVOLSIZE=4
-VOLSIZE=10
+VOLSIZE=8
 ADDVOLSIZE=5
 
 DATE=`date +%s`
