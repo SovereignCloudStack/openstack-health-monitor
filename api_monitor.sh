@@ -1018,7 +1018,7 @@ testsnat()
     testlsandping ${KEYPAIRS[1]} ${FLOATS[0]} $pno
     if test $? = 2; then
       ERR0="${ERR0}$red "
-    elif test $? = 1
+    elif test $? = 1; then
       let CUMPINGERRORS+=1
       ERR="${ERR}ssh VM0 $red ping $PINGTARGET; "
     fi
@@ -1043,7 +1043,7 @@ testsnat()
     if test $? = 2; then
       ERR="ssh VM0 $red ls; "
       let FAIL+=2
-    elif test $? = 1
+    elif test $? = 1; then
       let CUMPINGERRORS+=1
       ERR="${ERR}ssh VM0 $red ping $PINGTARGET; "
     fi
