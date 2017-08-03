@@ -1049,7 +1049,7 @@ testsnat()
       ERR="${ERR}ssh VM1 $red ping $PINGTARGET; "
     fi
   done
-  if test -n "$ERR0" -o -n "$ERR1"; then sleep 5; fi
+  if test -n "$ERR0" -o -n "$ERR1"; then sleep 6; fi
   # Process errors: Retry
   for red in $ERR0; do
     pno=${red#*tcp,}
