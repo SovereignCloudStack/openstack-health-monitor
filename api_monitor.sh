@@ -593,7 +593,7 @@ JHSUBNETIP=10.250.250.0/24
 
 createSubNets()
 {
-  createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.4.4 PINGTARGET --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
+  createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.4.4 --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
   createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.4.4 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
 }
 
@@ -1059,9 +1059,9 @@ stats()
   # Fixup "{" found after errors in time stats
   NM=$1
   NO=$(eval echo "\${#${NM}[@]}")
-  for idx in `seq 0 $NO`; do
-    VAL=$(echo eval "echo \${${NM}[$idx]}")
-    if test "$VAL" = "{"; then eval $NM[$idx]=0.01; fi
+  for idx in `seq 0 $(($NO-1))`; do
+    VAL=$(eval echo \${${NM}[$idx]})
+    if test "$VAL" = "{"; then eval $NM[$idx]=1.00; fi
   done
   # Display name
   if test -n "$3"; then NAME=$3; else NAME=$1; fi
