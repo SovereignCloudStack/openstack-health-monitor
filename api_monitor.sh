@@ -1049,7 +1049,7 @@ testsnat()
       ERR="${ERR}ssh VM1 $red ping $PINGTARGET; "
     fi
   done
-  if test -n "$ERR0" -o -n "$ERR1"; then sleep 6; fi
+  if test -n "$ERR0" -o -n "$ERR1"; then sleep 12; fi
   # Process errors: Retry
   for red in $ERR0; do
     pno=${red#*tcp,}
@@ -1120,7 +1120,8 @@ stats()
   fi
   AVGC="($(echo ${SLIST[*]}|sed 's/ /+/g'))/$NO"
   #echo "$AVGC"
-  AVG=`python -c "print \"%.${DIG}f\" % ($AVGC)"`
+  #AVG=`python -c "print \"%.${DIG}f\" % ($AVGC)"`
+  AVG=$(echo "scale=2; $AVGC" | bc -l)
   echo "$NAME: Num $NO Min $MIN Med $MED Avg $AVG 95% $NFP Max $MAX" | tee -a $LOGFILE
 }
 
@@ -1278,7 +1279,7 @@ else # test "$1" = "DEPLOY"; then
               fi
               testsnat
               RC=$?
-              let ERRORS+=$RC
+              let ERRORS+=$((RC/2))
               if test $RC != 0; then
                 sendalarm $RC "$ERR" ""
               fi
