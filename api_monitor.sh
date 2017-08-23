@@ -58,7 +58,7 @@
 # Example:
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.05
+VERSION=1.06
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -986,10 +986,10 @@ testlsandping()
     pport="-p $3"
     ssh-keygen -R [$2]:$3 -f ~/.ssh/known_hosts
   fi
-  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2 ls || return 2
-  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2 ping -c1 $PINGTARGET && return 0
-  sleep 2
-  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" linux@$2 ping -c1 $PINGTARGET
+  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 ls || return 2
+  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET && return 0
+  sleep 3
+  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET
 }
 
 testjhinet()
@@ -1273,8 +1273,9 @@ else # test "$1" = "DEPLOY"; then
               WSTART=$(date +%s)
               wait222
               testjhinet
-              if test $? != 0; then
-                let ERRORS+=1
+              RC=$?
+              if test $RC != 0; then
+                let ERRORS+=$RC
                 sendalarm $RC "$ERR" ""
               fi
               testsnat
