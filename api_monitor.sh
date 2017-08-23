@@ -81,7 +81,7 @@ NETTIMEOUT=12
 FIPTIMEOUT=24
 NOVATIMEOUT=12
 NOVABOOTTIMEOUT=36
-CINDERTIMEOUT=12
+CINDERTIMEOUT=16
 GLANCETIMEOUT=24
 DEFTIMEOUT=12
 
@@ -478,7 +478,8 @@ waitlistResources()
   for no in $(seq 1 $COL); do PARSE="$PARSE[^|]*|"; done
   PARSE="$PARSE *\([^|]*\)|.*\$"
   #echo "$PARSE"
-  while test -n "${SLIST[*]}"; do
+  declare -i ctr=0
+  while test -n "${SLIST[*]}"i -a $ctr -le 320; do
     local STATSTR=""
     local CMD=`eval echo $@ 2>&1`
     ostackcmd_tm $STATNM $TIMEOUT $CMD
@@ -505,6 +506,7 @@ waitlistResources()
     echo -en "Wait $RNM: $STATSTR\r"
     test -z "${SLIST[*]}" && return 0
     sleep 2
+    let ctr+=1
   done
 }
 
@@ -614,15 +616,15 @@ deleteSubNets()
 
 createRIfaces()
 {
-  createResources 1 NETSTATS NONE JHSUBNET NONE "" id $NETTIMEOUT neutron router-interface-add ${ROUTERS[0]} "\$VAL"
-  createResources $NONETS NETSTATS NONE SUBNET NONE "" id $NETTIMEOUT neutron router-interface-add ${ROUTERS[0]} "\$VAL"
+  createResources 1 NETSTATS NONE JHSUBNET NONE "" id $FIPTIMEOUT neutron router-interface-add ${ROUTERS[0]} "\$VAL"
+  createResources $NONETS NETSTATS NONE SUBNET NONE "" id $FIPTIMEOUT neutron router-interface-add ${ROUTERS[0]} "\$VAL"
 }
 
 deleteRIfaces()
 {
   if test -z "${ROUTERS[0]}"; then return 0; fi
-  deleteResources NETSTATS SUBNET "" $NETTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
-  deleteResources NETSTATS JHSUBNET "" $NETTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
+  deleteResources NETSTATS SUBNET "" $FIPTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
+  deleteResources NETSTATS JHSUBNET "" $FIPTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
 }
 
 createSGroups()
