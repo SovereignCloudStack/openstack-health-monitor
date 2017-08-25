@@ -1123,7 +1123,7 @@ stats()
   AVGC="($(echo ${SLIST[*]}|sed 's/ /+/g'))/$NO"
   #echo "$AVGC"
   #AVG=`python -c "print \"%.${DIG}f\" % ($AVGC)"`
-  AVG=$(echo "scale=2; $AVGC" | bc -l)
+  AVG=$(echo "scale=$DIG; $AVGC" | bc -l)
   echo "$NAME: Num $NO Min $MIN Med $MED Avg $AVG 95% $NFP Max $MAX" | tee -a $LOGFILE
 }
 
@@ -1181,6 +1181,8 @@ cleanup()
   deleteRouters
 }
 
+declare -i loop=0
+
 # Statistics
 # API performance neutron, cinder, nova
 declare -a NETSTATS
@@ -1196,8 +1198,6 @@ declare -a VMCDTATS
 
 declare -a TOTTIME
 declare -a WAITTIME
-
-declare -i loop=0
 
 declare -i CUMPINGERRORS=0
 declare -i CUMERRORS=0
@@ -1345,6 +1345,18 @@ $(allstats)"
   CUMPINGERRORS=0
   LASTREP="$CDATE"
   RUNS=0
+  # Reset stats
+  NETSTATS=()
+  FIPSTATS=()
+  VOLSTATS=()
+  NOVASTATS=()
+  NOVABSTATS=()
+  VOLCSTATS=()
+  VOLDSTATS=()
+  VMCSTATS=()
+  VMDSTATS=()
+  TOTTIME=()
+  WAITTIME=()
 fi
 
 # TODO: Clean up residuals, if any
