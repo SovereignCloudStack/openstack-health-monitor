@@ -58,7 +58,7 @@
 # Example:
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.07
+VERSION=1.08
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -67,7 +67,7 @@ if test -z "$PINGTARGET"; then PINGTARGET=google-public-dns-b.google.com; fi
 # Prefix for test resources
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
 echo "Running api_monitor.sh v$VERSION"
-echo "Using $RPRE prefix for api_monitor resources"
+echo "Using $RPRE prefix for api_monitor resources on $OS_USER_DOMAIN_NAME"
 # Number of VMs and networks
 NOVMS=12
 NONETS=2
@@ -75,6 +75,9 @@ NOAZS=2
 MANUALPORTSETUP=1
 
 MAXITER=-1
+
+ERRWAIT=1
+VMERRWAIT=2
 
 # API timeouts
 NETTIMEOUT=12
@@ -99,7 +102,7 @@ ADDVOLSIZE=5
 
 DATE=`date +%s`
 LOGFILE=$RPRE$DATE.log
-declare -i ERRORS=0
+declare -i APIERRORS=0
 
 # Nothing to change below here
 BOLD="\e[0;1m"
@@ -117,6 +120,8 @@ usage()
   echo "    second -m splits notifications; notes to first, alarms to second URN"
   echo " -s sends stats as well once per day, not just alarms"
   echo " -i sets max number of iterations"
+  echo " -w sets error wait (API, VM): 0-inf seconds or neg value for interactive wait"
+  echo " -W sets error wait (VM only): 0-inf seconds or neg value for interactive wait"
   echo "Or: RPRE=XXX api_monitor.sh CLEANUP  to clean up all resources with prefix XXX"
   exit 0
 }
@@ -132,6 +137,8 @@ if test "$1" = "-e"; then EMAIL2="$2"; shift; shift; fi
 if test "$1" = "-m"; then SMNID="$2"; shift; shift; fi
 if test "$1" = "-m"; then SMNID2="$2"; shift; shift; fi
 if test "$1" = "-i"; then MAXITER=$2; shift; shift; fi
+if test "$1" = "-w"; then ERRWAIT=$2; shift; shift; fi
+if test "$1" = "-W"; then VMERRWAIT=$2; shift; shift; fi
 
 # Test precondition
 type -p nova >/dev/null 2>&1
@@ -210,6 +217,18 @@ exithandler()
   let EXITED+=1
 }
 
+errwait()
+{
+  if test $1 -lt 0; then
+    local ans
+    echo -n "ERROR: Hit Enter to continue: "
+    read ans
+  else
+    sleep $1
+  fi
+}
+
+
 trap exithandler SIGINT
 
 # Timeout killer
@@ -219,6 +238,7 @@ trap exithandler SIGINT
 killin()
 {
   sleep $2
+  test -d /proc/$1 || return 0
   kill -SIGQUIT $1
   sleep 1
   kill -SIGHUP $1
@@ -245,8 +265,9 @@ ostackcmd_search()
   ID=$(echo "$RESP" | grep "$SEARCH" | head -n1 | sed -e 's/^| *\([^ ]*\) *|.*$/\1/')
   echo "$LSTART/$LEND/$SEARCH: $@ => $RC $RESP $ID" >> $LOGFILE
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
-    let ERRORS+=1
+    let APIERRORS+=1
     sendalarm $RC "$*" "$RESP"
+    errwait $ERRWAIT
   fi
   local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
   if test "$RC" != "0"; then echo "$TIM $RC"; echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
@@ -273,8 +294,9 @@ ostackcmd_id()
   local RC=$?
   local LEND=$(date +%s.%3N)
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
-    let ERRORS+=1
+    let APIERRORS+=1
     sendalarm $RC "$*" "$RESP"
+    errwait $ERRWAIT
   fi
   local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
   if test "$IDNM" = "DELETE"; then
@@ -307,8 +329,9 @@ ostackcmd_tm()
   fi
   local RC=$?
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
-    let ERRORS+=1
+    let APIERRORS+=1
     sendalarm $RC "$*" "$OSTACKRESP"
+    errwait $ERRWAIT
   fi
   local LEND=$(date +%s.%3N)
   local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
@@ -1200,7 +1223,8 @@ declare -a TOTTIME
 declare -a WAITTIME
 
 declare -i CUMPINGERRORS=0
-declare -i CUMERRORS=0
+declare -i CUMAPIERRORS=0
+declare -i CUMVMERRORS=0
 declare -i RUNS=0
 
 LASTREP=$(date +%Y-%m-%d)
@@ -1208,7 +1232,9 @@ LASTREP=$(date +%Y-%m-%d)
 # MAIN LOOP
 while test $loop != $MAXITER; do
 
-declare -i ERRORS=0
+declare -i PINGERRORS=0
+declare -i APIERRORS=0
+declare -i VMERRORS=0
 
 # Arrays to store resource creation start times
 declare -a VOLSTIME=()
@@ -1277,14 +1303,16 @@ else # test "$1" = "DEPLOY"; then
               testjhinet
               RC=$?
               if test $RC != 0; then
-                let ERRORS+=$RC
+                let VMERRORS+=$RC
                 sendalarm $RC "$ERR" ""
+                errwait $VMERRWAIT
               fi
               testsnat
               RC=$?
-              let ERRORS+=$((RC/2))
+              let VMERRORS+=$((RC/2))
               if test $RC != 0; then
                 sendalarm $RC "$ERR" ""
+                errwait $VMERRWAIT
               fi
               # TODO: Test login to all normal VMs (not just the last two)
               # TODO: Create disk ... and attach to JH VMs ... and test access
@@ -1292,11 +1320,7 @@ else # test "$1" = "DEPLOY"; then
               MSTOP=$(date +%s)
               WAITTIME+=($(($MSTOP-$WSTART)))
               echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
-              if test $ERRORS = 0; then
-                sleep 1
-              else
-                sleep 60
-              fi
+              sleep 5
               #read ANS
               # Subtract waiting time (1s here)
               MSTART=$(($MSTART+$(date +%s)-$MSTOP))
@@ -1324,24 +1348,29 @@ else # test "$1" = "DEPLOY"; then
  TOTTIME+=($THISRUNTIME)
  if test $THISRUNTIME -gt $((900+30*$NOVMS)); then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME"
+    #waiterr $WAITERR
  fi
  allstats
- echo "This run: Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s, $ERRORS errors"
+ echo "This run: Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s, $VMERRORS VM errors, $APIERRORS API errors, $PINGERRORS Ping Errors"
 #else
 #  usage
 fi
-let CUMERRORS+=$ERRORS
+let CUMAPIERRORS+=$APIERRORS
+let CUMVMERRORS+=$VMERRORS
+let CUMPINGERRORS+=$PINGERRORS
 let RUNS+=1
 
 CDATE=$(date +%Y-%m-%d)
 if test -n "$SENDSTATS" -a "$CDATE" != "$LASTREP" || test $(($loop+1)) == $MAXITER; then
   sendalarm 0 "Statistics for $LASTREP" "
 $RUNS deployments
-$CUMERRORS ERRORS
+$CUMVMERRORS VM ERRORS
+$CUMAPIERRORS API ERRORS
 $CUMPINGERRORS Ping failures
 
 $(allstats)"
-  CUMERRORS=0
+  CUMVMERRORS=0
+  CUMAPIERRORS=0
   CUMPINGERRORS=0
   LASTREP="$CDATE"
   RUNS=0
