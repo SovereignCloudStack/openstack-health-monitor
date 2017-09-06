@@ -984,9 +984,10 @@ wait222()
       sleep 5
       let ctr+=1
     done
-    if [ $ctr -ge $MAXWAIT ]; then echo -n " $RED timeout $NORM"; let waiterr+=1; fi
-    MAXWAIT=24
+    if [ $ctr -ge $MAXWAIT ]; then echo -ne " $RED timeout $NORM"; let waiterr+=1; fi
+    MAXWAIT=16
   done
+  MAXWAIT=32
   echo -n " ${FLOATS[1]} "
   for red in ${REDIRS[1]}; do
     pno=${red#*tcp,}
@@ -999,8 +1000,8 @@ wait222()
       sleep 5
       let ctr+=1
     done
-    if [ $ctr -ge $MAXWAIT ]; then echo -n " $RED timeout $NORM"; let waiterr+=1; fi
-    #MAXWAIT=24
+    if [ $ctr -ge $MAXWAIT ]; then echo -ne " $RED timeout $NORM"; let waiterr+=1; fi
+    MAXWAIT=16
   done
   if test $waiterr == 0; then echo "OK"; else echo "RET $waiterr"; fi
   return $waiterr
@@ -1016,12 +1017,12 @@ testlsandping()
   unset SSH_AUTH_SOCK
   if test -z "$3" -o "$3" = "22"; then
     unset pport
-    ssh-keygen -R $2 -f ~/.ssh/known_hosts
+    ssh-keygen -R $2 -f ~/.ssh/known_hosts >/dev/null 2>&1
   else
     pport="-p $3"
-    ssh-keygen -R [$2]:$3 -f ~/.ssh/known_hosts
+    ssh-keygen -R [$2]:$3 -f ~/.ssh/known_hosts >/dev/null 2>&1
   fi
-  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 ls >/dev/null || return 2
+  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 ls >/dev/null 2>&1 || return 2
   PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   if test $? = 0; then echo $PING; return 0; fi
   sleep 3
