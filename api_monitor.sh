@@ -1382,6 +1382,8 @@ let RUNS+=1
 CDATE=$(date +%Y-%m-%d)
 if test -n "$SENDSTATS" -a "$CDATE" != "$LASTREP" || test $(($loop+1)) == $MAXITER; then
   sendalarm 0 "Statistics for $LASTREP" "
+API_Monitor $VERSION on $(hostname) testing $SHORT_DOMAIN: ($RPRE)
+
 $RUNS deployments
 $CUMVMERRORS VM LOGIN ERRORS
 $CUMWAITERRORS VM SSH ERRORS
