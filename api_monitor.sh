@@ -973,6 +973,15 @@ wait222()
   #if test -n "$http_proxy"; then NCPROXY="-X connect -x $http_proxy"; fi
   MAXWAIT=48
   echo -n "${FLOATS[0]} "
+  echo -n "ping "
+  declare -i ctr=0
+  while test $ctr -le $MAXWAIT; do
+    ping -c1 -w2 ${FLOATS[0]} >/dev/null 2>&1 && break
+    sleep 2
+    echo -n "."
+    let ctr+=1
+  done
+  if test $ctr -ge $MAXWAIT; then echo -e "${RED}JumpHost0 (${FLOATS[0]}) not pingable${NORM}"; let waiterr+=1; fi
   for red in ${REDIRS[0]}; do
     pno=${red#*tcp,}
     pno=${pno%%,*}
@@ -989,6 +998,15 @@ wait222()
   done
   MAXWAIT=32
   echo -n " ${FLOATS[1]} "
+  echo -n "ping "
+  declare -i ctr=0
+  while test $ctr -le $MAXWAIT; do
+    ping -c1 -w2 ${FLOATS[1]} >/dev/null 2>&1 && break
+    sleep 2
+    echo -n "."
+    let ctr+=1
+  done
+  if test $ctr -ge $MAXWAIT; then echo -e "${RED}JumpHost1 (${FLOATS[1]}) not pingable${NORM}"; let waiterr+=1; fi
   for red in ${REDIRS[1]}; do
     pno=${red#*tcp,}
     pno=${pno%%,*}
