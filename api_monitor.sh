@@ -975,8 +975,8 @@ wait222()
       sleep 5
       let ctr+=1
     done
+    if [ $ctr -ge $MAXWAIT ]; then echo " $RED timeout $NORM"; fi
     MAXWAIT=24
-    if [ $ctr -ge $MAXWAIT ]; then echo " timeout"; return 1; fi
   done
   echo -n " ${FLOATS[1]} "
   for red in ${REDIRS[1]}; do
@@ -990,8 +990,8 @@ wait222()
       sleep 5
       let ctr+=1
     done
-    MAXWAIT=24
-    if [ $ctr -ge $MAXWAIT ]; then echo " timeout"; return 1; fi
+    if [ $ctr -ge $MAXWAIT ]; then echo " $RED timeout $NORM"; fi
+    #MAXWAIT=24
   done
   echo "OK"
 }
@@ -1102,7 +1102,7 @@ testsnat()
       ERR="${ERR}ssh VM1 $red ping $PINGTARGET; "
     fi
   done
-  if test -n "$ERR"; then echo -e "$RED $ERR $NORM"; fi
+  if test -n "$ERR"; then echo -e "$RED $ERR ($FAIL) $NORM"; fi
   if test -n "$ERR0" -o -n "$ERR1"; then echo -e "$BOLD RETRIED: 0:$ERR0 1:$ERR1 $NORM"; fi
   return $FAIL
 }
