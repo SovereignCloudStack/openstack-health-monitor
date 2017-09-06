@@ -70,6 +70,7 @@ if test -z "$PINGTARGET"; then PINGTARGET=google-public-dns-b.google.com; fi
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
 echo "Running api_monitor.sh v$VERSION"
 echo "Using $RPRE prefix for api_monitor resources on $OS_USER_DOMAIN_NAME"
+SHORT_DOMAIN="${OS_USER_DOMAIN_NAME##*OTC*00000000001000}"
 # Number of VMs and networks
 NOVMS=12
 NONETS=2
@@ -179,31 +180,31 @@ sendalarm()
   if test $1 = 0; then
     PRE="Note"
     RES=""
-    echo -e "$BOLD$PRE on ${RPRE%_} on $(hostname): $2\n$3$NORM" 1>&2
+    echo -e "$BOLD$PRE on ${RPRE%_} on $(hostname)/$SHORT_DOMAIN: $2\n$3$NORM" 1>&2
   else
     PRE="ALARM"
     RES=" => $1"
-    echo -e "$RED$PRE on ${RPRE%_} on $(hostname): $2$RES\n$3$NORM" 1>&2
+    echo -e "$RED$PRE on ${RPRE%_} on $(hostname)/$SHORT_DOMAIN: $2$RES\n$3$NORM" 1>&2
   fi
   if test -n "$EMAIL"; then
     if test -n "$EMAIL2" -a $1 != 0; then EM="$EMAIL2"; else EM="$EMAIL"; fi
     echo "From: ${RPRE%_} $(hostname) <$LOGNAME@$(hostname -f)>
 To: $EM
-Subject: $PRE: $2$RES
+Subject: $PRE: $2$RES $SHORT_DOMAIN
 Date: $(date -R)
 
 $PRE
 
-${RPRE%_} on $(hostname):
+${RPRE%_} on $(hostname)/$SHORT_DOMAIN:
 $2$RES
 $3" | /usr/sbin/sendmail -t -f kurt@garloff.de
   fi
   if test -n "$SMNID"; then
     if test -n "$SMNID2" -a $1 != 0; then URN="$SMNID2"; else URN="$SMNID"; fi
     echo "$PRE: $(date)
-${RPRE%_} on $(hostname):
+${RPRE%_} on $(hostname)/$SHORT_DOMAIN:
 $2$RES
-$3" | otc.sh notifications publish $URN "$PRE $1 from $(hostname)"
+$3" | otc.sh notifications publish $URN "$PRE $1 from $(hostname)/$SHORT_DOMAIN"
   fi
 }
 
@@ -1020,10 +1021,14 @@ testlsandping()
     pport="-p $3"
     ssh-keygen -R [$2]:$3 -f ~/.ssh/known_hosts
   fi
-  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 ls || return 2
-  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET && return 0
+  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 ls >/dev/null || return 2
+  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
+  if test $? = 0; then echo $PING; return 0; fi
   sleep 3
-  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET
+  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
+  RC=$?
+  echo "$PING"
+  return $RC
 }
 
 testjhinet()
@@ -1033,6 +1038,7 @@ testjhinet()
   ERR=""
   #echo "Test JH access and outgoing inet ... "
   declare -i RC=0
+  echo -n "Access JH0 (${FLOATS[0]}): "
   testlsandping ${KEYPAIRS[0]} ${FLOATS[0]}
   R=$?
   if test $R == 2; then
@@ -1040,6 +1046,7 @@ testjhinet()
   elif test $R == 1; then
     let CUMPINGERRORS+=1; ERR="${ERR}ssh JH0 ping $PINGTARGET; "
   fi
+  echo -n "Access JH1 (${FLOATS[1]}): "
   testlsandping ${KEYPAIRS[0]} ${FLOATS[1]}
   R=$?
   if test $R == 2; then
