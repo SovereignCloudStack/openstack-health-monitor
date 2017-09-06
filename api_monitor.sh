@@ -56,9 +56,11 @@
 # - sendmail (if email notification is requested)
 #
 # Example:
+# Run 100 loops deploying (and deleting) 2+8 VMs (including nets, volumes etc.), 
+# with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.08
+VERSION=1.09
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -90,11 +92,16 @@ DEFTIMEOUT=12
 
 # Images, flavors, disk sizes
 JHIMG="${JHIMG:-Standard_openSUSE_42_JeOS_latest}"
-JHIMGFILT="--property-filter __platform=OpenSUSE"
+JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
 IMG="${IMG:-Standard_CentOS_7_latest}"
-IMGFILT="--property-filter __platform=CentOS"
+IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
 JHFLAVOR="computev1-1"
 FLAVOR="computev1-1"
+
+if [[ "$JHIMG" != *openSUSE* ]]; then
+	echo "WARN: Need openSUSE_42 als JumpHost for port forwarding via user_data" 1>&2
+	exit 1
+fi
 
 JHVOLSIZE=4
 VOLSIZE=8
@@ -960,6 +967,7 @@ setmetaVMs()
 wait222()
 {
   local NCPROXY pno MAXWAIT ctr
+  declare -i waiterr=0
   # Wait for VMs being accessible behind fwdmasq (ports 222+)
   #if test -n "$http_proxy"; then NCPROXY="-X connect -x $http_proxy"; fi
   MAXWAIT=48
@@ -975,7 +983,7 @@ wait222()
       sleep 5
       let ctr+=1
     done
-    if [ $ctr -ge $MAXWAIT ]; then echo " $RED timeout $NORM"; fi
+    if [ $ctr -ge $MAXWAIT ]; then echo -n " $RED timeout $NORM"; let waiterr+=1; fi
     MAXWAIT=24
   done
   echo -n " ${FLOATS[1]} "
@@ -990,10 +998,11 @@ wait222()
       sleep 5
       let ctr+=1
     done
-    if [ $ctr -ge $MAXWAIT ]; then echo " $RED timeout $NORM"; fi
+    if [ $ctr -ge $MAXWAIT ]; then echo -n " $RED timeout $NORM"; let waiterr+=1; fi
     #MAXWAIT=24
   done
-  echo "OK"
+  if test $waiterr == 0; then echo "OK"; else echo "RET $waiterr"; fi
+  return $waiterr
 }
 
 # $1 => Keypair
@@ -1225,6 +1234,7 @@ declare -a WAITTIME
 declare -i CUMPINGERRORS=0
 declare -i CUMAPIERRORS=0
 declare -i CUMVMERRORS=0
+declare -i CUMWAITERRORS=0
 declare -i RUNS=0
 
 LASTREP=$(date +%Y-%m-%d)
@@ -1235,6 +1245,7 @@ while test $loop != $MAXITER; do
 declare -i PINGERRORS=0
 declare -i APIERRORS=0
 declare -i VMERRORS=0
+declare -i WAITERRORS=0
 
 # Arrays to store resource creation start times
 declare -a VOLSTIME=()
@@ -1351,20 +1362,22 @@ else # test "$1" = "DEPLOY"; then
     #waiterr $WAITERR
  fi
  allstats
- echo "This run: Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s, $VMERRORS VM errors, $APIERRORS API errors, $PINGERRORS Ping Errors"
+ echo "This run: Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM ssh errors, $APIERRORS API errors, $PINGERRORS Ping Errors"
 #else
 #  usage
 fi
 let CUMAPIERRORS+=$APIERRORS
 let CUMVMERRORS+=$VMERRORS
 let CUMPINGERRORS+=$PINGERRORS
+let CUMWAITERRORS+=$WAITERRORS
 let RUNS+=1
 
 CDATE=$(date +%Y-%m-%d)
 if test -n "$SENDSTATS" -a "$CDATE" != "$LASTREP" || test $(($loop+1)) == $MAXITER; then
   sendalarm 0 "Statistics for $LASTREP" "
 $RUNS deployments
-$CUMVMERRORS VM ERRORS
+$CUMVMERRORS VM LOGIN ERRORS
+$CUMWAITERRORS VM SSH ERRORS
 $CUMAPIERRORS API ERRORS
 $CUMPINGERRORS Ping failures
 
@@ -1372,6 +1385,7 @@ $(allstats)"
   CUMVMERRORS=0
   CUMAPIERRORS=0
   CUMPINGERRORS=0
+  CUMWAITERRORS=0
   LASTREP="$CDATE"
   RUNS=0
   # Reset stats
