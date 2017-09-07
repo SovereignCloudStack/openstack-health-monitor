@@ -60,7 +60,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.09
+VERSION=1.10
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -83,13 +83,13 @@ ERRWAIT=1
 VMERRWAIT=2
 
 # API timeouts
-NETTIMEOUT=12
-FIPTIMEOUT=24
-NOVATIMEOUT=12
-NOVABOOTTIMEOUT=36
-CINDERTIMEOUT=16
-GLANCETIMEOUT=24
-DEFTIMEOUT=12
+NETTIMEOUT=16
+FIPTIMEOUT=32
+NOVATIMEOUT=16
+NOVABOOTTIMEOUT=48
+CINDERTIMEOUT=20
+GLANCETIMEOUT=32
+DEFTIMEOUT=16
 
 # Images, flavors, disk sizes
 JHIMG="${JHIMG:-Standard_openSUSE_42_JeOS_latest}"
