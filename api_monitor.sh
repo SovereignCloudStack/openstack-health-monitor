@@ -60,7 +60,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.10
+VERSION=1.11
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -130,23 +130,28 @@ usage()
   echo " -i sets max number of iterations"
   echo " -w sets error wait (API, VM): 0-inf seconds or neg value for interactive wait"
   echo " -W sets error wait (VM only): 0-inf seconds or neg value for interactive wait"
-  echo "Or: RPRE=XXX api_monitor.sh CLEANUP  to clean up all resources with prefix XXX"
+  echo "Or: api_monitor.sh CLEANUP XXX to clean up all resources with prefix XXX"
   exit 0
 }
 
-# TODO: Pos indep parser
-if test "$1" = "-n"; then NOVMS=$2; shift; shift; fi
-if test "${1:0:2}" = "-n"; then NOVMS=${1:2}; shift; fi
-if test "$1" = "-l"; then LOGFILE=$2; shift; shift; fi
-if test "$1" = "help" -o "$1" = "-h"; then usage; fi
-if test "$1" = "-s"; then SENDSTATS=1; shift; fi
-if test "$1" = "-e"; then EMAIL="$2"; shift; shift; fi
-if test "$1" = "-e"; then EMAIL2="$2"; shift; shift; fi
-if test "$1" = "-m"; then SMNID="$2"; shift; shift; fi
-if test "$1" = "-m"; then SMNID2="$2"; shift; shift; fi
-if test "$1" = "-i"; then MAXITER=$2; shift; shift; fi
-if test "$1" = "-w"; then ERRWAIT=$2; shift; shift; fi
-if test "$1" = "-W"; then VMERRWAIT=$2; shift; shift; fi
+while test -n "$1"; do
+  case $1 in
+    "-n") NOVMS=$2; shift;;
+    "-n"*) NOVMS=${1:2};;
+    "-l") LOGFILE=$2; shift;;
+    "help"|"-h"|"--help") usage;;
+    "-s") SENDSTATS=1;;
+    "-e") if test -z "$EMAIL"; then EMAIL="$2"; else EMAIL2="$2"; fi; shift;;
+    "-m") if test -z "$SMNID"; then SMNID="$2"; else SMNID2="$2"; fi; shift;;
+    "-i") MAXITER=$2; shift;;
+    "-w") ERRWAIT=$2; shift;;
+    "-W") VMERRWAIT=$2; shift;;
+    "CLEANUP") break;;
+    *) echo "Unknown argument \"$1\""; exit 1;;
+  esac
+  shift
+done
+
 
 # Test precondition
 type -p nova >/dev/null 2>&1
@@ -1310,7 +1315,8 @@ SNATROUTE=""
 MSTART=$(date +%s)
 # Debugging: Start with volume step
 if test "$1" = "CLEANUP"; then
-  echo -e "$BOLD *** Start cleanup *** $NORM"
+  if test -n "$2"; then RPRE=$2; fi
+  echo -e "$BOLD *** Start cleanup $RPRE *** $NORM"
   cleanup
   echo -e "$BOLD *** Cleanup complete *** $NORM"
   exit 0
