@@ -180,30 +180,30 @@ sendalarm()
   if test $1 = 0; then
     PRE="Note"
     RES=""
-    echo -e "$BOLD$PRE on ${RPRE%_} on $(hostname)/$SHORT_DOMAIN: $2\n$3$NORM" 1>&2
+    echo -e "$BOLD$PRE on $SHORT_DOMAIN/${RPRE%_} on $(hostname): $2\n$3$NORM" 1>&2
   else
-    PRE="ALARM"
+    PRE="ALARM $1"
     RES=" => $1"
-    echo -e "$RED$PRE on ${RPRE%_} on $(hostname)/$SHORT_DOMAIN: $2$RES\n$3$NORM" 1>&2
+    echo -e "$RED$PRE on $SHORT_DOMAIN/${RPRE%_} on $(hostname): $2\n$3$NORM" 1>&2
   fi
   if test -n "$EMAIL"; then
     if test -n "$EMAIL2" -a $1 != 0; then EM="$EMAIL2"; else EM="$EMAIL"; fi
     echo "From: ${RPRE%_} $(hostname) <$LOGNAME@$(hostname -f)>
 To: $EM
-Subject: $PRE: $2$RES $SHORT_DOMAIN
+Subject: $PRE on $SHORT_DOMAIN: $2
 Date: $(date -R)
 
-$PRE
+$PRE on $SHORT_DOMAIN
 
-${RPRE%_} on $(hostname)/$SHORT_DOMAIN:
-$2$RES
+${RPRE%_} on $(hostname):
+$2
 $3" | /usr/sbin/sendmail -t -f kurt@garloff.de
   fi
   if test -n "$SMNID"; then
     if test -n "$SMNID2" -a $1 != 0; then URN="$SMNID2"; else URN="$SMNID"; fi
-    echo "$PRE: $(date)
-${RPRE%_} on $(hostname)/$SHORT_DOMAIN:
-$2$RES
+    echo "$PRE on $SHORT_DOMAIN: $(date)
+${RPRE%_} on $(hostname):
+$2
 $3" | otc.sh notifications publish $URN "$PRE $1 from $(hostname)/$SHORT_DOMAIN"
   fi
 }
@@ -975,6 +975,7 @@ wait222()
   echo -n "${FLOATS[0]} "
   echo -n "ping "
   declare -i ctr=0
+  # First test JH0
   while test $ctr -le $MAXWAIT; do
     ping -c1 -w2 ${FLOATS[0]} >/dev/null 2>&1 && break
     sleep 2
@@ -982,6 +983,7 @@ wait222()
     let ctr+=1
   done
   if test $ctr -ge $MAXWAIT; then echo -e "${RED}JumpHost0 (${FLOATS[0]}) not pingable${NORM}"; let waiterr+=1; fi
+  # Now test VMs behind JH0
   for red in ${REDIRS[0]}; do
     pno=${red#*tcp,}
     pno=${pno%%,*}
@@ -997,6 +999,7 @@ wait222()
     MAXWAIT=16
   done
   MAXWAIT=32
+  # Now test JH1
   echo -n " ${FLOATS[1]} "
   echo -n "ping "
   declare -i ctr=0
@@ -1007,6 +1010,7 @@ wait222()
     let ctr+=1
   done
   if test $ctr -ge $MAXWAIT; then echo -e "${RED}JumpHost1 (${FLOATS[1]}) not pingable${NORM}"; let waiterr+=1; fi
+  # Now test VMs behind JH1
   for red in ${REDIRS[1]}; do
     pno=${red#*tcp,}
     pno=${pno%%,*}
@@ -1047,7 +1051,7 @@ testlsandping()
   PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
   echo "$PING"
-  return $RC
+  if test $RC != 0; then return 1; else return 0; fi
 }
 
 testjhinet()
@@ -1111,6 +1115,7 @@ testsnat()
   done
   if test -n "$ERR0" -o -n "$ERR1"; then sleep 12; fi
   # Process errors: Retry
+  # FIXME: Is it actually worth retrying? Does it really improve the results?
   for red in $ERR0; do
     pno=${red#*tcp,}
     pno=${pno%%,*}
@@ -1118,7 +1123,7 @@ testsnat()
     RC=$?
     if test $RC == 2; then
       let FAIL+=2
-      ERR="ssh VM0 $red ls; "
+      ERR="${ERR}ssh VM0 $red ls; "
     elif test $RC == 1; then
       let CUMPINGERRORS+=1
       ERR="${ERR}ssh VM0 $red ping $PINGTARGET; "
@@ -1263,7 +1268,8 @@ declare -i CUMVMERRORS=0
 declare -i CUMWAITERRORS=0
 declare -i RUNS=0
 
-LASTREP=$(date +%Y-%m-%d)
+LASTDATE=$(date +%Y-%m-%d)
+LASTTIME=$(date +%H:%M:%S)
 
 # MAIN LOOP
 while test $loop != $MAXITER; do
@@ -1383,7 +1389,7 @@ else # test "$1" = "DEPLOY"; then
  echo -e "$BOLD *** Cleanup complete *** $NORM"
  THISRUNTIME=$(($(date +%s)-$MSTART))
  TOTTIME+=($THISRUNTIME)
- if test $THISRUNTIME -gt $((900+30*$NOVMS)); then
+ if test $THISRUNTIME -gt $((920+40*$NOVMS)); then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME"
     #waiterr $WAITERR
  fi
@@ -1399,9 +1405,10 @@ let CUMWAITERRORS+=$WAITERRORS
 let RUNS+=1
 
 CDATE=$(date +%Y-%m-%d)
-if test -n "$SENDSTATS" -a "$CDATE" != "$LASTREP" || test $(($loop+1)) == $MAXITER; then
-  sendalarm 0 "Statistics for $LASTREP" "
-API_Monitor $VERSION on $(hostname) testing $SHORT_DOMAIN: ($RPRE)
+CTIME=$(date +%H:%M:%S)
+if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXITER; then
+  sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
+$RPRE $VERSION on $(hostname) testing $SHORT_DOMAIN:
 
 $RUNS deployments
 $CUMVMERRORS VM LOGIN ERRORS
@@ -1414,7 +1421,8 @@ $(allstats)"
   CUMAPIERRORS=0
   CUMPINGERRORS=0
   CUMWAITERRORS=0
-  LASTREP="$CDATE"
+  LASTDATE="$CDATE"
+  LASTTIME="$CTIME"
   RUNS=0
   # Reset stats
   NETSTATS=()
