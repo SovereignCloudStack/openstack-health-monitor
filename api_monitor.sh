@@ -60,7 +60,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.11
+VERSION=1.12
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -69,7 +69,7 @@ if test -z "$PINGTARGET"; then PINGTARGET=google-public-dns-b.google.com; fi
 # Prefix for test resources
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
 echo "Running api_monitor.sh v$VERSION"
-echo "Using $RPRE prefix for api_monitor resources on $OS_USER_DOMAIN_NAME"
+if test "$1" != "CLEANUP"; then echo "Using $RPRE prefix for api_monitor resources on $OS_USER_DOMAIN_NAME"; fi
 SHORT_DOMAIN="${OS_USER_DOMAIN_NAME##*OTC*00000000001000}"
 # Number of VMs and networks
 NOVMS=12
@@ -1395,7 +1395,8 @@ else # test "$1" = "DEPLOY"; then
  echo -e "$BOLD *** Cleanup complete *** $NORM"
  THISRUNTIME=$(($(date +%s)-$MSTART))
  TOTTIME+=($THISRUNTIME)
- if test $THISRUNTIME -gt $((920+40*$NOVMS)); then
+ # Raise an alarm if we have not yet sent one and we're very slow despite this
+ if test $VMERRORS = 0 -a $WAITERROR = 0 -a $THISRUNTIME -gt $((480+30*$NOVMS)); then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME"
     #waiterr $WAITERR
  fi
