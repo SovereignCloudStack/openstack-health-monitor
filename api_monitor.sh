@@ -104,9 +104,10 @@ if [[ "$JHIMG" != *openSUSE* ]]; then
 	exit 1
 fi
 
-JHVOLSIZE=4
-VOLSIZE=8
-ADDVOLSIZE=5
+# Optionally increase JH and VM volume sizes beyond image size
+# (slows things down due to preventing quick_start and growpart)
+ADDJHVOLSIZE=${ADDJHVOLSIZE:-0}
+ADDVMVOLSIZE=${ADDVMVOLSIZE:-0}
 
 DATE=`date +%s`
 LOGFILE=$RPRE$DATE.log
@@ -122,14 +123,18 @@ usage()
 {
   #echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-p] CLEANUP|DEPLOY"
   echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-s] [-e EMAIL [-e ALARMMAIL]] [-m SMNURN [-m ALARMSMNURN]] [-i maxiter]"
-  echo " -e sets eMail address for notes/alarms (assumes working MTA)"
-  echo "    second -e splits eMails; notes got to first, alarms to second eMail"
-  echo " -m sets notes/alarms by SMN (pass URN of queue)"
-  echo "    second -m splits notifications; notes to first, alarms to second URN"
-  echo " -s sends stats as well once per day, not just alarms"
-  echo " -i sets max number of iterations"
-  echo " -w sets error wait (API, VM): 0-inf seconds or neg value for interactive wait"
-  echo " -W sets error wait (VM only): 0-inf seconds or neg value for interactive wait"
+  echo " -n N  number of VMs to create (beyond 2 JumpHosts, def: 12)"
+  echo " -l LOGFILE record all command in LOGFILE"
+  echo " -e ADR sets eMail address for notes/alarms (assumes working MTA)"
+  echo "        second -e splits eMails; notes go to first, alarms to second eMail"
+  echo " -m URN sets notes/alarms by SMN (pass URN of queue)"
+  echo "        second -m splits notifications; notes to first, alarms to second URN"
+  echo " -s    sends stats as well once per day, not just alarms"
+  echo " -i N  sets max number of iterations (def = -1 = inf)"
+  echo " -g N  increase VM volume size by N GB"
+  echo " -G N  increase JH volume size by N GB"
+  echo " -w N  sets error wait (API, VM): 0-inf seconds or neg value for interactive wait"
+  echo " -W N  sets error wait (VM only): 0-inf seconds or neg value for interactive wait"
   echo "Or: api_monitor.sh CLEANUP XXX to clean up all resources with prefix XXX"
   exit 0
 }
@@ -144,6 +149,8 @@ while test -n "$1"; do
     "-e") if test -z "$EMAIL"; then EMAIL="$2"; else EMAIL2="$2"; fi; shift;;
     "-m") if test -z "$SMNID"; then SMNID="$2"; else SMNID2="$2"; fi; shift;;
     "-i") MAXITER=$2; shift;;
+    "-g") ADDVMVOLSIZE=$2; shift;;
+    "-G") ADDJHVOLSIZE=$2; shift;;
     "-w") ERRWAIT=$2; shift;;
     "-W") VMERRWAIT=$2; shift;;
     "CLEANUP") break;;
@@ -1328,7 +1335,12 @@ else # test "$1" = "DEPLOY"; then
  if test -z "$JHIMGID"; then echo "ERROR: No image $JHIMG found, aborting."; exit 1; fi
  IMGID=$(ostackcmd_search $IMG $GLANCETIMEOUT glance image-list $IMGFILT | awk '{ print $2; }')
  if test -z "$IMGID"; then echo "ERROR: No image $IMG found, aborting."; exit 1; fi
- #echo "Image $IMGID $JHIMGID"
+ # Retrieve root volume size
+ read TM SZ < <(ostackcmd_id min_disk $GLANCETIMEOUT glance image-show $JHIMGID)
+ JHVOLSIZE=$(($SZ+$ADDJHVOLSIZE))
+ read TM SZ < <(ostackcmd_id min_disk $GLANCETIMEOUT glance image-show $IMGID)
+ VOLSIZE=$(($SZ+$ADDVMVOLSIZE))
+ #echo "Image $IMGID $VOLSIZE $JHIMGID $JHVOLSIZE"; exit 0;
  if createRouters; then
   if createNets; then
    if createSubNets; then
