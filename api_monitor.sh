@@ -60,7 +60,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.12
+VERSION=1.13
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -275,6 +275,7 @@ ostackcmd_search()
   local SEARCH=$1; shift
   local TIMEOUT=$1; shift
   local LSTART=$(date +%s.%3N)
+  let APICALLS+=1
   if test "$TIMEOUT" = "0"; then
     RESP=$($@ 2>&1)
   else
@@ -306,6 +307,7 @@ ostackcmd_id()
   local IDNM=$1; shift
   local TIMEOUT=$1; shift
   local LSTART=$(date +%s.%3N)
+  let APICALLS+=1
   if test "$TIMEOUT" = "0"; then
     RESP=$($@ 2>&1)
   else
@@ -342,6 +344,7 @@ ostackcmd_tm()
   local STATNM=$1; shift
   local TIMEOUT=$1; shift
   local LSTART=$(date +%s.%3N)
+  let APICALLS+=1
   if test "$TIMEOUT" = "0"; then
     OSTACKRESP=$($@ 2>&1)
   else
@@ -1160,10 +1163,12 @@ testsnat()
 }
 
 
-# STATLIST [DIGITS]
+# [-m] STATLIST [DIGITS [NAME]]
+# m for machine readable
 stats()
 {
   local NM NO VAL LIST DIG OLDIFS SLIST MIN MAX MID MED NFQ NFQL NFQR NFQF NFP AVGC AVG
+  if test "$1" = "-m"; then MACHINE=1; shift; else unset MACHINE; fi
   # Fixup "{" found after errors in time stats
   NM=$1
   NO=$(eval echo "\${#${NM}[@]}")
@@ -1199,21 +1204,26 @@ stats()
   #echo "$AVGC"
   #AVG=`python -c "print \"%.${DIG}f\" % ($AVGC)"`
   AVG=$(echo "scale=$DIG; $AVGC" | bc -l)
-  echo "$NAME: Num $NO Min $MIN Med $MED Avg $AVG 95% $NFP Max $MAX" | tee -a $LOGFILE
+  if test -n "$MACHINE"; then
+    echo "#$NM: $NO:$MIN:$MED:$AVG:$NFP:$MAX" | tee -a $LOGFILE
+  else
+    echo "$NAME: Num $NO Min $MIN Med $MED Avg $AVG 95% $NFP Max $MAX" | tee -a $LOGFILE
+  fi
 }
 
+# [-m] for machine readable
 allstats()
 {
- stats NETSTATS   2 "Neutron API Stats "
- stats FIPSTATS   2 "Neutron FIP Stats "
- stats NOVASTATS  2 "Nova API Stats    "
- stats NOVABSTATS 2 "Nova Boot Stats   "
- stats VMCSTATS   0 "VM Creation Stats "
- stats VMDSTATS   0 "VM Deletion Stats "
- stats VOLSTATS   2 "Cinder API Stats  "
- stats VOLCSTATS  0 "Vol Creation Stats"
- stats WAITTIME   0 "Wait for VM Stats "
- stats TOTTIME    0 "Total setup Stats "
+ stats $1 NETSTATS   2 "Neutron API Stats "
+ stats $1 FIPSTATS   2 "Neutron FIP Stats "
+ stats $1 NOVASTATS  2 "Nova API Stats    "
+ stats $1 NOVABSTATS 2 "Nova Boot Stats   "
+ stats $1 VMCSTATS   0 "VM Creation Stats "
+ stats $1 VMDSTATS   0 "VM Deletion Stats "
+ stats $1 VOLSTATS   2 "Cinder API Stats  "
+ stats $1 VOLCSTATS  0 "Vol Creation Stats"
+ stats $1 WAITTIME   0 "Wait for VM Stats "
+ stats $1 TOTTIME    0 "Total setup Stats "
 }
 
 findres()
@@ -1290,6 +1300,7 @@ declare -i PINGERRORS=0
 declare -i APIERRORS=0
 declare -i VMERRORS=0
 declare -i WAITERRORS=0
+declare -i APICALLS=0
 
 # Arrays to store resource creation start times
 declare -a VOLSTIME=()
@@ -1335,11 +1346,13 @@ else # test "$1" = "DEPLOY"; then
  if test -z "$JHIMGID"; then echo "ERROR: No image $JHIMG found, aborting."; exit 1; fi
  IMGID=$(ostackcmd_search $IMG $GLANCETIMEOUT glance image-list $IMGFILT | awk '{ print $2; }')
  if test -z "$IMGID"; then echo "ERROR: No image $IMG found, aborting."; exit 1; fi
+ let APICALLS+=2
  # Retrieve root volume size
  read TM SZ < <(ostackcmd_id min_disk $GLANCETIMEOUT glance image-show $JHIMGID)
  JHVOLSIZE=$(($SZ+$ADDJHVOLSIZE))
  read TM SZ < <(ostackcmd_id min_disk $GLANCETIMEOUT glance image-show $IMGID)
  VOLSIZE=$(($SZ+$ADDVMVOLSIZE))
+ let APICALLS+=2
  #echo "Image $IMGID $VOLSIZE $JHIMGID $JHVOLSIZE"; exit 0;
  if createRouters; then
   if createNets; then
@@ -1413,7 +1426,7 @@ else # test "$1" = "DEPLOY"; then
     #waiterr $WAITERR
  fi
  allstats
- echo "This run: Overall ($NOVMS + $NONETS) VMs: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM ssh errors, $APIERRORS API errors, $PINGERRORS Ping Errors"
+ echo "This run: Overall ($NOVMS + $NONETS) VMs, $APICALLS API calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM ssh errors, $APIERRORS API errors, $PINGERRORS Ping Errors"
 #else
 #  usage
 fi
@@ -1421,6 +1434,7 @@ let CUMAPIERRORS+=$APIERRORS
 let CUMVMERRORS+=$VMERRORS
 let CUMPINGERRORS+=$PINGERRORS
 let CUMWAITERRORS+=$WAITERRORS
+let CUMAPICALLS+=$APICALLS
 let RUNS+=1
 
 CDATE=$(date +%Y-%m-%d)
@@ -1429,17 +1443,22 @@ if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXI
   sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $(hostname) testing $SHORT_DOMAIN:
 
-$RUNS deployments
+$RUNS deployments ($((($NONETS+$NOVM)*$RUNS)) VMs, $APICALLS API calls)
 $CUMVMERRORS VM LOGIN ERRORS
 $CUMWAITERRORS VM SSH ERRORS
 $CUMAPIERRORS API ERRORS
 $CUMPINGERRORS Ping failures
 
-$(allstats)"
+$(allstats)
+
+#RUN: $RUNS:$((($NONETS+$NOVM)*$RUNS)):$CUMAPICALLS:$CUMVMERRORS:$CUMWAITERRORS:$CUMPINGERRORS
+$(allstats -m)
+"
   CUMVMERRORS=0
   CUMAPIERRORS=0
   CUMPINGERRORS=0
   CUMWAITERRORS=0
+  CUMAPICALLS=0
   LASTDATE="$CDATE"
   LASTTIME="$CTIME"
   RUNS=0
