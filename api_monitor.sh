@@ -1458,7 +1458,7 @@ else # test "$1" = "DEPLOY"; then
  THISRUNTIME=$(($(date +%s)-$MSTART))
  TOTTIME+=($THISRUNTIME)
  # Raise an alarm if we have not yet sent one and we're very slow despite this
- if test $VMERRORS = 0 -a $WAITERROR = 0 -a $THISRUNTIME -gt $((480+30*$NOVMS)); then
+ if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $((480+30*$NOVMS)); then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME"
     #waiterr $WAITERR
  fi
