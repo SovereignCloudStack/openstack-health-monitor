@@ -60,7 +60,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.13
+VERSION=1.14
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -1233,7 +1233,7 @@ stats()
   #AVG=`python -c "print \"%.${DIG}f\" % ($AVGC)"`
   AVG=$(echo "scale=$DIG; $AVGC" | bc -l)
   if test -n "$MACHINE"; then
-    echo "#$NM: $NO:$MIN:$MED:$AVG:$NFP:$MAX" | tee -a $LOGFILE
+    echo "#$NM: $NO|$MIN|$MED|$AVG|$NFP|$MAX" | tee -a $LOGFILE
   else
     echo "$NAME: Num $NO Min $MIN Med $MED Avg $AVG 95% $NFP Max $MAX" | tee -a $LOGFILE
   fi
@@ -1488,8 +1488,9 @@ $CUMPINGERRORS Ping failures
 
 $(allstats)
 
-#RUN: $RUNS:$((($NONETS+$NOVMS)*$RUNS)):$CUMAPICALLS
-#ERRORS: $CUMVMERRORS:$CUMWAITERRORS:$CUMAPIERRORS:$CUMPINGERRORS
+#STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
+#RUN: $RUNS|$((($NONETS+$NOVMS)*$RUNS))|$CUMAPICALLS
+#ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$CUMPINGERRORS
 $(allstats -m)
 "
   CUMVMERRORS=0
