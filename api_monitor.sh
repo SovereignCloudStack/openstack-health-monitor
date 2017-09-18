@@ -116,6 +116,7 @@ declare -i APICALLS=0
 
 # Nothing to change below here
 BOLD="\e[0;1m"
+REV="\e[0;3m"
 NORM="\e[0;0m"
 RED="\e[0;31m"
 GREEN="\e[0;32m"
@@ -231,7 +232,7 @@ exithandler()
 {
   loop=$(($MAXITER-1))
   if test "$EXITED" = "0"; then
-    echo -e "\nSIGINT received, exiting after this iteration"
+    echo -e "\n${REV}SIGINT received, exiting after this iteration$NORM"
   elif test "$EXITED" = "1"; then
     echo -e "\n$BOLD OK, cleaning up right away $NORM"
     cleanup
