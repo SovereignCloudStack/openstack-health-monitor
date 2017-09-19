@@ -68,13 +68,14 @@ if test -z "$PINGTARGET"; then PINGTARGET=google-public-dns-b.google.com; fi
 
 # Prefix for test resources
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
-echo "Running api_monitor.sh v$VERSION"
-if test "$1" != "CLEANUP"; then echo "Using $RPRE prefix for api_monitor resources on $OS_USER_DOMAIN_NAME"; fi
 SHORT_DOMAIN="${OS_USER_DOMAIN_NAME##*OTC*00000000001000}"
 # Number of VMs and networks
 NOVMS=12
 NONETS=2
-if test -z "$AZS"; then AZS=(eu-de-01 eu-de-02); fi
+AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/')
+if test -z "$AZS"; then AZS=(eu-de-01 eu-de-02);
+else AZS=($AZS); fi
+echo "${#AZS[*]} AZs: ${AZS[*]}"
 NOAZS=${#AZS[*]}
 MANUALPORTSETUP=1
 
@@ -92,13 +93,16 @@ CINDERTIMEOUT=20
 GLANCETIMEOUT=32
 DEFTIMEOUT=16
 
+echo "Running api_monitor.sh v$VERSION"
+if test "$1" != "CLEANUP"; then echo "Using $RPRE prefix for api_monitor resources on $OS_USER_DOMAIN_NAME (${AZS[*]})"; fi
+
 # Images, flavors, disk sizes
 JHIMG="${JHIMG:-Standard_openSUSE_42_JeOS_latest}"
 JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
 IMG="${IMG:-Standard_CentOS_7_latest}"
 IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
-JHFLAVOR="computev1-1"
-FLAVOR="computev1-1"
+JHFLAVOR=${JHFLAVOR:-computev1-1}
+FLAVOR=${FLAVOR:-computev1-1}
 
 if [[ "$JHIMG" != *openSUSE* ]]; then
 	echo "WARN: Need openSUSE_42 als JumpHost for port forwarding via user_data" 1>&2
@@ -794,7 +798,7 @@ deletePorts()
 createJHVols()
 {
   JVOLSTIME=()
-  createResources $NONETS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id $CINDERTIMEOUT cinder create --image-id $JHIMGID --name ${RPRE}RootVol_JH\$no --availability-zone \${AZS[\$no]} $JHVOLSIZE
+  createResources $NONETS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id $CINDERTIMEOUT cinder create --image-id $JHIMGID --name ${RPRE}RootVol_JH\$no --availability-zone \${AZS[\$AZN]} $JHVOLSIZE
 }
 
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
