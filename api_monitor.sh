@@ -1480,7 +1480,7 @@ if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXI
   sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $(hostname) testing $SHORT_DOMAIN:
 
-$RUNS deployments ($((($NONETS+$NOVMS)*$RUNS)) VMs, $APICALLS API calls)
+$RUNS deployments ($((($NONETS+$NOVMS)*$RUNS)) VMs, $CUMAPICALLS API calls)
 $CUMVMERRORS VM LOGIN ERRORS
 $CUMWAITERRORS VM SSH ERRORS
 $CUMAPIERRORS API ERRORS
