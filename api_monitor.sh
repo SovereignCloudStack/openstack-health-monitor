@@ -492,11 +492,14 @@ waitResources()
   eval local RLIST=( \"\${${RNM}S[@]}\" )
   eval local SLIST=( \"\${${STIME}[@]}\" )
   local LAST=$(( ${#RLIST[@]} - 1 ))
+  local STATSTR="????????????????????????????????????????????????????????"
+  declare -i WERR=0
   while test -n "${SLIST[*]}"; do
-    local STATSTR=""
+    local LASTSTAT="$STATSTR"
+    STATSTR=""
     for i in $(seq 0 $LAST ); do
       local rsrc=${RLIST[$i]}
-      if test -z "${SLIST[$i]}"; then STATSTR+='a'; continue; fi
+      if test -z "${SLIST[$i]}"; then STATSTR+="${LASTSTAT:$i:1}"; continue; fi
       local CMD=`eval echo $@ $rsrc 2>&1`
       let APICALLS+=1
       local RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
@@ -514,13 +517,19 @@ waitResources()
 	eval ${CSTAT}+="($TM)"
 	unset SLIST[$i]
       elif test "$STAT" == "error"; then
-        echo "ERROR: $NM $rsrc status $STAT" 1>&2; return 1
+        echo "ERROR: $NM $rsrc status $STAT" 1>&2 #; return 1
+        let WERR+=1
+        TM=$(date +%s)
+	TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
+        unset SLIST[$i]
       fi
     done
     echo -en "Wait $RNM: $STATSTR\r"
     test -z "${SLIST[*]}" && return 0
     sleep 2
   done
+  echo
+  return $WERR
 }
 
 # Wait for resources reaching a desired state
@@ -550,9 +559,11 @@ waitlistResources()
   PARSE="$PARSE *\([^|]*\)|.*\$"
   #echo "$PARSE"
   declare -i ctr=0
-  declare -i ERR=0
+  local STATSTR="????????????????????????????????????????????????????????"
+  declare -i WERR=0
   while test -n "${SLIST[*]}" -a $ctr -le 320; do
-    local STATSTR=""
+    local LASTSTAT="$STATSTR"
+    STATSTR=""
     local CMD=`eval echo $@ 2>&1`
     ostackcmd_tm $STATNM $TIMEOUT $CMD
     if test $? != 0; then echo "ERROR: $CMD => $OSTACKRESP" 1>&2; return 1; fi
@@ -560,7 +571,7 @@ waitlistResources()
     read TM REST < <(echo "$OSTACKRESP")
     for i in $(seq 0 $LAST ); do
       local rsrc=${RLIST[$i]}
-      if test -z "${SLIST[$i]}"; then STATSTR+='x'; continue; fi
+      if test -z "${SLIST[$i]}"; then STATSTR+="${LASTSTAT:$i:1}"; continue; fi
       local STAT=$(echo "$OSTACKRESP" | grep "^| $rsrc" | sed -e "s@$PARSE@\1@" -e 's/ *$//')
       #echo "STATUS: \"$STAT\""
       if test -n "$STAT"; then STATSTR+=${STAT:0:1}; else STATSTR+="X"; fi
@@ -572,9 +583,9 @@ waitlistResources()
 	eval ${CSTAT}+="($TM)"
 	unset SLIST[$i]
       elif test "$STAT" == "error"; then
-        # We can not succeed any more if one element fails, so give up
+        # We can not succeed any more if one element fails, but don't give up
         echo "ERROR: $NM $rsrc status $STAT" 1>&2 #; return 1
-        let ERR+=1
+        let WERR+=1
         TM=$(date +%s)
 	TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
         unset SLIST[$i]
@@ -585,7 +596,8 @@ waitlistResources()
     sleep 2
     let ctr+=1
   done
-  return $ERR
+  echo
+  return $WERR
 }
 
 # Wait for deletion of resources
@@ -637,6 +649,7 @@ waitdelResources()
     test -z "${DLIST[*]}" && return 0
     sleep 2
   done
+  echo
 }
 
 # STATNM RESRNM COMMAND
