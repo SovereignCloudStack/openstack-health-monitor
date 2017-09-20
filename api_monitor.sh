@@ -607,11 +607,13 @@ waitdelResources()
   eval local DLIST=( \"\${${DTIME}[@]}\" )
   local LAST=$(( ${#RLIST[@]} - 1 ))
   #echo "waitdelResources $STATNM $RNM $DSTAT $DTIME - ${RLIST[*]} - ${DLIST[*]}"
+  local STATSTR="????????????????????????????????????????????????????????"
   while test -n "${DLIST[*]}"; do
-    local STATSTR=""
+    local LASTSTAT="$STATSTR"
+    STATSTR=""
     for i in $(seq 0 $LAST); do
       local rsrc=${RLIST[$i]}
-      if test -z "${DLIST[$i]}"; then STATSTR+='x'; continue; fi
+      if test -z "${DLIST[$i]}"; then STATSTR+="${LASTSTAT:$i:1}"; continue; fi
       local CMD=`eval echo $@ $rsrc`
       let APICALLS+=1
       local RESP=$(ostackcmd_id DELETE $TIMEOUT $CMD)
