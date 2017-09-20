@@ -60,7 +60,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.16
+VERSION=1.17
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -913,7 +913,6 @@ createJHVMs()
   VIP=$(extract_ip "$OSTACKRESP")
   if test ${#PORTS[*]} -gt 0; then
     declare -i ptn=222
-    declare -a REDIRS
     declare -i pi=0
     for port in ${PORTS[*]}; do
       ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show $port
@@ -1073,22 +1072,16 @@ testjhinet()
   ERR=""
   #echo "Test JH access and outgoing inet ... "
   declare -i RC=0
-  echo -n "Access JH0 (${FLOATS[0]}): "
-  testlsandping ${KEYPAIRS[0]} ${FLOATS[0]}
-  R=$?
-  if test $R == 2; then
-    RC=2; ERR="ssh JH0 ls; "
-  elif test $R == 1; then
-    let CUMPINGERRORS+=1; ERR="${ERR}ssh JH0 ping $PINGTARGET; "
-  fi
-  echo -n "Access JH1 (${FLOATS[1]}): "
-  testlsandping ${KEYPAIRS[0]} ${FLOATS[1]}
-  R=$?
-  if test $R == 2; then
-    let RC+=2; ERR="${ERR}ssh JH1 ls; "
-  elif test $R == 1; then
-    let CUMPINGERRORS+=1; ERR="${ERR}ssh JH1 ping $PINGTARGET; "
-  fi
+  for JHNO in $(seq 0 $(($NONETS-1))); do
+    echo -n "Access JH$JHNO (${FLOATS[$JHNO]}): "
+    testlsandping ${KEYPAIRS[0]} ${FLOATS[$JHNO]}
+    R=$?
+    if test $R == 2; then
+      RC=2; ERR="${ERR}ssh JH$JHNO ls; "
+    elif test $R == 1; then
+      let CUMPINGERRORS+=1; ERR="${ERR}ssh JH$JHNO ping $PINGTARGET; "
+    fi
+  done
   if test $RC = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $ERR $NORM"; return $RC; fi
   if test -n "$ERR"; then echo -e "$RED $ERR $NORM"; fi
 }
@@ -1098,64 +1091,49 @@ testsnat()
   local FAIL ERR0 ERR1 pno RC
   unset SSH_AUTH_SOCK
   ERR=""
-  ERR0=""; ERR1=""
+  declare ERRJH=()
   #echo "Test VM access (fwdmasq) and outgoing SNAT inet ... "
   declare -i FAIL=0
-  for red in ${REDIRS[0]}; do
-    pno=${red#*tcp,}
-    pno=${pno%%,*}
-    testlsandping ${KEYPAIRS[1]} ${FLOATS[0]} $pno
-    RC=$?
-    if test $RC == 2; then
-      ERR0="${ERR0}$red "
-    elif test $RC == 1; then
-      let CUMPINGERRORS+=1
-      ERR="${ERR}ssh VM0 $red ping $PINGTARGET; "
-    fi
+  for JHNO in $(seq 0 $(($NONETS-1))); do
+    for red in ${REDIRS[$JHNO]}; do
+      pno=${red#*tcp,}
+      pno=${pno%%,*}
+      testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno
+      RC=$?
+      if test $RC == 2; then
+        ERRJH[$JHNO]="${ERRJH[$JHNO]}$red "
+      elif test $RC == 1; then
+        let CUMPINGERRORS+=1
+        ERR="${ERR}ssh VM$JHNO $red ping $PINGTARGET; "
+      fi
+    done
   done
-  for red in ${REDIRS[1]}; do
-    pno=${red#*tcp,}
-    pno=${pno%%,*}
-    testlsandping ${KEYPAIRS[1]} ${FLOATS[1]} $pno
-    RC=$?
-    if test $RC == 2; then
-      ERR1="${ERR1}$red "
-    elif test $RC == 1; then
-      let CUMPINGERRORS+=1
-      ERR="${ERR}ssh VM1 $red ping $PINGTARGET; "
-    fi
-  done
-  if test -n "$ERR0" -o -n "$ERR1"; then sleep 12; fi
+  if test ${#ERRJH[*]} != 0; then sleep 12; fi
   # Process errors: Retry
   # FIXME: Is it actually worth retrying? Does it really improve the results?
-  for red in $ERR0; do
-    pno=${red#*tcp,}
-    pno=${pno%%,*}
-    testlsandping ${KEYPAIRS[1]} ${FLOATS[0]} $pno
-    RC=$?
-    if test $RC == 2; then
-      let FAIL+=2
-      ERR="${ERR}ssh VM0 $red ls; "
-    elif test $RC == 1; then
-      let CUMPINGERRORS+=1
-      ERR="${ERR}ssh VM0 $red ping $PINGTARGET; "
-    fi
-  done
-  for red in $ERR1; do
-    pno=${red#*tcp,}
-    pno=${pno%%,*}
-    testlsandping ${KEYPAIRS[1]} ${FLOATS[1]} $pno
-    RC=$?
-    if test $RC == 2; then
-      let FAIL+=2
-      ERR="${ERR}ssh VM1 $red ls; "
-    elif test $RC == 1; then
-      let CUMPINGERRORS+=1
-      ERR="${ERR}ssh VM1 $red ping $PINGTARGET; "
-    fi
+  for JHNO in $(seq 0 $(($NONETS-1))); do
+    for red in ${ERRJH[$JHNO]}; do
+      pno=${red#*tcp,}
+      pno=${pno%%,*}
+      testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno
+      RC=$?
+      if test $RC == 2; then
+        let FAIL+=2
+        ERR="${ERR}ssh VM$JHNO $red ls; "
+      elif test $RC == 1; then
+        let CUMPINGERRORS+=1
+        ERR="${ERR}ssh VM$JHNO $red ping $PINGTARGET; "
+      fi
+    done
   done
   if test -n "$ERR"; then echo -e "$RED $ERR ($FAIL) $NORM"; fi
-  if test -n "$ERR0" -o -n "$ERR1"; then echo -e "$BOLD RETRIED: 0:$ERR0 1:$ERR1 $NORM"; fi
+  if test ${#ERRJH[*]} != 0; then
+    echo -en "$BOLD RETRIED: "
+    for JHNO in $(seq 0 $(($NONETS-1))); do
+      test -n "${ERRJH[$JHNO]}" && echo -n "$JHNO: ${ERRJH[$JHNO]} "
+    done
+    echo -e "$NORM"
+  fi
   return $FAIL
 }
 
