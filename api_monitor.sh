@@ -60,7 +60,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.15
+VERSION=1.16
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -75,7 +75,7 @@ NONETS=2
 AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/')
 if test -z "$AZS"; then AZS=(eu-de-01 eu-de-02);
 else AZS=($AZS); fi
-echo "${#AZS[*]} AZs: ${AZS[*]}"
+#echo "${#AZS[*]} AZs: ${AZS[*]}"
 NOAZS=${#AZS[*]}
 MANUALPORTSETUP=1
 
@@ -129,8 +129,9 @@ GREEN="\e[0;32m"
 usage()
 {
   #echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-p] CLEANUP|DEPLOY"
-  echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-s] [-e EMAIL [-e ALARMMAIL]] [-m SMNURN [-m ALARMSMNURN]] [-i maxiter]"
+  echo "Usage: api_monitor.sh [options]"
   echo " -n N   number of VMs to create (beyond 2 JumpHosts, def: 12)"
+  echo " -N N   number of networks/subnets/jumphosts to create (def: 2)"
   echo " -l LOGFILE record all command in LOGFILE"
   echo " -e ADR sets eMail address for notes/alarms (assumes working MTA)"
   echo "         second -e splits eMails; notes go to first, alarms to second eMail"
@@ -150,6 +151,7 @@ while test -n "$1"; do
   case $1 in
     "-n") NOVMS=$2; shift;;
     "-n"*) NOVMS=${1:2};;
+    "-N") NONETS=$2; shift;;
     "-l") LOGFILE=$2; shift;;
     "help"|"-h"|"--help") usage;;
     "-s") SENDSTATS=1;;
@@ -417,6 +419,8 @@ createResources()
     read TM ID < <(echo "$RESP")
     eval ${STATNM}+="($TM)"
     let ctr+=1
+    # Workaround for teuto.net
+    if test "$1" = "cinder" -a $NOAZS = 1; then echo -en " ${RED}+4s${NORM} " 1>&2; sleep 4; fi
     if test $RC != 0; then echo "ERROR: $RNM creation failed" 1>&2; return 1; fi
     if test -n "$ID" -a "$RNM" != "NONE"; then echo -n "$ID "; fi
     eval ${RNM}S+="($ID)"
@@ -563,6 +567,7 @@ waitlistResources()
 	eval ${CSTAT}+="($TM)"
 	unset SLIST[$i]
       elif test "$STAT" == "error"; then
+        # We can not succeed any more if one element fails, so give up
         echo "ERROR: $NM $rsrc status $STAT" 1>&2; return 1
       fi
     done
@@ -736,9 +741,9 @@ createSGroups()
   let APIERRORS+=$(rc2bin $?)
   NETSTATS+=( $TM )
   #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-group-id $SG0 $SG1)
-  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-ip-prefix $JHSUBNETIP $SG1)
-  let APIERRORS+=$(rc2bin $?)
-  NETSTATS+=( $TM )
+  #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-ip-prefix $JHSUBNETIP $SG1)
+  #let APIERRORS+=$(rc2bin $?)
+  #NETSTATS+=( $TM )
   #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-group-id $SG0 $SG1)
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix $JHSUBNETIP $SG1)
   let APIERRORS+=$(rc2bin $?)
@@ -860,9 +865,12 @@ SNATROUTE=""
 createFIPs()
 {
   local VIP FLOAT
-  createResources $NONETS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} ${JHNETS[0]} || return
+  #createResources $NONETS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} ${JHNETS[0]} || return
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list || return 1
   EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| [0-9a-f-]* | \([^ ]*\).*$/\1/')
+  # Not needed on OTC, but for most other OpenStack clouds:
+  # Connect Router to external network gateway
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET
   # Actually this fails if the port is not assigned to a VM yet
   #  -- we can not associate a FIP to a port w/o dev owner
   createResources $NONETS FIPSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL $EXTNET
@@ -903,35 +911,29 @@ createJHVMs()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   if test ${#PORTS[*]} -gt 0; then
-    declare -i odd=0
     declare -i ptn=222
-    RE0=""; RE1=""
+    declare -a REDIRS
+    declare -i pi=0
     for port in ${PORTS[*]}; do
       ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show $port
       IP=$(extract_ip "$OSTACKRESP")
       STR="0/0,$IP,tcp,$ptn,22"
-      if test "$odd" = 0; then
-        odd=1
-        RE0="$RE0$STR
+      off=$(($pi%$NONETS))
+      REDIRS[$off]="${REDIRS[$off]}$STR
 "
-      else
-        odd=0
-        RE1="$RE1$STR
-"
-        let ptn+=1
-      fi
+      if test $(($off+1)) = $NONETS; then let ptn+=1; fi
     done
-    REDIRS[0]="$RE0"
-    REDIRS[1]="$RE1"
     #echo -e "$RE0$RE1"
   else
     echo "NOT GOOD: GUESSING VM IPs due to empty PORTS ${PORTS[*]}"
     # We don't know the IP addresses yet -- rely on sequential alloc starting at .4 (OTC)
+    # FIXME: This is broken by assuming NONETS=2
     REDIRS=( 10.250.0.$((4+($NOVMS-1)/$NONETS)) 10.250.1.$((4+($NOVMS-2)/$NONETS)) )
   fi
   #echo "$VIP ${REDIRS[*]}"
-  RD=$(echo -n "${REDIRS[0]}" |  sed 's@^0@         - 0@')
-  USERDATA="#cloud-config
+  for JHNUM in $(seq 0 $(($NONETS-1))); do
+    RD=$(echo -n "${REDIRS[$JHNUM]}" |  sed 's@^0@         - 0@')
+    USERDATA="#cloud-config
 otc:
    internalnet:
       - 10.250/16
@@ -943,27 +945,11 @@ $RD
    addip:
       eth0: $VIP
 "
-  echo "$USERDATA" > user_data.yaml
-  cat user_data.yaml >> $LOGFILE
-  # of course nova boot --image ... --nic net-id ... would be easier
-  createResources 1 NOVABSTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[0]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone ${AZS[0]} --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[0]} ${RPRE}VM_JH0 || return
-  RD=$(echo -n "${REDIRS[1]}" |  sed 's@^0@         - 0@')
-  USERDATA="#cloud-config
-otc:
-   internalnet:
-      - 10.250/16
-   snat:
-      masqnet:
-         - INTERNALNET
-      fwdmasq:
-$RD
-   addip:
-      eth0: $VIP
-"
-  echo "$USERDATA" > user_data.yaml
-  cat user_data.yaml >> $LOGFILE
-  createResources 1 NOVABSTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[1]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone ${AZS[$((1%$NOAZS))]} --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[1]} ${RPRE}VM_JH1 || return
-  #rm user_data.yaml
+    echo "$USERDATA" > user_data.yaml
+    cat user_data.yaml >> $LOGFILE
+    # of course nova boot --image ... --nic net-id ... would be easier
+    createResources 1 NOVABSTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[$JHNUM]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone ${AZS[$(($JHNUM%$NOAZS))]} --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[$JHNUM]} ${RPRE}VM_JH$JHNUM || return
+  done
 }
 
 waitJHVMs()
