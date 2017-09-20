@@ -887,7 +887,7 @@ createFIPs()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   # Find out whether the router does SNAT ...
-  read TM EXTGW <$(ostackcmd_id external_gateway_info $NETTIMEOUT neutron router-show ${ROUTERS[0]})
+  read TM EXTGW < <(ostackcmd_id external_gateway_info $NETTIMEOUT neutron router-show ${ROUTERS[0]})
   NETSTATS+=( $TM )
   SNAT=$(echo $EXTGW | sed 's/^[^,]*, "enable_snat": \([^ }]*\).*$/\1/')
   if test "$SNAT" = "false"; then
