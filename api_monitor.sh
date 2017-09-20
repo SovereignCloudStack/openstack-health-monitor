@@ -464,7 +464,7 @@ deleteResources()
     local RC="$?"
     let APIERRORS+=$(rc2bin $RC)
     eval ${STATNM}+="($TM)"
-    if test $RC != 0; then echo "ERROR" 1>&2: return 1; fi
+    if test $RC != 0; then echo "ERROR" 1>&2; return 1; fi
     unset LIST[-1]
   done
   test $LN -gt 0 && echo
@@ -550,7 +550,8 @@ waitlistResources()
   PARSE="$PARSE *\([^|]*\)|.*\$"
   #echo "$PARSE"
   declare -i ctr=0
-  while test -n "${SLIST[*]}"i -a $ctr -le 320; do
+  declare -i ERR=0
+  while test -n "${SLIST[*]}" -a $ctr -le 320; do
     local STATSTR=""
     local CMD=`eval echo $@ 2>&1`
     ostackcmd_tm $STATNM $TIMEOUT $CMD
@@ -572,7 +573,11 @@ waitlistResources()
 	unset SLIST[$i]
       elif test "$STAT" == "error"; then
         # We can not succeed any more if one element fails, so give up
-        echo "ERROR: $NM $rsrc status $STAT" 1>&2; return 1
+        echo "ERROR: $NM $rsrc status $STAT" 1>&2 #; return 1
+        let ERR+=1
+        TM=$(date +%s)
+	TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
+        unset SLIST[$i]
       fi
     done
     echo -en "Wait $RNM: $STATSTR\r"
@@ -580,6 +585,7 @@ waitlistResources()
     sleep 2
     let ctr+=1
   done
+  return $ERR
 }
 
 # Wait for deletion of resources
