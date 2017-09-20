@@ -79,6 +79,7 @@ else AZS=($AZS); fi
 #echo "${#AZS[*]} AZs: ${AZS[*]}"
 NOAZS=${#AZS[*]}
 MANUALPORTSETUP=1
+NAMESERVER=${NAMESERVER:-100.125.4.25}
 
 MAXITER=-1
 
@@ -677,8 +678,8 @@ JHSUBNETIP=10.250.250.0/24
 
 createSubNets()
 {
-  createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.4.4 --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
-  createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 100.125.4.25 --dns-nameserver 8.8.4.4 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
+  createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 8.8.4.4 --dns-nameserver $NAMESERVER --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
+  createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 8.8.4.4 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
 }
 
 deleteSubNets()
@@ -1029,6 +1030,7 @@ wait222()
       sleep 5
       let ctr+=1
     done
+    if [ $ctr -ge $MAXWAIT ]; then echo -ne " $RED timeout $NORM"; let waiterr+=1; fi
     # Now test VMs behind JH
     for red in ${REDIRS[$JHNO]}; do
       pno=${red#*tcp,}
