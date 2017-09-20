@@ -79,7 +79,9 @@ else AZS=($AZS); fi
 #echo "${#AZS[*]} AZs: ${AZS[*]}"
 NOAZS=${#AZS[*]}
 MANUALPORTSETUP=1
-NAMESERVER=${NAMESERVER:-100.125.4.25}
+if [[ $OS_AUTH_URL == *otc*t-systems.com* ]]; then
+  NAMESERVER=${NAMESERVER:-100.125.4.25}
+fi
 
 MAXITER=-1
 
@@ -422,7 +424,7 @@ createResources()
     eval ${STATNM}+="($TM)"
     let ctr+=1
     # Workaround for teuto.net
-    if test "$1" = "cinder" && [[ $OS_AUTH_URL == *teutostack* ]]; then echo -en " ${RED}+4s${NORM} " 1>&2; sleep 4; fi
+    if test "$1" = "cinder" && [[ $OS_AUTH_URL == *teutostack* ]]; then echo -en " ${RED}+5s${NORM} " 1>&2; sleep 5; fi
     if test $RC != 0; then echo "ERROR: $RNM creation failed" 1>&2; return 1; fi
     if test -n "$ID" -a "$RNM" != "NONE"; then echo -n "$ID "; fi
     eval ${RNM}S+="($ID)"
@@ -678,8 +680,13 @@ JHSUBNETIP=10.250.250.0/24
 
 createSubNets()
 {
-  createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 8.8.4.4 --dns-nameserver $NAMESERVER --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
-  createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 8.8.4.4 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
+  if test -n "$NAMESERVER"; then
+    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 8.8.4.4 --dns-nameserver $NAMESERVER --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
+    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 8.8.4.4 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
+  else
+    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
+    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
+  fi
 }
 
 deleteSubNets()
@@ -879,7 +886,13 @@ createFIPs()
   # TODO: Use API to tell VPC that the VIP is the next hop (route table)
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP
+  # Find out whether the router does SNAT ...
+  read TM EXTGW <$(ostackcmd_id external_gateway_info $NETTIMEOUT neutron router-show ${ROUTERS[0]})
+  NETSTATS+=( $TM )
+  SNAT=$(echo $EXTGW | sed 's/^[^,]*, "enable_snat": \([^ }]*\).*$/\1/')
+  if test "$SNAT" = "false"; then
+    ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP
+  fi
   if test $? != 0; then
     echo -e "$BOLD We lack the ability to set VPC route via SNAT gateways by API, will be fixed soon"
     echo -e " Please set next hop $VIP to VPC ${RPRE}Router (${ROUTERS[0]}) routes $NORM"
