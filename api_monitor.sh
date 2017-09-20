@@ -1019,12 +1019,21 @@ wait222()
       let ctr+=1
     done
     if test $ctr -ge $MAXWAIT; then echo -e "${RED}JumpHost$JHNO (${FLOATS[$JHNO]}) not pingable${NORM}"; let waiterr+=1; fi
+    # Now ssh
+    echo -n " ssh "
+    declare -i ctr=0
+    while [ $ctr -le $MAXWAIT ]; do
+      echo "quit" | nc $NCPROXY -w 2 ${FLOATS[$JHNO]} >/dev/null 2>&1 && break
+      echo -n "."
+      sleep 5
+      let ctr+=1
+    done
     # Now test VMs behind JH
     for red in ${REDIRS[$JHNO]}; do
       pno=${red#*tcp,}
       pno=${pno%%,*}
       declare -i ctr=0
-      echo -n "$pno "
+      echo -n " $pno "
       while [ $ctr -le $MAXWAIT ]; do
         echo "quit" | nc $NCPROXY -w 2 ${FLOATS[$JHNO]} $pno >/dev/null 2>&1 && break
         echo -n "."
