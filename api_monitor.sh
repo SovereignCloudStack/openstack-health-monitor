@@ -492,9 +492,10 @@ waitResources()
   eval local RLIST=( \"\${${RNM}S[@]}\" )
   eval local SLIST=( \"\${${STIME}[@]}\" )
   local LAST=$(( ${#RLIST[@]} - 1 ))
+  declare -i ctr=0
   local STATSTR="????????????????????????????????????????????????????????"
   declare -i WERR=0
-  while test -n "${SLIST[*]}"; do
+  while test -n "${SLIST[*]}" -a $ctr -le 320; do
     local LASTSTAT="$STATSTR"
     STATSTR=""
     for i in $(seq 0 $LAST ); do
@@ -525,9 +526,11 @@ waitResources()
       fi
     done
     echo -en "Wait $RNM: $STATSTR\r"
-    test -z "${SLIST[*]}" && return 0
+    if test -z "${SLIST[*]}"; then echo; return $WERR; fi
+    let ctr+=1
     sleep 2
   done
+  if test $ctr -ge 320; then let WERR+=1; fi
   echo
   return $WERR
 }
@@ -592,10 +595,11 @@ waitlistResources()
       fi
     done
     echo -en "Wait $RNM: $STATSTR\r"
-    test -z "${SLIST[*]}" && return 0
+    if test -z "${SLIST[*]}"; then echo; return $WERR; fi
     sleep 2
     let ctr+=1
   done
+  if test $ctr -ge 320; then let WERR+=1; fi
   echo
   return $WERR
 }
