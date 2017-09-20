@@ -420,7 +420,7 @@ createResources()
     eval ${STATNM}+="($TM)"
     let ctr+=1
     # Workaround for teuto.net
-    if test "$1" = "cinder" -a $NOAZS = 1; then echo -en " ${RED}+4s${NORM} " 1>&2; sleep 4; fi
+    if test "$1" = "cinder" && [[ $OS_AUTH_URL == *teutostack* ]]; then echo -en " ${RED}+4s${NORM} " 1>&2; sleep 4; fi
     if test $RC != 0; then echo "ERROR: $RNM creation failed" 1>&2; return 1; fi
     if test -n "$ID" -a "$RNM" != "NONE"; then echo -n "$ID "; fi
     eval ${RNM}S+="($ID)"
