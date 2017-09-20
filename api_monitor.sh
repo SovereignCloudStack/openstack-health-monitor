@@ -1370,6 +1370,7 @@ else # test "$1" = "DEPLOY"; then
               setmetaVMs
               WSTART=$(date +%s)
               wait222
+              WAITERRORS=$?
               testjhinet
               RC=$?
               if test $RC != 0; then
@@ -1422,7 +1423,7 @@ else # test "$1" = "DEPLOY"; then
     #waiterr $WAITERR
  fi
  allstats
- echo "This run: Overall ($NOVMS + $NONETS) VMs, $APICALLS API calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM ssh errors, $APIERRORS API errors, $PINGERRORS Ping Errors"
+ echo "This run: Overall ($NOVMS + $NONETS) VMs, $APICALLS API calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors, $PINGERRORS Ping Errors"
 #else
 #  usage
 fi
@@ -1441,7 +1442,7 @@ $RPRE $VERSION on $(hostname) testing $SHORT_DOMAIN:
 
 $RUNS deployments ($((($NONETS+$NOVMS)*$RUNS)) VMs, $CUMAPICALLS API calls)
 $CUMVMERRORS VM LOGIN ERRORS
-$CUMWAITERRORS VM SSH ERRORS
+$CUMWAITERRORS VM TIMEOUT ERRORS
 $CUMAPIERRORS API ERRORS
 $CUMPINGERRORS Ping failures
 
