@@ -1008,58 +1008,34 @@ wait222()
   # Wait for VMs being accessible behind fwdmasq (ports 222+)
   #if test -n "$http_proxy"; then NCPROXY="-X connect -x $http_proxy"; fi
   MAXWAIT=48
-  echo -n "${FLOATS[0]} "
-  echo -n "ping "
-  declare -i ctr=0
-  # First test JH0
-  while test $ctr -le $MAXWAIT; do
-    ping -c1 -w2 ${FLOATS[0]} >/dev/null 2>&1 && break
-    sleep 2
-    echo -n "."
-    let ctr+=1
-  done
-  if test $ctr -ge $MAXWAIT; then echo -e "${RED}JumpHost0 (${FLOATS[0]}) not pingable${NORM}"; let waiterr+=1; fi
-  # Now test VMs behind JH0
-  for red in ${REDIRS[0]}; do
-    pno=${red#*tcp,}
-    pno=${pno%%,*}
+  for JHNO in $(seq 0 $(($NONETS-1))); do
+    echo -n "${FLOATS[$JHNO]} "
+    echo -n "ping "
     declare -i ctr=0
-    echo -n "$pno "
-    while [ $ctr -le $MAXWAIT ]; do
-      echo "quit" | nc $NCPROXY -w 2 ${FLOATS[0]} $pno >/dev/null 2>&1 && break
+    # First test JH
+    while test $ctr -le $MAXWAIT; do
+      ping -c1 -w2 ${FLOATS[$JHNO]} >/dev/null 2>&1 && break
+      sleep 2
       echo -n "."
-      sleep 5
       let ctr+=1
     done
-    if [ $ctr -ge $MAXWAIT ]; then echo -ne " $RED timeout $NORM"; let waiterr+=1; fi
-    MAXWAIT=16
-  done
-  MAXWAIT=32
-  # Now test JH1
-  echo -n " ${FLOATS[1]} "
-  echo -n "ping "
-  declare -i ctr=0
-  while test $ctr -le $MAXWAIT; do
-    ping -c1 -w2 ${FLOATS[1]} >/dev/null 2>&1 && break
-    sleep 2
-    echo -n "."
-    let ctr+=1
-  done
-  if test $ctr -ge $MAXWAIT; then echo -e "${RED}JumpHost1 (${FLOATS[1]}) not pingable${NORM}"; let waiterr+=1; fi
-  # Now test VMs behind JH1
-  for red in ${REDIRS[1]}; do
-    pno=${red#*tcp,}
-    pno=${pno%%,*}
-    declare -i ctr=0
-    echo -n "$pno "
-    while [ $ctr -le $MAXWAIT ]; do
-      echo "quit" | nc $NCPROXY -w 2 ${FLOATS[1]} $pno >/dev/null 2>&1 && break
-      echo -n "."
-      sleep 5
-      let ctr+=1
+    if test $ctr -ge $MAXWAIT; then echo -e "${RED}JumpHost$JHNO (${FLOATS[$JHNO]}) not pingable${NORM}"; let waiterr+=1; fi
+    # Now test VMs behind JH
+    for red in ${REDIRS[$JHNO]}; do
+      pno=${red#*tcp,}
+      pno=${pno%%,*}
+      declare -i ctr=0
+      echo -n "$pno "
+      while [ $ctr -le $MAXWAIT ]; do
+        echo "quit" | nc $NCPROXY -w 2 ${FLOATS[$JHNO]} $pno >/dev/null 2>&1 && break
+        echo -n "."
+        sleep 5
+        let ctr+=1
+      done
+      if [ $ctr -ge $MAXWAIT ]; then echo -ne " $RED timeout $NORM"; let waiterr+=1; fi
+      MAXWAIT=16
     done
-    if [ $ctr -ge $MAXWAIT ]; then echo -ne " $RED timeout $NORM"; let waiterr+=1; fi
-    MAXWAIT=16
+    MAXWAIT=32
   done
   if test $waiterr == 0; then echo "OK"; else echo "RET $waiterr"; fi
   return $waiterr
