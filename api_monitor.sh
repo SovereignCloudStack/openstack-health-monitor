@@ -60,7 +60,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.17
+VERSION=1.18
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -922,6 +922,7 @@ createJHVMs()
       REDIRS[$off]="${REDIRS[$off]}$STR
 "
       if test $(($off+1)) = $NONETS; then let ptn+=1; fi
+      let pi+=1
     done
     #echo -e "$RE0$RE1"
   else
