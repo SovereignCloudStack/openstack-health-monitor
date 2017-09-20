@@ -69,6 +69,7 @@ if test -z "$PINGTARGET"; then PINGTARGET=google-public-dns-b.google.com; fi
 # Prefix for test resources
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
 SHORT_DOMAIN="${OS_USER_DOMAIN_NAME##*OTC*00000000001000}"
+SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
 # Number of VMs and networks
 NOVMS=12
 NONETS=2
