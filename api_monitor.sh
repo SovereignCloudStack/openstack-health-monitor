@@ -1023,7 +1023,7 @@ wait222()
     echo -n " ssh "
     declare -i ctr=0
     while [ $ctr -le $MAXWAIT ]; do
-      echo "quit" | nc $NCPROXY -w 2 ${FLOATS[$JHNO]} >/dev/null 2>&1 && break
+      echo "quit" | nc $NCPROXY -w 2 ${FLOATS[$JHNO]} 22 >/dev/null 2>&1 && break
       echo -n "."
       sleep 5
       let ctr+=1
