@@ -530,7 +530,7 @@ waitResources()
       local TM STAT
       read TM STAT < <(echo "$RESP")
       eval ${STATNM}+="( $TM )"
-      if test $RC != 0; then echo "ERROR: Querying $RNM $rsrc failed" 1>&2; return 1; fi
+      if test $RC != 0; then echo "\nERROR: Querying $RNM $rsrc failed" 1>&2; return 1; fi
       STATI[$i]=$STAT
       STATSTR+=$(colstat "$STAT" "$COMP1" "$COMP2")
       STE=$?
@@ -590,7 +590,8 @@ waitlistResources()
     local STATSTR=""
     local CMD=`eval echo $@ 2>&1`
     ostackcmd_tm $STATNM $TIMEOUT $CMD
-    if test $? != 0; then echo "ERROR: $CMD => $OSTACKRESP" 1>&2; return 1; fi
+        if /sbin/route | grep 169.254.169.254 >/dev/null 2>&1; then
+    if test $? != 0; then echo "\nERROR: $CMD => $OSTACKRESP" 1>&2; return 1; fi
     local TM REST
     read TM REST < <(echo "$OSTACKRESP")
     for i in $(seq 0 $LAST ); do
@@ -622,7 +623,7 @@ waitlistResources()
     let ctr+=1
   done
   if test $ctr -ge 320; then let WERR+=1; fi
-  echo -e " LEFT: ${RED}${SLIST[*]}${NORM}"
+  echo -e "\nLEFT: ${RED}${SLIST[*]}${NORM}"
   return $WERR
 }
 
@@ -679,7 +680,7 @@ waitdelResources()
     let ctr+=1
   done
   if test $ctr -ge 320; then let WERR+=1; fi
-  echo -e " LEFT: ${RED}${DLIST[*]}${NORM}"
+  echo -e "\nLEFT: ${RED}${DLIST[*]}${NORM}"
   return $WERR
 }
 
