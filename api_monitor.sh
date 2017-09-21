@@ -622,7 +622,7 @@ waitlistResources()
     let ctr+=1
   done
   if test $ctr -ge 320; then let WERR+=1; fi
-  echo -e "\nLEFT: ${RED}${SLIST[*]}${NORM}"
+  if test -n "${SLIST[*]}" then echo -e "\nLEFT: ${RED}${SLIST[*]}${NORM}"; else echo; fi
   return $WERR
 }
 
@@ -679,7 +679,7 @@ waitdelResources()
     let ctr+=1
   done
   if test $ctr -ge 320; then let WERR+=1; fi
-  echo -e "\nLEFT: ${RED}${DLIST[*]}${NORM}"
+  if test -n "${DLIST[*]}" then echo -e "\nLEFT: ${RED}${DLIST[*]}${NORM}"; else echo; fi
   return $WERR
 }
 
