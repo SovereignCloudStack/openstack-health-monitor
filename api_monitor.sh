@@ -1138,10 +1138,10 @@ testjhinet()
 
 testsnat()
 {
-  local FAIL ERR0 ERR1 pno RC
+  local FAIL ERR ERRJH pno RC
   unset SSH_AUTH_SOCK
   ERR=""
-  declare ERRJH=()
+  ERRJH=()
   #echo "Test VM access (fwdmasq) and outgoing SNAT inet ... "
   declare -i FAIL=0
   for JHNO in $(seq 0 $(($NONETS-1))); do
@@ -1158,7 +1158,7 @@ testsnat()
       fi
     done
   done
-  if test ${#ERRJH[*]} != 0; then sleep 12; fi
+  if test ${#ERRJH[*]} != 0; then echo -e "$RED $ERR $NORM"; ERR=""; sleep 12; fi
   # Process errors: Retry
   # FIXME: Is it actually worth retrying? Does it really improve the results?
   for JHNO in $(seq 0 $(($NONETS-1))); do
