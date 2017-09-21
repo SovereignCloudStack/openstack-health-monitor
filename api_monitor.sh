@@ -60,13 +60,14 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.19
+VERSION=1.20
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
 if test -z "$PINGTARGET"; then PINGTARGET=google-public-dns-b.google.com; fi
 
 # Prefix for test resources
+FORCEDEL=NONONO
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
 SHORT_DOMAIN="${OS_USER_DOMAIN_NAME##*OTC*00000000001000}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
@@ -147,7 +148,7 @@ usage()
   echo " -G N   increase JH volume size by N GB"
   echo " -w N   sets error wait (API, VM): 0-inf seconds or neg value for interactive wait"
   echo " -W N   sets error wait (VM only): 0-inf seconds or neg value for interactive wait"
-  echo "Or: api_monitor.sh CLEANUP XXX to clean up all resources with prefix XXX"
+  echo "Or: api_monitor.sh [-f] CLEANUP XXX to clean up all resources with prefix XXX"
   exit 0
 }
 
@@ -166,6 +167,7 @@ while test -n "$1"; do
     "-G") ADDJHVOLSIZE=$2; shift;;
     "-w") ERRWAIT=$2; shift;;
     "-W") VMERRWAIT=$2; shift;;
+    "-f") FORCEDEL=XDELX;;
     "CLEANUP") break;;
     *) echo "Unknown argument \"$1\""; exit 1;;
   esac
@@ -246,10 +248,11 @@ exithandler()
     echo -e "\n${REV}SIGINT received, exiting after this iteration$NORM"
   elif test "$EXITED" = "1"; then
     echo -e "\n$BOLD OK, cleaning up right away $NORM"
+    FORCEDEL=NONONO
     cleanup
     kill -TERM 0
   else
-    echo e "\n$RED OK, OK, exiting without cleanup. Use RPRE=$RPRE api_monitor.sh CLEANUP to do so.$NORM"
+    echo e "\n$RED OK, OK, exiting without cleanup. Use api_monitor.sh CLEANUP $RPRE to do so.$NORM"
     kill -TERM 0
   fi
   let EXITED+=1
@@ -470,6 +473,25 @@ deleteResources()
   test $LN -gt 0 && echo
 }
 
+# Convert status to colored one-char string
+# $1 => status string
+# $2 => wanted1
+# $3 => wanted2 (optional)
+colstat()
+{
+  if test "$1" == "$2" || test -n "$3" -a "$3" == "$1"; then
+	echo -e "${GREEN}${1:0:1}${NORM}"; return 2
+  elif test "${1:0:5}" == "error" -o "${1:0:5}" == "ERROR"; then
+	echo -e "${RED}${1:0:1}${NORM}"; return 1
+  elif test -n "$1"; then
+	echo "${1:0:1}"
+  else
+	echo "?"
+  fi
+  return 0
+}
+
+
 # Wait for resources reaching a desired state
 # $1 => name of timing statistics array
 # $2 => name of array containing resources ("S" appended)
@@ -489,18 +511,17 @@ waitResources()
   local COMP1=$5; local COMP2=$6; local IDNM=$7
   shift; shift; shift; shift; shift; shift; shift
   local TIMEOUT=$1; shift
+  local STATI=()
   eval local RLIST=( \"\${${RNM}S[@]}\" )
   eval local SLIST=( \"\${${STIME}[@]}\" )
   local LAST=$(( ${#RLIST[@]} - 1 ))
   declare -i ctr=0
-  local STATSTR="????????????????????????????????????????????????????????"
   declare -i WERR=0
   while test -n "${SLIST[*]}" -a $ctr -le 320; do
-    local LASTSTAT="$STATSTR"
-    STATSTR=""
+    local STATSTR=""
     for i in $(seq 0 $LAST ); do
       local rsrc=${RLIST[$i]}
-      if test -z "${SLIST[$i]}"; then STATSTR+="${LASTSTAT:$i:1}"; continue; fi
+      if test -z "${SLIST[$i]}"; then STATSTR+=$(colstat "${STATI[$i]}" "$COMP1" "$COMP2"); continue; fi
       local CMD=`eval echo $@ $rsrc 2>&1`
       let APICALLS+=1
       local RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
@@ -510,19 +531,19 @@ waitResources()
       read TM STAT < <(echo "$RESP")
       eval ${STATNM}+="( $TM )"
       if test $RC != 0; then echo "ERROR: Querying $RNM $rsrc failed" 1>&2; return 1; fi
-      STATSTR+=${STAT:0:1}
+      STATI[$i]=$STAT
+      STATSTR+=$(colstat "$STAT" "$COMP1" "$COMP2")
+      STE=$?
       echo -en "Wait $RNM: $STATSTR\r"
-      if test "$STAT" == "$COMP1" -o "$STAT" == "$COMP2"; then
+      if test $STE != 0; then
+	if test $STE = 1; then
+          echo "\nERROR: $NM $rsrc status $STAT" 1>&2 #; return 1
+          let WERR+=1
+        fi
         TM=$(date +%s)
 	TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
 	eval ${CSTAT}+="($TM)"
 	unset SLIST[$i]
-      elif test "$STAT" == "error"; then
-        echo "ERROR: $NM $rsrc status $STAT" 1>&2 #; return 1
-        let WERR+=1
-        TM=$(date +%s)
-	TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
-        unset SLIST[$i]
       fi
     done
     echo -en "Wait $RNM: $STATSTR\r"
@@ -541,7 +562,8 @@ waitResources()
 # $3 => name of array to collect completion timing stats
 # $4 => name of array with start times
 # $5 => value to wait for (special XDELX)
-# $6 => alternative value to wait for
+# $6 => alternative value to wait for 
+#       (special: 2ndary XDELX results in waiting also for ERRORED res.)
 # $7 => number of column (0 based)
 # $8 => timeout
 # $9- > openstack command for querying status
@@ -554,6 +576,7 @@ waitlistResources()
   local COMP1=$5; local COMP2=$6; local COL=$7
   shift; shift; shift; shift; shift; shift; shift
   local TIMEOUT=$1; shift
+  local STATI=()
   eval local RLIST=( \"\${${RNM}S[@]}\" )
   eval local SLIST=( \"\${${STIME}[@]}\" )
   local LAST=$(( ${#RLIST[@]} - 1 ))
@@ -562,11 +585,9 @@ waitlistResources()
   PARSE="$PARSE *\([^|]*\)|.*\$"
   #echo "$PARSE"
   declare -i ctr=0
-  local STATSTR="????????????????????????????????????????????????????????"
   declare -i WERR=0
   while test -n "${SLIST[*]}" -a $ctr -le 320; do
-    local LASTSTAT="$STATSTR"
-    STATSTR=""
+    local STATSTR=""
     local CMD=`eval echo $@ 2>&1`
     ostackcmd_tm $STATNM $TIMEOUT $CMD
     if test $? != 0; then echo "ERROR: $CMD => $OSTACKRESP" 1>&2; return 1; fi
@@ -574,24 +595,25 @@ waitlistResources()
     read TM REST < <(echo "$OSTACKRESP")
     for i in $(seq 0 $LAST ); do
       local rsrc=${RLIST[$i]}
-      if test -z "${SLIST[$i]}"; then STATSTR+="${LASTSTAT:$i:1}"; continue; fi
+      if test -z "${SLIST[$i]}"; then STATSTR+=$(colstat "${STATI[$i]}" "$COMP1" "$COMP2"); continue; fi
       local STAT=$(echo "$OSTACKRESP" | grep "^| $rsrc" | sed -e "s@$PARSE@\1@" -e 's/ *$//')
       #echo "STATUS: \"$STAT\""
-      if test -n "$STAT"; then STATSTR+=${STAT:0:1}; else STATSTR+="X"; fi
-      #echo -en "Wait $RNM: $STATSTR\r"
       if test "$COMP1" == "XDELX" -a -z "$STAT"; then STAT="XDELX"; fi
-      if test "$STAT" == "$COMP1" -o "$STAT" == "$COMP2"; then
+      STATI[$i]="$STAT"
+      STATSTR+=$(colstat "$STAT" "$COMP1" "$COMP2")
+      STE=$?
+      #echo -en "Wait $RNM: $STATSTR\r"
+      if test $STE != 0; then
+        if test $STE = 1; then
+          # Really wait for deletion of errored resources?
+          if test "$COMP2" == "XDELX"; then continue; fi
+          let WERR+=1
+          echo "ERROR: $NM $rsrc status $STAT" 1>&2 #; return 1
+        fi
         TM=$(date +%s)
 	TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
 	eval ${CSTAT}+="($TM)"
 	unset SLIST[$i]
-      elif test "$STAT" == "error"; then
-        # We can not succeed any more if one element fails, but don't give up
-        echo "ERROR: $NM $rsrc status $STAT" 1>&2 #; return 1
-        let WERR+=1
-        TM=$(date +%s)
-	TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
-        unset SLIST[$i]
       fi
     done
     echo -en "Wait $RNM: $STATSTR\r"
@@ -600,10 +622,11 @@ waitlistResources()
     let ctr+=1
   done
   if test $ctr -ge 320; then let WERR+=1; fi
-  echo
+  echo -e " LEFT: ${RED}${SLIST[*]}${NORM}"
   return $WERR
 }
 
+# UNUSED!
 # Wait for deletion of resources
 # $1 => name of timing statistics array
 # $2 => name of array containing resources ("S" appended)
@@ -621,15 +644,16 @@ waitdelResources()
   local TIMEOUT=$1; shift
   eval local RLIST=( \"\${${RNM}S[@]}\" )
   eval local DLIST=( \"\${${DTIME}[@]}\" )
+  local STATI=()
   local LAST=$(( ${#RLIST[@]} - 1 ))
+  local STATI=()
   #echo "waitdelResources $STATNM $RNM $DSTAT $DTIME - ${RLIST[*]} - ${DLIST[*]}"
-  local STATSTR="????????????????????????????????????????????????????????"
-  while test -n "${DLIST[*]}"; do
-    local LASTSTAT="$STATSTR"
-    STATSTR=""
+  declare -i ctr=0
+  while test -n "${DLIST[*]}"i -a $ctr -le 320; do
+    local STATSTR=""
     for i in $(seq 0 $LAST); do
       local rsrc=${RLIST[$i]}
-      if test -z "${DLIST[$i]}"; then STATSTR+="${LASTSTAT:$i:1}"; continue; fi
+      if test -z "${DLIST[$i]}"; then STATSTR+=$(colstat "${STATI[$i]}" "XDELX" ""); continue; fi
       local CMD=`eval echo $@ $rsrc`
       let APICALLS+=1
       local RESP=$(ostackcmd_id DELETE $TIMEOUT $CMD)
@@ -643,17 +667,20 @@ waitdelResources()
 	TM=$(python -c "print \"%i\" % ($TM-${DLIST[$i]})")
 	eval ${DSTAT}+="($TM)"
 	unset DLIST[$i]
-        STATSTR+='x'
-      else
-        STATSTR+=${STAT:0:1}
+        STAT="XDELX"
       fi
-      echo -en "WaitDel $RNM: $STATSTR\r"
+      STATI[$i]=$STAT
+      STARTSTR+=$(colstat "$STAT" "XDELX" "")
+      #echo -en "WaitDel $RNM: $STATSTR\r"
     done
     echo -en "WaitDel $RNM: $STATSTR \r"
-    test -z "${DLIST[*]}" && return 0
+    if test -z "${DLIST[*]}"; then echo; return 0; fi
     sleep 2
+    let ctr+=1
   done
-  echo
+  if test $ctr -ge 320; then let WERR+=1; fi
+  echo -e " LEFT: ${RED}${DLIST[*]}${NORM}"
+  return $WERR
 }
 
 # STATNM RESRNM COMMAND
@@ -1007,7 +1034,7 @@ deleteJHVMs()
 waitdelJHVMs()
 {
   #waitdelResources NOVASTATS JHVM VMDSTATS JVMSTIME nova show
-  waitlistResources NOVASTATS JHVM VMDSTATS JVMSTIME "XDELX" "NONONO" 2 $NOVATIMEOUT nova list
+  waitlistResources NOVASTATS JHVM VMDSTATS JVMSTIME "XDELX" "$FORCEDEL" 2 $NOVATIMEOUT nova list
 }
 
 createVMs()
@@ -1032,7 +1059,7 @@ deleteVMs()
 waitdelVMs()
 {
   #waitdelResources NOVASTATS VM VMDSTATS VMSTIME nova show
-  waitlistResources NOVASTATS VM VMDSTATS VMSTIME XDELX NONONO 2 $NOVATIMEOUT nova list
+  waitlistResources NOVASTATS VM VMDSTATS VMSTIME XDELX $FORCEDEL 2 $NOVATIMEOUT nova list
 }
 setmetaVMs()
 {
