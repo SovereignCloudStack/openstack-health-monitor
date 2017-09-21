@@ -590,7 +590,6 @@ waitlistResources()
     local STATSTR=""
     local CMD=`eval echo $@ 2>&1`
     ostackcmd_tm $STATNM $TIMEOUT $CMD
-        if /sbin/route | grep 169.254.169.254 >/dev/null 2>&1; then
     if test $? != 0; then echo "\nERROR: $CMD => $OSTACKRESP" 1>&2; return 1; fi
     local TM REST
     read TM REST < <(echo "$OSTACKRESP")
@@ -1167,7 +1166,7 @@ testjhinet()
 
 testsnat()
 {
-  local FAIL ERR ERRJH pno RC JHNO
+  local FAIL ERRJH pno RC JHNO
   unset SSH_AUTH_SOCK
   ERR=""
   ERRJH=()
