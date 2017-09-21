@@ -60,7 +60,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.18
+VERSION=1.19
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -944,10 +944,11 @@ deleteFIPs()
   deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
 }
 
-REDIRS=()
+declare -a REDIRS
 createJHVMs()
 {
-  local VIP RE0 RE1 IP STR odd ptn RD USERDATA
+  local VIP IP STR odd ptn RD USERDATA JHNUM port
+  REDIRS=()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   if test ${#PORTS[*]} -gt 0; then
@@ -1042,7 +1043,7 @@ setmetaVMs()
 
 wait222()
 {
-  local NCPROXY pno MAXWAIT ctr
+  local NCPROXY pno MAXWAIT ctr JHNO waiterr red
   declare -i waiterr=0
   # Wait for VMs being accessible behind fwdmasq (ports 222+)
   #if test -n "$http_proxy"; then NCPROXY="-X connect -x $http_proxy"; fi
@@ -1117,7 +1118,7 @@ testlsandping()
 
 testjhinet()
 {
-  local RC R
+  local RC R JHNO
   unset SSH_AUTH_SOCK
   ERR=""
   #echo "Test JH access and outgoing inet ... "
@@ -1138,7 +1139,7 @@ testjhinet()
 
 testsnat()
 {
-  local FAIL ERR ERRJH pno RC
+  local FAIL ERR ERRJH pno RC JHNO
   unset SSH_AUTH_SOCK
   ERR=""
   ERRJH=()
