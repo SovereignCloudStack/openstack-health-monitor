@@ -60,7 +60,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.20
+VERSION=1.21
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -143,6 +143,7 @@ usage()
   echo " -m URN sets notes/alarms by SMN (pass URN of queue)"
   echo "         second -m splits notifications; notes to first, alarms to second URN"
   echo " -s     sends stats as well once per day, not just alarms"
+  echo " -d     boot Directly from image (not via volume)"
   echo " -i N   sets max number of iterations (def = -1 = inf)"
   echo " -g N   increase VM volume size by N GB"
   echo " -G N   increase JH volume size by N GB"
@@ -160,6 +161,7 @@ while test -n "$1"; do
     "-l") LOGFILE=$2; shift;;
     "help"|"-h"|"--help") usage;;
     "-s") SENDSTATS=1;;
+    "-d") BOOTFROMIMAGE=1;;
     "-e") if test -z "$EMAIL"; then EMAIL="$2"; else EMAIL2="$2"; fi; shift;;
     "-m") if test -z "$SMNID"; then SMNID="$2"; else SMNID2="$2"; fi; shift;;
     "-i") MAXITER=$2; shift;;
@@ -231,7 +233,7 @@ $3" | /usr/sbin/sendmail -t -f kurt@garloff.de
     echo "$PRE on $SHORT_DOMAIN: $(date)
 ${RPRE%_} on $(hostname):
 $2
-$3" | otc.sh notifications publish $URN "$PRE $1 from $(hostname)/$SHORT_DOMAIN"
+$3" | otc.sh notifications publish $URN "$PRE from $(hostname)/$SHORT_DOMAIN"
   fi
 }
 
@@ -881,6 +883,7 @@ deleteJHVols()
 
 createVols()
 {
+  if test -n "$BOOTFROMIMAGE"; then return 0; fi
   VOLSTIME=()
   createResources $NOVMS VOLSTATS VOLUME NONE NONE VOLSTIME id $CINDERTIMEOUT cinder create --image-id $IMGID --name ${RPRE}RootVol_VM\$no --availability-zone \${AZS[\$AZN]} $VOLSIZE
 }
@@ -888,12 +891,14 @@ createVols()
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
 waitVols()
 {
+  if test -n "$BOOTFROMIMAGE"; then return 0; fi
   #waitResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" "status" cinder show
   waitlistResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" 1 $CINDERTIMEOUT cinder list
 }
 
 deleteVols()
 {
+  if test -n "$BOOTFROMIMAGE"; then return 0; fi
   deleteResources VOLSTATS VOLUME "" $CINDERTIMEOUT cinder delete
 }
 
@@ -1039,11 +1044,20 @@ waitdelJHVMs()
 
 createVMs()
 {
-  if test -n "$MANUALPORTSETUP"; then
-    createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL ${RPRE}VM_VM\$no
+  if test -n "$BOOTFROMIMAGE"; then
+    if test -n "$MANUALPORTSETUP"; then
+      createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL ${RPRE}VM_VM\$no
+    else
+      # SAVE: createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
+      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" ${RPRE}VM_VM\$no
+    fi
   else
-    # SAVE: createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
-    createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" ${RPRE}VM_VM\$no
+    if test -n "$MANUALPORTSETUP"; then
+      createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL ${RPRE}VM_VM\$no
+    else
+      # SAVE: createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
+      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" ${RPRE}VM_VM\$no
+    fi
   fi
 }
 waitVMs()
@@ -1425,13 +1439,13 @@ else # test "$1" = "DEPLOY"; then
        if createJHPorts && createPorts; then
         if createJHVols; then
          if createVols; then
-          waitJHVols
           if createKeypairs; then
+           waitJHVols
            if createJHVMs; then
             if createFIPs; then
-             waitJHVMs
              waitVols
              if createVMs; then
+              waitJHVMs
               waitVMs
               setmetaVMs
               WSTART=$(date +%s)
