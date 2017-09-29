@@ -60,7 +60,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.21
+VERSION=1.22
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -122,6 +122,7 @@ ADDVMVOLSIZE=${ADDVMVOLSIZE:-0}
 DATE=`date +%s`
 LOGFILE=$RPRE$DATE.log
 declare -i APIERRORS=0
+declare -i APITIMEOUTS=0
 declare -i APICALLS=0
 
 # Nothing to change below here
@@ -240,6 +241,12 @@ $3" | otc.sh notifications publish $URN "$PRE from $(hostname)/$SHORT_DOMAIN"
 rc2bin()
 {
   if test $1 = 0; then echo 0; return 0; else echo 1; return 1; fi
+}
+
+updAPIerr()
+{
+  let APIERRORS+=$(rc2bin $1);
+  if test $1 -ge 129; then let APITIMEOUTS+=1; fi
 }
 
 declare -i EXITED=0
@@ -423,7 +430,7 @@ createResources()
     let APICALLS+=1
     local RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
     local RC=$?
-    let APIERRORS+=$(rc2bin $RC)
+    updAPIerr $RC
     local TM
     read TM ID < <(echo "$RESP")
     eval ${STATNM}+="($TM)"
@@ -467,7 +474,7 @@ deleteResources()
     let APICALLS+=1
     read TM < <(ostackcmd_id id $TIMEOUT $@ $rsrc)
     local RC="$?"
-    let APIERRORS+=$(rc2bin $RC)
+    updAPIerr $RC
     eval ${STATNM}+="($TM)"
     if test $RC != 0; then echo "ERROR" 1>&2; return 1; fi
     unset LIST[-1]
@@ -528,7 +535,7 @@ waitResources()
       let APICALLS+=1
       local RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
       local RC=$?
-      let APIERRORS+=$(rc2bin $RC)
+      updAPIerr $RC
       local TM STAT
       read TM STAT < <(echo "$RESP")
       eval ${STATNM}+="( $TM )"
@@ -660,7 +667,7 @@ waitdelResources()
       let APICALLS+=1
       local RESP=$(ostackcmd_id DELETE $TIMEOUT $CMD)
       local RC=$?
-      let APIERRORS+=$(rc2bin $RC)
+      updAPIerr $RC
       local TM STAT
       read TM STAT < <(echo "$RESP")
       eval ${STATNM}+="( $TM )"
@@ -701,7 +708,7 @@ showResources()
   while rsrc in ${LIST}; do
     let APICALLS+=1
     read TM ID < <(ostackcmd_id id $TIMEOUT $@ $rsrc)
-    let APIERRORS+=$(rc2bin $?)
+    updAPIerr $?
   done
 }
 
@@ -774,42 +781,42 @@ createSGroups()
   let APICALLS+=10
   #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG0 $SG0)
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-ip-prefix $JHSUBNETIP $SG0)
-  let APIERRORS+=$(rc2bin $?)
+  updAPIerr $?
   NETSTATS+=( $TM )
   #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG0 $SG0)
   #NETSTATS+=( $TM )
   # Configure SGs: Internal ingress allowed
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG1)
-  let APIERRORS+=$(rc2bin $?)
+  updAPIerr $?
   NETSTATS+=( $TM )
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG1 $SG1)
-  let APIERRORS+=$(rc2bin $?)
+  updAPIerr $?
   NETSTATS+=( $TM )
   # Configure RPRE_SG_JumpHost rule: All from the other group, port 22 and 222- from outside
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG0)
-  let APIERRORS+=$(rc2bin $?)
+  updAPIerr $?
   NETSTATS+=( $TM )
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
-  let APIERRORS+=$(rc2bin $?)
+  updAPIerr $?
   NETSTATS+=( $TM )
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max $((222+($NOVMS-1)/$NONETS)) --remote-ip-prefix 0/0 $SG0)
-  let APIERRORS+=$(rc2bin $?)
+  updAPIerr $?
   NETSTATS+=( $TM )
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
-  let APIERRORS+=$(rc2bin $?)
+  updAPIerr $?
   NETSTATS+=( $TM )
   # Configure RPRE_SG_Internal rule: ssh and https and ping from the other group
   #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-group-id $SG0 $SG1)
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix $JHSUBNETIP $SG1)
-  let APIERRORS+=$(rc2bin $?)
+  updAPIerr $?
   NETSTATS+=( $TM )
   #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-group-id $SG0 $SG1)
   #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-ip-prefix $JHSUBNETIP $SG1)
-  #let APIERRORS+=$(rc2bin $?)
+  #updAPIerr $?
   #NETSTATS+=( $TM )
   #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-group-id $SG0 $SG1)
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix $JHSUBNETIP $SG1)
-  let APIERRORS+=$(rc2bin $?)
+  updAPIerr $?
   NETSTATS+=( $TM )
   #neutron security-group-show $SG0
   #neutron security-group-show $SG1
@@ -839,7 +846,7 @@ createJHPorts()
     let APICALLS+=1
     RESP=$(ostackcmd_id id $NETTIMEOUT neutron port-update ${JHPORTS[$i]} --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1)
     RC=$?
-    let APIERRORS+=$(rc2bin $RC)
+    updAPIerr $RC
     read TM ID < <(echo "$RESP")
     NETSTATS+=( $TM )
     if test $RC != 0; then echo "ERROR: Failed setting allowed-adr-pair for port ${JHPORTS[$i]}" 1>&2; return 1; fi
@@ -1353,6 +1360,7 @@ declare -a WAITTIME
 
 declare -i CUMPINGERRORS=0
 declare -i CUMAPIERRORS=0
+declare -i CUMAPITIMEOUTS=0
 declare -i CUMAPICALLS=0
 declare -i CUMVMERRORS=0
 declare -i CUMWAITERRORS=0
@@ -1366,6 +1374,7 @@ while test $loop != $MAXITER; do
 
 declare -i PINGERRORS=0
 declare -i APIERRORS=0
+declare -i APITIMEOUTS=0
 declare -i VMERRORS=0
 declare -i WAITERRORS=0
 declare -i APICALLS=0
@@ -1436,10 +1445,11 @@ else # test "$1" = "DEPLOY"; then
     if createRIfaces; then
      if createSGroups; then
       if createVIPs; then
-       if createJHPorts && createPorts; then
-        if createJHVols; then
+       if createJHVols; then
+        if createJHPorts; then
          if createVols; then
           if createKeypairs; then
+           createPorts
            waitJHVols
            if createJHVMs; then
             if createFIPs; then
@@ -1481,12 +1491,12 @@ else # test "$1" = "DEPLOY"; then
            fi; deleteJHVMs
           fi; deleteKeypairs
          fi; waitdelVMs; deleteVols
-        fi; waitdelJHVMs; deleteJHVols
-       fi;
-       echo -e "${BOLD}Ignore port del errors; VM cleanup took care already.${NORM}"
-       IGNORE_ERRORS=1
-       deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
-       unset IGNORE_ERRORS
+        fi; waitdelJHVMs
+        echo -e "${BOLD}Ignore port del errors; VM cleanup took care already.${NORM}"
+        IGNORE_ERRORS=1
+        deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
+        unset IGNORE_ERRORS
+       fi; deleteJHVols
       fi; deleteVIPs
      fi; deleteSGroups
     fi; deleteRIfaces
@@ -1503,11 +1513,12 @@ else # test "$1" = "DEPLOY"; then
     #waiterr $WAITERR
  fi
  allstats
- echo "This run: Overall ($NOVMS + $NONETS) VMs, $APICALLS API calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors, $PINGERRORS Ping Errors"
+ echo "This run: Overall ($NOVMS + $NONETS) VMs, $APICALLS API calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors"
 #else
 #  usage
 fi
 let CUMAPIERRORS+=$APIERRORS
+let CUMAPITIMEOUTS+=$APITIMEOUTS
 let CUMVMERRORS+=$VMERRORS
 let CUMPINGERRORS+=$PINGERRORS
 let CUMWAITERRORS+=$WAITERRORS
@@ -1524,6 +1535,7 @@ $RUNS deployments ($((($NONETS+$NOVMS)*$RUNS)) VMs, $CUMAPICALLS API calls)
 $CUMVMERRORS VM LOGIN ERRORS
 $CUMWAITERRORS VM TIMEOUT ERRORS
 $CUMAPIERRORS API ERRORS
+$CUMAPITIMEOUTS API TIMEOUTS
 $CUMPINGERRORS Ping failures
 
 $(allstats)
@@ -1531,16 +1543,17 @@ $(allstats)
 #TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$(hostname)
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
 #RUN: $RUNS|$((($NONETS+$NOVMS)*$RUNS))|$CUMAPICALLS
-#ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$CUMPINGERRORS
+#ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS
 $(allstats -m)
 "
   echo "#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$(hostname)
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
 #RUN: $RUNS|$((($NONETS+$NOVMS)*$RUNS))|$CUMAPICALLS
-#ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$CUMPINGERRORS
+#ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS
 $(allstats -m)" > Stats.$LASTDATA.$LASTTIME.$CDATE.$CTIME.psv
   CUMVMERRORS=0
   CUMAPIERRORS=0
+  CUMAPITIMEOUTS=0
   CUMPINGERRORS=0
   CUMWAITERRORS=0
   CUMAPICALLS=0
