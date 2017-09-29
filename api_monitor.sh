@@ -50,8 +50,10 @@
 #  networks, subnets, and virtual IP, security groups and floating IPs,
 #  volume creation from image, deletion after VM destruction
 #  VM creation from bootable volume (and from image if -d is given)
+#  Metadata service (without it ssh key injection fails of course)
+#  Images (we use openSUSE for the jumphost for SNAT/port-fwd and CentOS7 by dflt for VMs)
 #  Waiting for volumes and VMs
-#  destroying all of these resources again
+#  Destroying all of these resources again
 #
 # We do some statistics on the duration of the steps (min, avg, median, 95% quantile, max)
 # We of course also note any errors and timeouts and report these, optionally sending
