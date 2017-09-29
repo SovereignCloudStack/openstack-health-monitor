@@ -19,36 +19,49 @@
 #
 # General approach:
 # - create router (VPC)
-# - create two nets
-# - create two subnets
+# - create 1+$NONETS (1+2) nets
+# - create 1+$NONETS subnets
 # - create security groups
 # - create virtual IP (for outbound SNAT via JumpHosts)
 # - create SSH keys
-# - create two JumpHost VMs by
+# - create $AZ JumpHost VMs by
 #   a) creating disks (from image)
 #   b) creating ports
 #   c) creating VMs
-# - create N internal VMs by
-#   a) creating disks (from image)
+# - associating a floating IP to each Jumphost
+# - configuring the virtIP as default route
+# - JumpHosts do SNAT for outbound traffic and port forwarding for inbound
+# - create N internal VMs striped over the nets and AZs by
+#   a) creating disks (from image) -- if option -d is not used
 #   b) creating a port
-#   c) creating VM
+#   c) creating VM (from volume or from image, dep. on -d)
 #   (Steps a and c take long, so we do many in parallel and poll for progress)
 #   d) do some property changes to VMs
-# - after everything is complete, we wait
-# - attach an additional disk
+# - after everything is complete, we wait for the VMs to be up
+# - we ping them, log in via ssh and see whether they can ping to the outside world
+# - NOT YET: attach an additional disk
 # - NOT YET: attach an additional NIC
-# - and clean up ev'thing in reverse order as soon as user confirms
+# 
+# - Finally, we clean up ev'thing in reverse order
+#   (We have kept track of resources to clean up.
+#    We can also identify them by name, which helps if we got interrupted.)
 #
-# We do some statistics on the duration of the steps (min, avg, median, max)
-# We keep track of resources to clean up.
+# So we end up testing: Router, incl. default route (for SNAT instance),
+#  networks, subnets, and virtual IP, security groups and floating IPs,
+#  volume creation from image, deletion after VM destruction
+#  VM creation from bootable volume (and from image if -d is given)
+#  Waiting for volumes and VMs
+#  destroying all of these resources again
+#
+# We do some statistics on the duration of the steps (min, avg, median, 95% quantile, max)
+# We of course also note any errors and timeouts and report these, optionally sending
+#  email of SMN alarms.
 #
 # This takes rather long, as typical API calls take b/w 1 and 2s on OTC
-# (including the round trip to keystone for the token) though no undue long
-# response was observed in testing so far.
+# (including the round trip to keystone for the token).
 #
 # Optimization possibilities:
 # - Cache token and reuse when creating a large number of resources in a loop
-# - Use cinder list and nova list for polling resource creation progress
 #
 # Prerequisites:
 # - Working python-XXXclient tools (glance, neutron, nova, cinder)
