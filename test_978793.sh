@@ -235,7 +235,7 @@ deleteResources()
     read TM < <(ostackcmd_id id $@ $rsrc)
     RC="$?"
     eval ${STATNM}+="($TM)"
-    if test $RC != 0; then echo "ERROR" 1>&2: return 1; fi
+    if test $RC != 0; then echo "ERROR" 1>&2; return 1; fi
     unset LIST[-1]
   done
   test $LN -gt 0 && echo
