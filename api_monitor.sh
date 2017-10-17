@@ -503,7 +503,9 @@ deleteResources()
 # $3 => wanted2 (optional)
 colstat()
 {
-  if test "$1" == "$2" || test -n "$3" -a "$3" == "$1"; then
+  if test "$2" == "NONNULL" -a -n "$1" -a "$1" != "null"; then
+	echo -e "${GREEN}*${NORM}"; return 2
+  elif test "$2" == "$1" || test -n "$3" -a "$3" == "$1"; then
 	echo -e "${GREEN}${1:0:1}${NORM}"; return 2
   elif test "${1:0:5}" == "error" -o "${1:0:5}" == "ERROR"; then
 	echo -e "${RED}${1:0:1}${NORM}"; return 1
@@ -961,6 +963,10 @@ createFIPs()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET
   # Actually this fails if the port is not assigned to a VM yet
   #  -- we can not associate a FIP to a port w/o dev owner
+  # So wait for JHPORTS having a device owner
+  #echo "Wait for JHPorts: "
+  #waitResources NETSTATS JHPORT JPORTSTAT JVMSTIME "NONNULL" "NONONO" "device_owner" $NEUTRONTIMEOUT neutron port-show
+  # Now FIP creation is safe
   createResources $NONETS FIPSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL $EXTNET
   # TODO: Use API to tell VPC that the VIP is the next hop (route table)
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
