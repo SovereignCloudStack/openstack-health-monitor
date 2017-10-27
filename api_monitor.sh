@@ -1223,7 +1223,7 @@ testsnat()
       if test $RC == 2; then
         ERRJH[$JHNO]="${ERRJH[$JHNO]}$red "
       elif test $RC == 1; then
-        let CUMPINGERRORS+=1
+        let PINGERRORS+=1
         ERR="${ERR}ssh VM$JHNO $red ping $PINGTARGET; "
       fi
     done
@@ -1239,10 +1239,10 @@ testsnat()
       RC=$?
       if test $RC == 2; then
         let FAIL+=2
-        ERR="${ERR}ssh VM$JHNO $red ls; "
+        ERR="${ERR}(2)ssh VM$JHNO $red ls; "
       elif test $RC == 1; then
-        let CUMPINGERRORS+=1
-        ERR="${ERR}ssh VM$JHNO $red ping $PINGTARGET; "
+        let PINGERRORS+=1
+        ERR="${ERR}(2)ssh VM$JHNO $red ping $PINGTARGET; "
       fi
     done
   done
