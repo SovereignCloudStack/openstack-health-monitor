@@ -222,14 +222,15 @@ fi
 sendalarm()
 {
   local PRE RES RM URN
+  DATE=$(date)
   if test $1 = 0; then
     PRE="Note"
     RES=""
-    echo -e "$BOLD$PRE on $SHORT_DOMAIN/${RPRE%_} on $(hostname): $2\n$3$NORM" 1>&2
+    echo -e "$BOLD$PRE on $SHORT_DOMAIN/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
   else
     PRE="ALARM $1"
     RES=" => $1"
-    echo -e "$RED$PRE on $SHORT_DOMAIN/${RPRE%_} on $(hostname): $2\n$3$NORM" 1>&2
+    echo -e "$RED$PRE on $SHORT_DOMAIN/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
   fi
   if test -n "$EMAIL"; then
     if test -n "$EMAIL2" -a $1 != 0; then EM="$EMAIL2"; else EM="$EMAIL"; fi
@@ -246,7 +247,7 @@ $3" | /usr/sbin/sendmail -t -f kurt@garloff.de
   fi
   if test -n "$SMNID"; then
     if test -n "$SMNID2" -a $1 != 0; then URN="$SMNID2"; else URN="$SMNID"; fi
-    echo "$PRE on $SHORT_DOMAIN: $(date)
+    echo "$PRE on $SHORT_DOMAIN: $DATE
 ${RPRE%_} on $(hostname):
 $2
 $3" | otc.sh notifications publish $URN "$PRE from $(hostname)/$SHORT_DOMAIN"
