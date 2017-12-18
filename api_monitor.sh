@@ -222,6 +222,7 @@ fi
 sendalarm()
 {
   local PRE RES RM URN
+  local RECEIVER_LIST RECEIVER
   DATE=$(date)
   if test $1 = 0; then
     PRE="Note"
@@ -232,10 +233,19 @@ sendalarm()
     RES=" => $1"
     echo -e "$RED$PRE on $SHORT_DOMAIN/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
   fi
+  if $1 != 0; then 
+    RECEIVER_LIST=("${ALARM_EMAIL_ADDRESSES[@]}")
+  else 
+    RECEIVER_LIST=("${NOTE_EMAIL_ADDRESSES[@]}")
+  fi
   if test -n "$EMAIL"; then
     if test -n "$EMAIL2" -a $1 != 0; then EM="$EMAIL2"; else EM="$EMAIL"; fi
+    RECEIVER_LIST=("$EM" "${RECEIVER_LIST[@]}")
+  fi
+  for RECEIVER in "${RECEIVER_LIST[@]}"
+  do
     echo "From: ${RPRE%_} $(hostname) <$LOGNAME@$(hostname -f)>
-To: $EM
+To: $RECEIVER
 Subject: $PRE on $SHORT_DOMAIN: $2
 Date: $(date -R)
 
@@ -244,14 +254,23 @@ $PRE on $SHORT_DOMAIN
 ${RPRE%_} on $(hostname):
 $2
 $3" | /usr/sbin/sendmail -t -f kurt@garloff.de
+  done
+  if $1 != 0; then
+    RECEIVER_LIST=("${ALARM_MOBILE_NUMBERS[@]}")
+  else 
+    RECEIVER_LIST=("${NOTE_MOBILE_NUMBERS[@]}")
   fi
   if test -n "$SMNID"; then
     if test -n "$SMNID2" -a $1 != 0; then URN="$SMNID2"; else URN="$SMNID"; fi
+    RECEIVER_LIST=("$URN" "${RECEIVER_LIST[@]}")
+  fi
+  for RECEIVER in "${RECEIVER_LIST[@]}"
+  do
     echo "$PRE on $SHORT_DOMAIN: $DATE
 ${RPRE%_} on $(hostname):
 $2
-$3" | otc.sh notifications publish $URN "$PRE from $(hostname)/$SHORT_DOMAIN"
-  fi
+$3" | otc.sh notifications publish $RECEIVER "$PRE from $(hostname)/$SHORT_DOMAIN"
+  done
 }
 
 rc2bin()
