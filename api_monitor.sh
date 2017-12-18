@@ -1362,6 +1362,43 @@ cleanup()
   deleteRouters
 }
 
+parse_notification_addresses()
+{
+  # Parses from Environment
+  # API_MONITOR_ALARM_EMAIL_[0-9]+         # email address
+  # API_MONITOR_NOTE_EMAIL_[0-9]+          # email address
+  # API_MONITOR_ALARM_MOBILE_NUMBER_[0-9]+ # international mobile number
+  # API_MONITOR_NOTE_MOBILE_NUMBER_[0-9]+  # international mobile number
+  
+  # Sets global array with values from enironment variables:
+  # ${ALARM_EMAIL_ADDRESSES[@]}
+  # ${NOTE_EMAIL_ADDRESSES[@]}
+  # ${ALARM_MOBILE_NUMBERS[@]}
+  # ${NOTE_MOBILE_NUMBERS[@]}
+
+  for env_name in $(env | egrep API_MONITOR_ALARM_EMAIL\(_[0-9]+\)? | sed 's/^\([^=]*\)=.*/\1/')
+  do
+    ALARM_EMAIL_ADDRESSES=("${ALARM_EMAIL_ADDRESSES[@]}" ${!env_name})
+  done
+
+  for env_name in $(env | egrep API_MONITOR_NOTE_EMAIL\(_[0-9]+\)? | sed 's/^\([^=]*\)=.*/\1/')
+  do
+    NOTE_EMAIL_ADDRESSES=("${NOTE_EMAIL_ADDRESSES[@]}" ${!env_name})
+  done
+
+  for env_name in $(env | egrep API_MONITOR_ALARM_MOBILE_NUMBER\(_[0-9]+\)? | sed 's/^\([^=]*\)=.*/\1/')
+  do
+    ALARM_MOBILE_NUMBERS=("${ALARM_MOBILE_NUMBERS[@]}" ${!env_name})
+  done
+
+  for env_name in $(env | egrep API_MONITOR_NOTE_MOBILE_NUMBER\(_[0-9]+\)? | sed 's/^\([^=]*\)=.*/\1/')
+  do
+    NOTE_MOBILE_NUMBERS=("${NOTE_MOBILE_NUMBERS[@]}" ${!env_name})
+  done
+}
+
+parse_notification_addresses
+
 declare -i loop=0
 
 # Statistics
