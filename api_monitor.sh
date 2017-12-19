@@ -233,9 +233,9 @@ sendalarm()
     RES=" => $1"
     echo -e "$RED$PRE on $SHORT_DOMAIN/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
   fi
-  if $1 != 0; then 
+  if test $1 != 0; then
     RECEIVER_LIST=("${ALARM_EMAIL_ADDRESSES[@]}")
-  else 
+  else
     RECEIVER_LIST=("${NOTE_EMAIL_ADDRESSES[@]}")
   fi
   if test -n "$EMAIL"; then
@@ -255,9 +255,9 @@ ${RPRE%_} on $(hostname):
 $2
 $3" | /usr/sbin/sendmail -t -f kurt@garloff.de
   done
-  if $1 != 0; then
+  if test $1 != 0; then
     RECEIVER_LIST=("${ALARM_MOBILE_NUMBERS[@]}")
-  else 
+  else
     RECEIVER_LIST=("${NOTE_MOBILE_NUMBERS[@]}")
   fi
   if test -n "$SMNID"; then
@@ -1388,7 +1388,7 @@ parse_notification_addresses()
   # API_MONITOR_NOTE_EMAIL_[0-9]+          # email address
   # API_MONITOR_ALARM_MOBILE_NUMBER_[0-9]+ # international mobile number
   # API_MONITOR_NOTE_MOBILE_NUMBER_[0-9]+  # international mobile number
-  
+
   # Sets global array with values from enironment variables:
   # ${ALARM_EMAIL_ADDRESSES[@]}
   # ${NOTE_EMAIL_ADDRESSES[@]}
