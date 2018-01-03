@@ -377,11 +377,16 @@ ostackcmd_id()
   fi
   local RC=$?
   local LEND=$(date +%s.%3N)
+  local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
+
+  # log time / rc to grafana
+  test "$1" = "openstack" && shift
+  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=$1,method=$2 time=$TIM,return_code=$RC $(date +%s%N)" >/dev/null
+
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
     sendalarm $RC "$*" "$RESP"
     errwait $ERRWAIT
   fi
-  local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
   if test "$IDNM" = "DELETE"; then
     ID=$(echo "$RESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
     echo "$LSTART/$LEND/$ID: $@ => $RC $RESP" >> $LOGFILE
