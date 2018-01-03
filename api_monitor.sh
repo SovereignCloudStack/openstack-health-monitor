@@ -381,7 +381,7 @@ ostackcmd_id()
 
   # log time / rc to grafana
   test "$1" = "openstack" && shift
-  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=$1,method=$2 time=$TIM,return_code=$RC $(date +%s%N)" >/dev/null
+  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=$1,method=$2 duration=$TIM,return_code=$RC $(date +%s%N)" >/dev/null
 
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
     sendalarm $RC "$*" "$RESP"
