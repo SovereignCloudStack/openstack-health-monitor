@@ -75,7 +75,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.23
+VERSION=1.24
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -122,7 +122,7 @@ JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
 IMG="${IMG:-Standard_CentOS_7_latest}"
 IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
 JHFLAVOR=${JHFLAVOR:-computev1-1}
-FLAVOR=${FLAVOR:-computev1-1}
+FLAVOR=${FLAVOR:-s2.medium.1}
 
 if [[ "$JHIMG" != *openSUSE* ]]; then
 	echo "WARN: Need openSUSE_42 als JumpHost for port forwarding via user_data" 1>&2
@@ -458,6 +458,8 @@ createResources()
   eval local LIST=( \"\${${ORNM}S[@]}\" )
   eval local MLIST=( \"\${${MRNM}S[@]}\" )
   if test "$RNM" != "NONE"; then echo -n "New $RNM: "; fi
+  local RC=0
+  local RESP
   # FIXME: Should we get a token once here and reuse it?
   for no in `seq 0 $(($QUANT-1))`; do
     local AZN=$(($no%$NOAZS))
@@ -468,8 +470,9 @@ createResources()
     local STM=$(date +%s)
     if test -n "$STIME"; then eval "${STIME}+=( $STM )"; fi
     let APICALLS+=1
-    local RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
-    local RC=$?
+    RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
+    RC=$?
+    #echo "DEBUG: ostackcmd_id $CMD => $RC" 1>&2
     updAPIerr $RC
     local TM
     read TM ID < <(echo "$RESP")
@@ -568,6 +571,7 @@ waitResources()
   local LAST=$(( ${#RLIST[@]} - 1 ))
   declare -i ctr=0
   declare -i WERR=0
+  local RESP
   while test -n "${SLIST[*]}" -a $ctr -le 320; do
     local STATSTR=""
     for i in $(seq 0 $LAST ); do
@@ -575,7 +579,7 @@ waitResources()
       if test -z "${SLIST[$i]}"; then STATSTR+=$(colstat "${STATI[$i]}" "$COMP1" "$COMP2"); continue; fi
       local CMD=`eval echo $@ $rsrc 2>&1`
       let APICALLS+=1
-      local RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
+      RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
       local RC=$?
       updAPIerr $RC
       local TM STAT
@@ -698,6 +702,7 @@ waitdelResources()
   local STATI=()
   local LAST=$(( ${#RLIST[@]} - 1 ))
   local STATI=()
+  local RESP
   #echo "waitdelResources $STATNM $RNM $DSTAT $DTIME - ${RLIST[*]} - ${DLIST[*]}"
   declare -i ctr=0
   while test -n "${DLIST[*]}"i -a $ctr -le 320; do
@@ -707,7 +712,7 @@ waitdelResources()
       if test -z "${DLIST[$i]}"; then STATSTR+=$(colstat "${STATI[$i]}" "XDELX" ""); continue; fi
       local CMD=`eval echo $@ $rsrc`
       let APICALLS+=1
-      local RESP=$(ostackcmd_id DELETE $TIMEOUT $CMD)
+      RESP=$(ostackcmd_id DELETE $TIMEOUT $CMD)
       local RC=$?
       updAPIerr $RC
       local TM STAT
@@ -993,6 +998,7 @@ createFIPs()
   waitResources NETSTATS JHPORT JPORTSTAT JVMSTIME "NONNULL" "NONONO" "device_owner" $NETTIMEOUT neutron port-show
   # Now FIP creation is safe
   createResources $NONETS FIPSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL $EXTNET
+  if test $? != 0; then return 1; fi
   # TODO: Use API to tell VPC that the VIP is the next hop (route table)
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
