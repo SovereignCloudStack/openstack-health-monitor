@@ -1573,7 +1573,7 @@ else # test "$1" = "DEPLOY"; then
               echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
               sleep 5
               #read ANS
-              # Subtract waiting time (1s here)
+              # Subtract waiting time (5s here)
               MSTART=$(($MSTART+$(date +%s)-$MSTOP))
               # TODO: Detach and delete disks again
              fi; deleteVMs
