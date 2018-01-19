@@ -75,7 +75,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.24
+VERSION=1.25
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -113,6 +113,8 @@ CINDERTIMEOUT=20
 GLANCETIMEOUT=32
 DEFTIMEOUT=16
 
+REFRESHPRJ=0
+
 echo "Running api_monitor.sh v$VERSION"
 if test "$1" != "CLEANUP"; then echo "Using $RPRE prefix for api_monitor resources on $OS_USER_DOMAIN_NAME (${AZS[*]})"; fi
 
@@ -146,6 +148,7 @@ REV="\e[0;3m"
 NORM="\e[0;0m"
 RED="\e[0;31m"
 GREEN="\e[0;32m"
+YELLOW="\e[0;33m"
 
 usage()
 {
@@ -165,6 +168,7 @@ usage()
   echo " -G N   increase JH volume size by N GB"
   echo " -w N   sets error wait (API, VM): 0-inf seconds or neg value for interactive wait"
   echo " -W N   sets error wait (VM only): 0-inf seconds or neg value for interactive wait"
+  echo " -p N   use a new project every N iterations"
   echo "Or: api_monitor.sh [-f] CLEANUP XXX to clean up all resources with prefix XXX"
   exit 0
 }
@@ -186,6 +190,7 @@ while test -n "$1"; do
     "-w") ERRWAIT=$2; shift;;
     "-W") VMERRWAIT=$2; shift;;
     "-f") FORCEDEL=XDELX;;
+    "-p") REFRESHPRJ=$2; shift;;
     "CLEANUP") break;;
     *) echo "Unknown argument \"$1\""; exit 1;;
   esac
@@ -294,9 +299,11 @@ exithandler()
     echo -e "\n$BOLD OK, cleaning up right away $NORM"
     FORCEDEL=NONONO
     cleanup
+    if test "$REFRESHPRJ" != 0; then cleanprj; fi
     kill -TERM 0
   else
-    echo e "\n$RED OK, OK, exiting without cleanup. Use api_monitor.sh CLEANUP $RPRE to do so.$NORM"
+    echo -e "\n$RED OK, OK, exiting without cleanup. Use api_monitor.sh CLEANUP $RPRE to do so.$NORM"
+    if test "$REFESHPRJ" != 0; then echo -e "${RED}export OS_PROJECT_NAME=$OS_PROJECT_NAME before doing so$NORM"; fi
     kill -TERM 0
   fi
   let EXITED+=1
@@ -1392,6 +1399,27 @@ cleanup()
   deleteRouters
 }
 
+cleanprj()
+{
+  if test ${#OS_PROJECT_NAME} -le 5; then echo -e "$RED ERROR: Won't delete $OS_PROJECT_NAME$NORM" 1>&2; return 1; fi
+  #TODO: Wait for resources being gone
+  sleep 10
+  otc.sh iam deleteproject $OS_PROJECT_NAME 2>/dev/null || otc.sh iam cleanproject $OS_PROJECT_NAME
+  echo -e "${REV}Note: Removed Project $OS_PROJECT_NAME ($?)${NORM}"
+}
+
+createnewprj()
+{
+  # First cleanup old project
+  if test "$RUNS" != 0; then cleanprj; fi
+  PRJNO=$(($RUNS/$REFRESHPRJ))
+  OS_PROJECT_NAME=${OS_PROJECT_NAME:0:5}_APIMonitor_$$_$PRJNO
+  unset OS_PROJECT_ID
+  otc.sh iam createproject $OS_PROJECT_NAME >/dev/null
+  echo -e "${REV}Note: Created project $OS_PROJECT_NAME ($?)$NORM"
+  sleep 10
+}
+
 parse_notification_addresses()
 {
   # Parses from Environment
@@ -1453,6 +1481,7 @@ declare -i CUMAPITIMEOUTS=0
 declare -i CUMAPICALLS=0
 declare -i CUMVMERRORS=0
 declare -i CUMWAITERRORS=0
+declare -i CUMVMS=0
 declare -i RUNS=0
 
 LASTDATE=$(date +%Y-%m-%d)
@@ -1467,6 +1496,7 @@ declare -i APITIMEOUTS=0
 declare -i VMERRORS=0
 declare -i WAITERRORS=0
 declare -i APICALLS=0
+declare -i ROUNDVMS=0
 
 # Arrays to store resource creation start times
 declare -a VOLSTIME=()
@@ -1505,6 +1535,7 @@ if test "$1" = "CLEANUP"; then
   echo -e "$BOLD *** Cleanup complete *** $NORM"
   exit 0
 else # test "$1" = "DEPLOY"; then
+ if test "$REFRESHPRJ" != 0 -a $(($RUNS%$REFRESHPRJ)) == 0; then createnewprj; fi
  # Complete setup
  echo -e "$BOLD *** Start deployment $NONETS SNAT JumpHosts + $NOVMS VMs *** $NORM"
  date
@@ -1542,9 +1573,11 @@ else # test "$1" = "DEPLOY"; then
            createPorts
            waitJHVols
            if createJHVMs; then
+            let ROUNDVMS=$NONETS
             if createFIPs; then
              waitVols
              if createVMs; then
+              let ROUNDVMS+=$NOVMS
               waitJHVMs
               waitVMs
               setmetaVMs
@@ -1603,7 +1636,7 @@ else # test "$1" = "DEPLOY"; then
     #waiterr $WAITERR
  fi
  allstats
- echo "This run: Overall ($NOVMS + $NONETS) VMs, $APICALLS API calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, $(date +'%Y-%m-%d %H:%M:%S %Z')"
+ echo "This run: Overall $ROUNDVMS / ($NOVMS + $NONETS) VMs, $APICALLS API calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, $(date +'%Y-%m-%d %H:%M:%S %Z')"
 #else
 #  usage
 fi
@@ -1613,6 +1646,7 @@ let CUMVMERRORS+=$VMERRORS
 let CUMPINGERRORS+=$PINGERRORS
 let CUMWAITERRORS+=$WAITERRORS
 let CUMAPICALLS+=$APICALLS
+let CUMVMS+=$ROUNDVMS
 let RUNS+=1
 
 CDATE=$(date +%Y-%m-%d)
@@ -1621,7 +1655,7 @@ if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXI
   sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $(hostname) testing $SHORT_DOMAIN:
 
-$RUNS deployments ($((($NONETS+$NOVMS)*$RUNS)) VMs, $CUMAPICALLS API calls)
+$RUNS deployments ($CUMVMS VMs, $CUMAPICALLS API calls)
 $CUMVMERRORS VM LOGIN ERRORS
 $CUMWAITERRORS VM TIMEOUT ERRORS
 $CUMAPIERRORS API ERRORS
@@ -1638,7 +1672,7 @@ $(allstats -m)
 "
   echo "#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$(hostname)
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
-#RUN: $RUNS|$((($NONETS+$NOVMS)*$RUNS))|$CUMAPICALLS
+#RUN: $RUNS|$CUMVMS|$CUMAPICALLS
 #ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS
 $(allstats -m)" > Stats.$LASTDATA.$LASTTIME.$CDATE.$CTIME.psv
   CUMVMERRORS=0
@@ -1673,3 +1707,4 @@ sleep 2
 let loop+=1
 done
 rm ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem
+if test "$REFRESHPRJ" != 0; then cleanprj; fi
