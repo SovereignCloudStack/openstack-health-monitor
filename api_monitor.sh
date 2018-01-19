@@ -1535,7 +1535,7 @@ if test "$1" = "CLEANUP"; then
   echo -e "$BOLD *** Cleanup complete *** $NORM"
   exit 0
 else # test "$1" = "DEPLOY"; then
- if test "$REFRESHPRJ" != 0 -a $(($RUNS%$REFRESHPRJ)) == 0; then createnewprj; fi
+ if test "$REFRESHPRJ" != 0 && test $(($RUNS%$REFRESHPRJ)) == 0; then createnewprj; fi
  # Complete setup
  echo -e "$BOLD *** Start deployment $NONETS SNAT JumpHosts + $NOVMS VMs *** $NORM"
  date
