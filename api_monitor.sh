@@ -222,6 +222,11 @@ if test -z "$OS_USERNAME"; then
   exit 1
 fi
 
+if ! neutron router-list >/dev/null; then
+  echo "neutron call failed, exit"
+  exit 2
+fi
+
 
 # Alarm notification
 sendalarm()
