@@ -1,9 +1,9 @@
 #!/bin/bash
 
-export OS_DOMAIN=OTC-EU-DE-00000000001000020825
-export OS_USER_DOMAIN_NAME=OTC-EU-DE-00000000001000020825
+export OS_DOMAIN=OTC00000000001000000449
+export OS_USER_DOMAIN_NAME=OTC00000000001000000449
 export OS_TENANT_NAME=eu-de
-export OS_PROJECT_NAME=eu-de
+export OS_PROJECT_NAME=${OS_PROJECT_NAME:-"eu-de_APIMonitor"}
 export OS_AUTH_URL=https://iam.eu-de.otc.t-systems.com:443/v3
 export OS_ENDPOINT_TYPE=publicURL
 export NOVA_ENDPOINT_TYPE=publicURL
@@ -11,6 +11,8 @@ export CINDER_ENDPOINT_TYPE=publicURL
 export OS_IDENTITY_API_VERSION=3
 export OS_IMAGE_API_VERSION=2
 export OS_VOLUME_API_VERSION=2
+
+export EMAIL_PARAM=${EMAIL_PARAM:-"t-systems@garloff.de"}
 
 # ./api_monitor.sh won't terminate on a auth error
 openstack server list >/dev/null
@@ -29,4 +31,4 @@ for ENV in $TOCLEAN; do
   echo "******************************"
 done
 
-bash ./api_monitor.sh -d -n 30 -l last.log -e t-systems@garloff.de -i 4
+bash ./api_monitor.sh -d -n 8 -l last.log -e $EMAIL_PARAM -i 8
