@@ -75,7 +75,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.25
+VERSION=1.26
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -1369,7 +1369,7 @@ findres()
   local FILT=${1:-$RPRE}
   shift
   # FIXME: Add timeout handling
-  $@ | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
+  $@ 2>/dev/null | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
 }
 
 cleanup()
@@ -1402,6 +1402,26 @@ cleanup()
   NETS=( $(findres "" neutron net-list) )
   deleteNets
   deleteRouters
+}
+
+waitnetgone()
+{
+  local to
+  declare -i to=0
+  # There should not be anything left ...
+  PORTS=( $(findres "" neutron port-list) )
+  deletePorts
+  echo -n "Wait for subnets/nets to disappear: "
+  while test $to -lt 100; do
+    SUBNETS=( $(findres "" neutron subnet-list) )
+    NETS=( $(findres "" neutron net-list) )
+    if test -z "${SUBNETS[*]}" -a -z "${NETS[*]}"; then echo "gone"; return; fi
+    sleep 1
+    let to+=1
+    echo -n "."
+  done
+  deleteSubNets
+  deleteNets
 }
 
 cleanprj()
@@ -1620,10 +1640,10 @@ else # test "$1" = "DEPLOY"; then
           fi; deleteKeypairs
          fi; waitdelVMs; deleteVols
         fi; waitdelJHVMs
-        echo -e "${BOLD}Ignore port del errors; VM cleanup took care already.${NORM}"
-        IGNORE_ERRORS=1
-        deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
-        unset IGNORE_ERRORS
+        #echo -e "${BOLD}Ignore port del errors; VM cleanup took care already.${NORM}"
+        #IGNORE_ERRORS=1
+        #deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
+        #unset IGNORE_ERRORS
        fi; deleteJHVols
       fi; deleteVIPs
      fi; deleteSGroups
@@ -1704,11 +1724,7 @@ $(allstats -m)" > Stats.$LASTDATA.$LASTTIME.$CDATE.$CTIME.psv
 fi
 
 # TODO: Clean up residuals, if any
-sleep 8
-IGNORE_ERRORS=1
-cleanup
-unset IGNORE_ERRORS
-sleep 2
+waitnetgone
 let loop+=1
 done
 rm ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem
