@@ -259,7 +259,7 @@ To: $RECEIVER
 Subject: $PRE on $SHORT_DOMAIN: $2
 Date: $(date -R)
 
-$PRE on $SHORT_DOMAIN
+$PRE on $SHORT_DOMAIN/$OS_PROJECT_NAME
 
 ${RPRE%_} on $(hostname):
 $2
@@ -276,7 +276,7 @@ $3" | /usr/sbin/sendmail -t -f kurt@garloff.de
   fi
   for RECEIVER in "${RECEIVER_LIST[@]}"
   do
-    echo "$PRE on $SHORT_DOMAIN: $DATE
+    echo "$PRE on $SHORT_DOMAIN/$OS_PROJECT_NAME: $DATE
 ${RPRE%_} on $(hostname):
 $2
 $3" | otc.sh notifications publish $RECEIVER "$PRE from $(hostname)/$SHORT_DOMAIN"
@@ -1678,7 +1678,7 @@ CDATE=$(date +%Y-%m-%d)
 CTIME=$(date +%H:%M:%S)
 if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXITER; then
   sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
-$RPRE $VERSION on $(hostname) testing $SHORT_DOMAIN:
+$RPRE $VERSION on $(hostname) testing $SHORT_DOMAIN/$OS_PROEJCT_NAME:
 
 $RUNS deployments ($CUMVMS VMs, $CUMAPICALLS API calls)
 $CUMVMERRORS VM LOGIN ERRORS
@@ -1689,13 +1689,13 @@ $CUMPINGERRORS Ping failures
 
 $(allstats)
 
-#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$(hostname)
+#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$(hostname)|$OS_PROEJCT_NAME
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
 #RUN: $RUNS|$((($NONETS+$NOVMS)*$RUNS))|$CUMAPICALLS
 #ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS
 $(allstats -m)
 "
-  echo "#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$(hostname)
+  echo "#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$(hostname)|$OS_PROEJCT_NAME
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
 #RUN: $RUNS|$CUMVMS|$CUMAPICALLS
 #ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS
