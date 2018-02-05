@@ -162,6 +162,7 @@ usage()
   echo " -m URN sets notes/alarms by SMN (pass URN of queue)"
   echo "         second -m splits notifications; notes to first, alarms to second URN"
   echo " -s     sends stats as well once per day, not just alarms"
+  echo " -S     sends stats to grafana via local telegraf http_listener"
   echo " -d     boot Directly from image (not via volume)"
   echo " -i N   sets max number of iterations (def = -1 = inf)"
   echo " -g N   increase VM volume size by N GB"
@@ -181,6 +182,7 @@ while test -n "$1"; do
     "-l") LOGFILE=$2; shift;;
     "help"|"-h"|"--help") usage;;
     "-s") SENDSTATS=1;;
+    "-S") GRAFANA=1;;
     "-d") BOOTFROMIMAGE=1;;
     "-e") if test -z "$EMAIL"; then EMAIL="$2"; else EMAIL2="$2"; fi; shift;;
     "-m") if test -z "$SMNID"; then SMNID="$2"; else SMNID2="$2"; fi; shift;;
@@ -391,9 +393,11 @@ ostackcmd_id()
   local LEND=$(date +%s.%3N)
   local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
 
-  # log time / rc to grafana
   test "$1" = "openstack" && shift
-  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=$1,method=$2 duration=$TIM,return_code=$RC $(date +%s%N)" >/dev/null
+  if test -n "$GRAFANA"; then
+      # log time / rc to grafana
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=$1,method=$2 duration=$TIM,return_code=$RC $(date +%s%N)" >/dev/null
+  fi
 
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
     sendalarm $RC "$*" "$RESP"
