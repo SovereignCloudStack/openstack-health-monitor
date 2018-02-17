@@ -442,6 +442,11 @@ ostackcmd_tm()
   fi
   local LEND=$(date +%s.%3N)
   local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
+  test "$1" = "openstack" && shift
+  if test -n "$GRAFANA"; then
+    # log time / rc to grafana
+    curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=$1,method=$2 duration=$TIM,return_code=$RC $(date +%s%N)" >/dev/null
+  fi
   eval "${STATNM}+=( $TIM )"
   echo "$LSTART/$LEND/: $@ => $OSTACKRESP" >> $LOGFILE
   return $RC
@@ -614,6 +619,10 @@ waitResources()
         TM=$(date +%s)
 	TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
 	eval ${CSTAT}+="($TM)"
+	if test -n "$GRAFANA"; then
+	  # log time / rc to grafana
+	  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=wait$RNM,method=$COMP1$COMP2 duration=$TM,return_code=$STE $(date +%s%N)" >/dev/null
+	fi
 	unset SLIST[$i]
       fi
     done
@@ -684,6 +693,10 @@ waitlistResources()
         TM=$(date +%s)
 	TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
 	eval ${CSTAT}+="($TM)"
+	if test -n "$GRAFANA"; then
+	  # log time / rc to grafana
+	  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=wait$RNM,method=$COMP1$COMP2 duration=$TM,return_code=$STE $(date +%s%N)" >/dev/null
+	fi
 	unset SLIST[$i]
       fi
     done
@@ -743,6 +756,10 @@ waitdelResources()
       fi
       STATI[$i]=$STAT
       STARTSTR+=$(colstat "$STAT" "XDELX" "")
+      if test -n "$GRAFANA"; then
+	# log time / rc to grafana
+	curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=wait$RNM,method=DEL duration=$TM,return_code=$RC $(date +%s%N)" >/dev/null
+      fi
       #echo -en "WaitDel $RNM: $STATSTR\r"
     done
     echo -en "WaitDel $RNM: $STATSTR \r"
