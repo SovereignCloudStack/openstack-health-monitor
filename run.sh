@@ -14,7 +14,7 @@ export OS_VOLUME_API_VERSION=2
 
 export EMAIL_PARAM=${EMAIL_PARAM:-"t-systems@garloff.de"}
 
-# ./api_monitor.sh won't terminate on a auth error
+# Terminate on auth error early
 openstack server list >/dev/null
 
 # Cleanup previous interrupted runs
