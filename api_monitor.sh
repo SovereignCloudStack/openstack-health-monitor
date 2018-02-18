@@ -621,7 +621,8 @@ waitResources()
 	eval ${CSTAT}+="($TM)"
 	if test -n "$GRAFANA"; then
 	  # log time / rc to grafana
-	  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$STE $(date +%s%N)" >/dev/null
+	  if test $STE -ge 2; then RC=0; else RC=$STE; fi
+	  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)" >/dev/null
 	fi
 	unset SLIST[$i]
       fi
@@ -695,7 +696,8 @@ waitlistResources()
 	eval ${CSTAT}+="($TM)"
 	if test -n "$GRAFANA"; then
 	  # log time / rc to grafana
-	  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$STE $(date +%s%N)" >/dev/null
+	  if test $STE -ge 2; then RC=0; else RC=$STE; fi
+	  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)" >/dev/null
 	fi
 	unset SLIST[$i]
       fi
