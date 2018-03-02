@@ -21,9 +21,14 @@ openstack server list >/dev/null
 SERVERS=$(openstack server  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 VOLUMES=$(openstack volume  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 NETWORK=$(openstack network list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+ROUTERS=$(openstack router  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+SECGRPS=$(openstack security group list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 TOCLEAN=$(echo "$SERVERS
 $VOLUMES
-$NETWORK" | sort -u)
+$NETWORK
+$ROUTERS
+$SECGRPS
+" | sort -u)
 for ENV in $TOCLEAN; do
   echo "******************************"
   echo "CLEAN $ENV"
