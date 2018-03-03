@@ -75,7 +75,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.26
+VERSION=1.27
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -904,8 +904,19 @@ createSGroups()
   #neutron security-group-show $SG1
 }
 
+cleanupPorts()
+{
+  RPORTS=( $(findres ${RPRE}Port_ neutron port-list) )
+  deleteResources NETSTATS RPORT "" $NETTIMEOUT neutron port-delete
+  #RVIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
+  #deleteResources NETSTATS RVIP "" $NETTIMEOUT neutron port-delete
+}
+
+
 deleteSGroups()
 {
+  #neutron port-list
+  #neutron security-group-list
   deleteResources NETSTATS SGROUP "" $NETTIMEOUT neutron security-group-delete
 }
 
@@ -1669,7 +1680,8 @@ else # test "$1" = "DEPLOY"; then
         #unset IGNORE_ERRORS
        fi; deleteJHVols
       fi; deleteVIPs
-     fi; deleteSGroups
+     # There is a chance that some VMs were not created, but ports were allocated, so clean ...
+     fi; cleanupPorts; deleteSGroups
     fi; deleteRIfaces
    fi; deleteSubNets
   fi; deleteNets
