@@ -231,6 +231,10 @@ fi
 
 
 # Alarm notification
+# $1 => return code
+# $2 => invoked command
+# $3 => command output
+# $4 => timeout (for rc=137)
 sendalarm()
 {
   local PRE RES RM URN
@@ -240,6 +244,10 @@ sendalarm()
     PRE="Note"
     RES=""
     echo -e "$BOLD$PRE on $SHORT_DOMAIN/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
+  elif test $1 -gt 128; then
+    PRE="TIMEOUT $4"
+    RES=" => $1"
+    echo -e "$RED$PRE on $SHORT_DOMAIN/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
   else
     PRE="ALARM $1"
     RES=" => $1"
@@ -254,9 +262,10 @@ sendalarm()
     if test -n "$EMAIL2" -a $1 != 0; then EM="$EMAIL2"; else EM="$EMAIL"; fi
     RECEIVER_LIST=("$EM" "${RECEIVER_LIST[@]}")
   fi
+  FROM="$LOGNAME@$(hostname -f)"
   for RECEIVER in "${RECEIVER_LIST[@]}"
   do
-    echo "From: ${RPRE%_} $(hostname) <$LOGNAME@$(hostname -f)>
+    echo "From: ${RPRE%_} $(hostname) <$FROM>
 To: $RECEIVER
 Subject: $PRE on $SHORT_DOMAIN: $2
 Date: $(date -R)
@@ -265,7 +274,8 @@ $PRE on $SHORT_DOMAIN/$OS_PROJECT_NAME
 
 ${RPRE%_} on $(hostname):
 $2
-$3" | /usr/sbin/sendmail -t -f kurt@garloff.de
+$3
+(Timeout: ${4}s)" | /usr/sbin/sendmail -t -f $FROM
   done
   if test $1 != 0; then
     RECEIVER_LIST=("${ALARM_MOBILE_NUMBERS[@]}")
@@ -281,13 +291,21 @@ $3" | /usr/sbin/sendmail -t -f kurt@garloff.de
     echo "$PRE on $SHORT_DOMAIN/$OS_PROJECT_NAME: $DATE
 ${RPRE%_} on $(hostname):
 $2
-$3" | otc.sh notifications publish $RECEIVER "$PRE from $(hostname)/$SHORT_DOMAIN"
+$3
+(Timeout ${4}s)" | otc.sh notifications publish $RECEIVER "$PRE from $(hostname)/$SHORT_DOMAIN"
   done
 }
 
 rc2bin()
 {
   if test $1 = 0; then echo 0; return 0; else echo 1; return 1; fi
+}
+
+# Map return code to 2 (timeout), 1 (error), or 0 (success) for Grafana
+# $1 => input (RC), returns global var GRC
+rc2grafana()
+{
+  if test $1 == 0; then GRC=0; elif test $1 -ge 128; then GRC=2; else GRC=1; fi
 }
 
 updAPIerr()
@@ -364,7 +382,7 @@ ostackcmd_search()
   ID=$(echo "$RESP" | grep "$SEARCH" | head -n1 | sed -e 's/^| *\([^ ]*\) *|.*$/\1/')
   echo "$LSTART/$LEND/$SEARCH: $@ => $RC $RESP $ID" >> $LOGFILE
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
-    sendalarm $RC "$*" "$RESP"
+    sendalarm $RC "$*" "$RESP" $TIMEOUT
     errwait $ERRWAIT
   fi
   local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
@@ -396,11 +414,12 @@ ostackcmd_id()
   test "$1" = "openstack" && shift
   if test -n "$GRAFANA"; then
       # log time / rc to grafana
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=$1,method=$2 duration=$TIM,return_code=$RC $(date +%s%N)" >/dev/null
+      rc2grafana $RC
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)" >/dev/null
   fi
 
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
-    sendalarm $RC "$*" "$RESP"
+    sendalarm $RC "$*" "$RESP" $TIMEOUT
     errwait $ERRWAIT
   fi
   if test "$IDNM" = "DELETE"; then
@@ -437,7 +456,7 @@ ostackcmd_tm()
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
     # We can count here, as we are not in a subprocess
     let APIERRORS+=1
-    sendalarm $RC "$*" "$OSTACKRESP"
+    sendalarm $RC "$*" "$OSTACKRESP" $TIMEOUT
     errwait $ERRWAIT
   fi
   local LEND=$(date +%s.%3N)
@@ -445,7 +464,8 @@ ostackcmd_tm()
   test "$1" = "openstack" && shift
   if test -n "$GRAFANA"; then
     # log time / rc to grafana
-    curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=$1,method=$2 duration=$TIM,return_code=$RC $(date +%s%N)" >/dev/null
+    rc2grafana $RC
+    curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)" >/dev/null
   fi
   eval "${STATNM}+=( $TIM )"
   echo "$LSTART/$LEND/: $@ => $OSTACKRESP" >> $LOGFILE
@@ -760,7 +780,8 @@ waitdelResources()
       STARTSTR+=$(colstat "$STAT" "XDELX" "")
       if test -n "$GRAFANA"; then
 	# log time / rc to grafana
-	curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=wait$RNM,method=DEL duration=$TM,return_code=$RC $(date +%s%N)" >/dev/null
+        rc2grafana $RC
+	curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=wait$RNM,method=DEL duration=$TM,return_code=$GRC $(date +%s%N)" >/dev/null
       fi
       #echo -en "WaitDel $RNM: $STATSTR\r"
     done
@@ -1189,11 +1210,11 @@ setmetaVMs()
 
 wait222()
 {
-  local NCPROXY pno MAXWAIT ctr JHNO waiterr red
+  local NCPROXY pno ctr JHNO waiterr red
   declare -i waiterr=0
   # Wait for VMs being accessible behind fwdmasq (ports 222+)
   #if test -n "$http_proxy"; then NCPROXY="-X connect -x $http_proxy"; fi
-  MAXWAIT=48
+  MAXWAIT=90
   for JHNO in $(seq 0 $(($NONETS-1))); do
     echo -n "${FLOATS[$JHNO]} "
     echo -n "ping "
@@ -1212,7 +1233,7 @@ wait222()
     while [ $ctr -le $MAXWAIT ]; do
       echo "quit" | nc $NCPROXY -w 2 ${FLOATS[$JHNO]} 22 >/dev/null 2>&1 && break
       echo -n "."
-      sleep 5
+      sleep 2
       let ctr+=1
     done
     if [ $ctr -ge $MAXWAIT ]; then echo -ne " $RED timeout $NORM"; let waiterr+=1; fi
@@ -1225,13 +1246,13 @@ wait222()
       while [ $ctr -le $MAXWAIT ]; do
         echo "quit" | nc $NCPROXY -w 2 ${FLOATS[$JHNO]} $pno >/dev/null 2>&1 && break
         echo -n "."
-        sleep 5
+        sleep 2
         let ctr+=1
       done
       if [ $ctr -ge $MAXWAIT ]; then echo -ne " $RED timeout $NORM"; let waiterr+=1; fi
-      MAXWAIT=16
+      MAXWAIT=30
     done
-    MAXWAIT=32
+    MAXWAIT=60
   done
   if test $waiterr == 0; then echo "OK"; else echo "RET $waiterr"; fi
   return $waiterr
@@ -1607,13 +1628,13 @@ else # test "$1" = "DEPLOY"; then
  # Retrieve root volume size
  read TM SZ < <(ostackcmd_id min_disk $GLANCETIMEOUT glance image-show $JHIMGID)
  if test $? != 0; then
-  let APIERRORS+=1; sendalarm 1 "glance image-show failed" ""
+  let APIERRORS+=1; sendalarm 1 "glance image-show failed" "" $GLANCETIMEOUT
  else
   JHVOLSIZE=$(($SZ+$ADDJHVOLSIZE))
  fi
  read TM SZ < <(ostackcmd_id min_disk $GLANCETIMEOUT glance image-show $IMGID)
  if test $? != 0; then
-  let APIERRORS+=1; sendalarm 1 "glance image-show failed" ""
+  let APIERRORS+=1; sendalarm 1 "glance image-show failed" "" $GLANCETIMEOUT
  else
   VOLSIZE=$(($SZ+$ADDVMVOLSIZE))
  fi
@@ -1647,14 +1668,14 @@ else # test "$1" = "DEPLOY"; then
               RC=$?
               if test $RC != 0; then
                 let VMERRORS+=$RC
-                sendalarm $RC "$ERR" ""
+                sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
                 errwait $VMERRWAIT
               fi
               testsnat
               RC=$?
               let VMERRORS+=$((RC/2))
               if test $RC != 0; then
-                sendalarm $RC "$ERR" ""
+                sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
                 errwait $VMERRWAIT
               fi
               # TODO: Test login to all normal VMs (not just the last two)
@@ -1692,7 +1713,7 @@ else # test "$1" = "DEPLOY"; then
  TOTTIME+=($THISRUNTIME)
  # Raise an alarm if we have not yet sent one and we're very slow despite this
  if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $((480+30*$NOVMS)); then
-    sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME"
+    sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME" $((480+30*$NOVMS))
     #waiterr $WAITERR
  fi
  allstats
@@ -1729,7 +1750,7 @@ $(allstats)
 #RUN: $RUNS|$((($NONETS+$NOVMS)*$RUNS))|$CUMAPICALLS
 #ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS
 $(allstats -m)
-"
+" 0
   echo "#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$(hostname)|$OS_PROJECT_NAME
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
 #RUN: $RUNS|$CUMVMS|$CUMAPICALLS
