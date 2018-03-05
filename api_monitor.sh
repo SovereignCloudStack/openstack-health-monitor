@@ -237,7 +237,7 @@ fi
 # $4 => timeout (for rc=137)
 sendalarm()
 {
-  local PRE RES RM URN
+  local PRE RES RM URN TOMSG
   local RECEIVER_LIST RECEIVER
   DATE=$(date)
   if test $1 = 0; then
@@ -252,6 +252,10 @@ sendalarm()
     PRE="ALARM $1"
     RES=" => $1"
     echo -e "$RED$PRE on $SHORT_DOMAIN/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
+  fi
+  TOMSG=""
+  if test "$4" != "0" -a $1 != 0; then
+    TOMSG="(Timeout: ${4}s)"
   fi
   if test $1 != 0; then
     RECEIVER_LIST=("${ALARM_EMAIL_ADDRESSES[@]}")
@@ -275,7 +279,7 @@ $PRE on $SHORT_DOMAIN/$OS_PROJECT_NAME
 ${RPRE%_} on $(hostname):
 $2
 $3
-(Timeout: ${4}s)" | /usr/sbin/sendmail -t -f $FROM
+$TOMSG" | /usr/sbin/sendmail -t -f $FROM
   done
   if test $1 != 0; then
     RECEIVER_LIST=("${ALARM_MOBILE_NUMBERS[@]}")
@@ -292,7 +296,7 @@ $3
 ${RPRE%_} on $(hostname):
 $2
 $3
-(Timeout ${4}s)" | otc.sh notifications publish $RECEIVER "$PRE from $(hostname)/$SHORT_DOMAIN"
+$TOMSG" | otc.sh notifications publish $RECEIVER "$PRE from $(hostname)/$SHORT_DOMAIN"
   done
 }
 
