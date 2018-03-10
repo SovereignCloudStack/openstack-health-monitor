@@ -728,7 +728,7 @@ waitlistResources()
     done
     echo -en "Wait $RNM: $STATSTR\r"
     if test -z "${SLIST[*]}"; then echo; return $WERR; fi
-    sleep 2
+    sleep 3
     let ctr+=1
   done
   if test $ctr -ge 320; then let WERR+=1; fi
@@ -1471,16 +1471,21 @@ waitnetgone()
   PORTS=( $(findres "" neutron port-list) )
   deletePorts
   echo -n "Wait for subnets/nets to disappear: "
-  while test $to -lt 100; do
+  while test $to -lt 40; do
     SUBNETS=( $(findres "" neutron subnet-list) )
     NETS=( $(findres "" neutron net-list) )
     if test -z "${SUBNETS[*]}" -a -z "${NETS[*]}"; then echo "gone"; return; fi
-    sleep 1
+    sleep 2
     let to+=1
     echo -n "."
   done
+  SGROUPS=( $(findres "" neutron security-group-list) )
+  deleteSGroups
+  ROUTERS=( $(findres "" neutron router-list) )
+  if test -n "$ROUTERS"; then deleteRIfaces; fi
   deleteSubNets
   deleteNets
+  if test -n "$ROUTERS"; then deleteRouters; fi
 }
 
 cleanprj()
