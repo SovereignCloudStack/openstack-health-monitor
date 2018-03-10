@@ -679,6 +679,7 @@ waitlistResources()
 {
   local STATNM=$1; local RNM=$2; local CSTAT=$3; local STIME=$4
   local COMP1=$5; local COMP2=$6; local COL=$7
+  local NERR=0
   shift; shift; shift; shift; shift; shift; shift
   local TIMEOUT=$1; shift
   local STATI=()
@@ -695,7 +696,14 @@ waitlistResources()
     local STATSTR=""
     local CMD=`eval echo $@ 2>&1`
     ostackcmd_tm $STATNM $TIMEOUT $CMD
-    if test $? != 0; then echo "\nERROR: $CMD => $OSTACKRESP" 1>&2; return 1; fi
+    if test $? != 0; then
+      echo "\nERROR: $CMD => $OSTACKRESP" 1>&2
+      # Only bail out after 4th error;
+      # so we retry in case there are spurious 500/503 (throttling) errors
+      let NERR+=1
+      if test $NERR -ge 4; then return 1; fi
+      sleep 5
+    fi
     local TM REST
     read TM REST < <(echo "$OSTACKRESP")
     for i in $(seq 0 $LAST ); do
