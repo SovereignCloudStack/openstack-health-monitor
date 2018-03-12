@@ -1477,6 +1477,7 @@ waitnetgone()
   # Cleanup: These really should not exist
   VMS=( $(findres ${RPRE}VM_VM nova list) )
   deleteVMs
+  ROUTERS=( $(findres "" neutron router-list) )
   FIPS=( $(neutron floatingip-list | grep '10\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   deleteFIPs
   JHVMS=( $(findres ${RPRE}VM_JH nova list) )
