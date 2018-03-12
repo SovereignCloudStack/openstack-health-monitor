@@ -75,7 +75,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.27
+VERSION=1.28
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -692,7 +692,7 @@ waitlistResources()
   #echo "$PARSE"
   declare -i ctr=0
   declare -i WERR=0
-  while test -n "${SLIST[*]}" -a $ctr -le 320; do
+  while test -n "${SLIST[*]}" -a $ctr -le 240; do
     local STATSTR=""
     local CMD=`eval echo $@ 2>&1`
     ostackcmd_tm $STATNM $TIMEOUT $CMD
@@ -700,9 +700,10 @@ waitlistResources()
       echo "\nERROR: $CMD => $OSTACKRESP" 1>&2
       # Only bail out after 4th error;
       # so we retry in case there are spurious 500/503 (throttling) errors
+      # Do not give up so early on waiting for deletion ...
       let NERR+=1
-      if test $NERR -ge 4; then return 1; fi
-      sleep 5
+      if test $NERR -ge 4 -a "$COMP1" != "XDELX" -o $NERR -ge 20; then return 1; fi
+      sleep 10
     fi
     local TM REST
     read TM REST < <(echo "$OSTACKRESP")
@@ -1473,6 +1474,24 @@ cleanup()
 
 waitnetgone()
 {
+  # Cleanup: These really should not exist
+  VMS=( $(findres ${RPRE}VM_VM nova list) )
+  deleteVMs
+  FIPS=( $(neutron floatingip-list | grep '10\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  deleteFIPs
+  JHVMS=( $(findres ${RPRE}VM_JH nova list) )
+  deleteJHVMs
+  KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  deleteKeypairs
+  VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
+  waitdelVMs; deleteVols
+  JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) )
+  waitdelJHVMs; deleteJHVols
+  if test -n "$VMS$FIPS$JHVMS$KEYPAIRS$VOLUMES$JHVOLUMES"; then
+    echo "ERROR: Found VMs $VMS FIPs $FIPS JHVMs $JHVMS Keypairs $KEYPAIRS Volumes $VOLUMES JHVols $JHVOLUMES" 1>&2
+    sendalarm 1 Cleanup "Found VMs $VMS FIPs $FIPS JHVMs $JHVMS Keypairs $KEYPAIRS Volumes $VOLUMES JHVols $JHVOLUMES" 0
+  fi
+  # Cleanup: These might be left over ...
   local to
   declare -i to=0
   # There should not be anything left ...
