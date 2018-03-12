@@ -1109,7 +1109,7 @@ createFIPs()
 
 deleteFIPs()
 {
-  if test -n "$SNATROUTE" -a -n "${ROUTERS[0]}"; then
+  if test -n "$SNATROUTE" -a -n "${ROUTERS[0]}" -a -n "$FIPS"; then
     ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --no-routes
   fi
   deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
