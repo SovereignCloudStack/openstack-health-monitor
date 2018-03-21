@@ -1473,31 +1473,34 @@ cleanup()
 }
 
 waitnetgone()
-{
+{	
+  local DVMS DFIPS DJHVMS DKPS VOLS DJHVOLS
   # Cleanup: These really should not exist
-  VMS=( $(findres ${RPRE}VM_VM nova list) )
+  VMS=( $(findres ${RPRE}VM_VM nova list) ); DVMS=(${VMS[*]})
   deleteVMs
   ROUTERS=( $(findres "" neutron router-list) )
-  FIPS=( $(neutron floatingip-list | grep '10\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  FIPS=( $(neutron floatingip-list | grep '10\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') ); DFIPS=(${FIPS[*]})
   deleteFIPs
-  JHVMS=( $(findres ${RPRE}VM_JH nova list) )
+  JHVMS=( $(findres ${RPRE}VM_JH nova list) ); DJHVMS=(${JHVMS[*]})
   deleteJHVMs
-  KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') ); DKPS=(${KEYPAIRS[*]})
   deleteKeypairs
-  VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
+  VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) ); DVOLS=(${VOLUMES[*]})
   waitdelVMs; deleteVols
-  JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) )
+  JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) ); DJHVOLS=(${JHVOLUMES[*]})
   waitdelJHVMs; deleteJHVols
-  if test -n "$VMS$FIPS$JHVMS$KEYPAIRS$VOLUMES$JHVOLUMES"; then
-    echo "ERROR: Found VMs $VMS FIPs $FIPS JHVMs $JHVMS Keypairs $KEYPAIRS Volumes $VOLUMES JHVols $JHVOLUMES" 1>&2
-    sendalarm 1 Cleanup "Found VMs $VMS FIPs $FIPS JHVMs $JHVMS Keypairs $KEYPAIRS Volumes $VOLUMES JHVols $JHVOLUMES" 0
+  if test -n "$DVMS$DFIPS$DJHVMS$DKPS$DVOL$DJHVOLS"; then
+    echo "ERROR: Found VMs $DVMS FIPs $DFIPS JHVMs $DJHVMS Keypairs $DKPS Volumes $DVOLS JHVols $DJHVOLS" 1>&2
+    sendalarm 1 Cleanup "Found VMs $DVMS FIPs $DFIPS JHVMs $DJHVMS Keypairs $DKPS Volumes $DVOLS JHVols $DJHVOLS" 0
   fi
   # Cleanup: These might be left over ...
   local to
   declare -i to=0
   # There should not be anything left ...
   PORTS=( $(findres "" neutron port-list) )
+  IGNORE_ERRORS=1
   deletePorts
+  unset IGNORE_ERRORS
   echo -n "Wait for subnets/nets to disappear: "
   while test $to -lt 40; do
     SUBNETS=( $(findres "" neutron subnet-list) )
@@ -1508,12 +1511,14 @@ waitnetgone()
     echo -n "."
   done
   SGROUPS=( $(findres "" neutron security-group-list) )
-  deleteSGroups
   ROUTERS=( $(findres "" neutron router-list) )
+  IGNORE_ERRORS=1
+  deleteSGroups
   if test -n "$ROUTERS"; then deleteRIfaces; fi
   deleteSubNets
   deleteNets
   if test -n "$ROUTERS"; then deleteRouters; fi
+  unset IGNORE_ERRORS
 }
 
 cleanprj()
