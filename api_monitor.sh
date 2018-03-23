@@ -75,7 +75,7 @@
 # with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.28
+VERSION=1.29
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -1278,7 +1278,7 @@ wait222()
 # $1 => Keypair
 # $2 => IP
 # $3 => Port
-# RC: 2 => ls failed
+# RC: 2 => ls or user_data injection failed
 #     1 => ping failed
 testlsandping()
 {
@@ -1290,9 +1290,13 @@ testlsandping()
     pport="-p $3"
     ssh-keygen -R [$2]:$3 -f ~/.ssh/known_hosts >/dev/null 2>&1
   fi
-  #ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 ls >/dev/null 2>&1 || return 2
-  # Test whether user_data file injection worked
-  ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1 || return 2
+  if test -z "$pport"; then
+    # no user_data on JumpHosts
+    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 ls >/dev/null 2>&1 || return 2
+  else
+    # Test whether user_data file injection worked
+    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1 || return 2
+  fi
   PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   if test $? = 0; then echo $PING; return 0; fi
   sleep 3
