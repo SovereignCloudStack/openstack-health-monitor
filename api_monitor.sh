@@ -1184,24 +1184,25 @@ waitdelJHVMs()
 createVMs()
 {
   local UDTMP=./user_data_VM.$$.yaml
-  local USERDATA=`echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.$$\n   path: /tmp/testfile\n   permissions: '0644'"`
-  echo "$USERDATA" > $UDTMP
+  for no in $(seq 0 $NOVMS); do
+    echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.$$.$no\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP.$no
+  done
   if test -n "$BOOTFROMIMAGE"; then
     if test -n "$MANUALPORTSETUP"; then
-      createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL --user-data $UDTMP ${RPRE}VM_VM\$no
+      createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
     else
       # SAVE: createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
-      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" --user-data $UDTMP ${RPRE}VM_VM\$no
+      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
     fi
   else
     if test -n "$MANUALPORTSETUP"; then
-      createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL --user-data $UDTMP ${RPRE}VM_VM\$no
+      createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
     else
       # SAVE: createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
-      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" --user-data $UDTMP ${RPRE}VM_VM\$no
+      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
     fi
   fi
-  rm $UDTMP
+  rm $UDTMP.*
 }
 waitVMs()
 {
@@ -1278,6 +1279,7 @@ wait222()
 # $1 => Keypair
 # $2 => IP
 # $3 => Port
+# $4 => NUMBER
 # RC: 2 => ls or user_data injection failed
 #     1 => ping failed
 testlsandping()
@@ -1295,7 +1297,7 @@ testlsandping()
     ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 ls >/dev/null 2>&1 || return 2
   else
     # Test whether user_data file injection worked
-    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1 || return 2
+    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1 || return 2
   fi
   PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   if test $? = 0; then echo $PING; return 0; fi
@@ -1336,11 +1338,13 @@ testsnat()
   #echo "Test VM access (fwdmasq) and outgoing SNAT inet ... "
   declare -i FAIL=0
   for JHNO in $(seq 0 $(($NONETS-1))); do
+    declare -i no=$JHNO
     for red in ${REDIRS[$JHNO]}; do
       pno=${red#*tcp,}
       pno=${pno%%,*}
-      testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno
+      testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
       RC=$?
+      let no+=$NONETS
       if test $RC == 2; then
         ERRJH[$JHNO]="${ERRJH[$JHNO]}$red "
       elif test $RC == 1; then
@@ -1353,11 +1357,13 @@ testsnat()
   # Process errors: Retry
   # FIXME: Is it actually worth retrying? Does it really improve the results?
   for JHNO in $(seq 0 $(($NONETS-1))); do
+    no=$JHNO
     for red in ${ERRJH[$JHNO]}; do
       pno=${red#*tcp,}
       pno=${pno%%,*}
-      testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno
+      testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
       RC=$?
+      let no+=$NONETS
       if test $RC == 2; then
         let FAIL+=2
         ERR="${ERR}(2)ssh VM$JHNO $red ls; "
