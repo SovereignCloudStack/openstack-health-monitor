@@ -36,4 +36,4 @@ for ENV in $TOCLEAN; do
   echo "******************************"
 done
 
-bash ./api_monitor.sh -d -n 7 -l last.log -e $EMAIL_PARAM -S -i 8
+bash ./api_monitor.sh -d -n 6 -l last.log -e $EMAIL_PARAM -S -i 8
