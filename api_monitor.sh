@@ -866,8 +866,8 @@ JHSUBNETIP=10.250.250.0/24
 createSubNets()
 {
   if test -n "$NAMESERVER"; then
-    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 8.8.4.4 --dns-nameserver $NAMESERVER --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
-    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 8.8.4.4 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
+    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 9.9.9.9 --dns-nameserver $NAMESERVER --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
+    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 9.9.9.9 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
   else
     createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
     createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
@@ -880,12 +880,14 @@ deleteSubNets()
   deleteResources NETSTATS JHSUBNET "" $NETTIMEOUT neutron subnet-delete
 }
 
+# Plug subnets into router
 createRIfaces()
 {
   createResources 1 NETSTATS NONE JHSUBNET NONE "" id $FIPTIMEOUT neutron router-interface-add ${ROUTERS[0]} "\$VAL"
   createResources $NONETS NETSTATS NONE SUBNET NONE "" id $FIPTIMEOUT neutron router-interface-add ${ROUTERS[0]} "\$VAL"
 }
 
+# Remove subnet interfaces on router
 deleteRIfaces()
 {
   if test -z "${ROUTERS[0]}"; then return 0; fi
@@ -893,6 +895,7 @@ deleteRIfaces()
   deleteResources NETSTATS JHSUBNET "" $FIPTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
 }
 
+# Setup security groups with their rulesets
 createSGroups()
 {
   NAMES=( ${RPRE}SG_JumpHost ${RPRE}SG_Internal )
@@ -1064,11 +1067,13 @@ deleteKeypairs()
   #rm ${RPRE}Keypair_JH.pem
 }
 
+# Extract IP address from neutron port-show output
 extract_ip()
 {
   echo "$1" | grep '| fixed_ips ' | sed 's/^.*"ip_address": "\([0-9a-f:.]*\)".*$/\1/'
 }
 
+# Create Floating IPs, and set route via Virtual IP
 SNATROUTE=""
 createFIPs()
 {
@@ -1115,6 +1120,7 @@ createFIPs()
   FLOATS=( $FLOAT )
 }
 
+# Delete VIP nexthop and EIPs
 deleteFIPs()
 {
   if test -n "$SNATROUTE" -a -n "${ROUTERS[0]}" -a -n "$FIPS"; then
@@ -1149,6 +1155,7 @@ calcRedirs()
   fi
 }
 
+# JumpHosts creation with SNAT and port forwarding
 createJHVMs()
 {
   local VIP IP STR odd ptn RD USERDATA JHNUM port
@@ -1159,6 +1166,7 @@ createJHVMs()
   #echo "$VIP ${REDIRS[*]}"
   for JHNUM in $(seq 0 $(($NONETS-1))); do
     if test -z "${REDIRS[$JHNUM]}"; then
+      # No fwdmasq config possible yet
       USERDATA="#cloud-config
 otc:
    internalnet:
@@ -1190,6 +1198,7 @@ $RD
   done
 }
 
+# Fill PORTS array by matching part's device_ids with the VM UUIDs
 collectPorts()
 {
   local PORTLIST vm vmid
@@ -1201,9 +1210,12 @@ collectPorts()
   done
 }
 
+# When NOT creating ports before JHVM starts, we cannot pass the port fwd information
+# via user-data as we don't know the IP addresses. So modify VM via ssh.
 setPortForward()
 {
   if test -n "$MANUALSETUP"; then return; fi
+  local JHNUM FWDMASQ SHEBANG SCRIPT
   # If we need to collect port info, do so now
   if test -z "${PORTS[*]}"; then collectPorts; fi 
   calcRedirs
@@ -1215,9 +1227,14 @@ setPortForward()
     fi
     FWDMASQ=$( echo ${REDIRS[$JHNUM]} )
     ssh-keygen -R ${FLOATS[$JHNUM]} -f ~/.ssh/known_hosts >/dev/null 2>&1
-    echo ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[$JHNUM]} sudo sh -c \"sed -i "s@^FW_FORWARD_MASQ=.*\$@FW_FORWARD_MASQ=\"$FWDMASQ\"@" /etc/sysconfig/SuSEfirewall2 && systemctl restart SuSEfirewall2\"
-    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[$JHNUM]} sudo "sh -c \"sed -i \"s@^FW_FORWARD_MASQ=.*\$@FW_FORWARD_MASQ=\"$FWDMASQ\"@\" /etc/sysconfig/SuSEfirewall2 && systemctl restart SuSEfirewall2\""
- done 
+    SHEBANG='#!'
+    SCRIPT=$(echo "$SHEBANG/bin/bash
+sed -i \'s@^FW_FORWARD_MASQ=.*\$@FW_FORWARD_MASQ=\"$FWDMASQ\"@\' /etc/sysconfig/SuSEfirewall2
+systemctl restart SuSEfirewall2
+")
+    echo "$SCRIPT" | ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[$JHNUM]} "cat - >upd_sfw2"
+    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_sfw2"
+  done
 }
 
 waitJHVMs()
@@ -1237,21 +1254,34 @@ waitdelJHVMs()
   waitlistResources NOVASTATS JHVM VMDSTATS JVMSTIME "XDELX" "$FORCEDEL" 2 $NOVATIMEOUT nova list
 }
 
+# Create many VMs with one API call (option -D)
 createVMsAll()
 {
+  local netno AZ THISNOVM vmid off STMS
   local UDTMP=./user_data_VM.$$.yaml
   echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.$$.ALL\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP
-  local STM=$(date +%s)
-  for azno in $(seq 0 $AZN); do
-    AZ=${AZS[$azno]}
-    THISNOVM=$((($NOVMS+$AZN-1)/$AZN))
-    ostackcmd_tm NOVABSTATS $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone $AZ --security-groups ${SGROUPS[1]} --nic net-id=${NETS[$azno]} --user-data $UDTMP ${RPRE}VM_VM_AZ$azno --min-count=$THISNOVM --max-count=$THISNOVM
+  declare -a STMS
+  for netno in $(seq 0 $NONETS); do
+    AZ=${AZS[$(($netno%$AZNOS))]}
+    THISNOVM=$((($NOVMS+$netno-1)/$netno))
+    STMS[$netno]=$(date +%s)
+    ostackcmd_tm NOVABSTATS $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone $AZ --security-groups ${SGROUPS[1]} --nic net-id=${NETS[$netno]} --user-data $UDTMP ${RPRE}VM_VM_NET$netno --min-count=$THISNOVM --max-count=$THISNOVM
     # TODO: Error handling
   done
-  # TODO: Collect IDs and Ports
+  # Collect VMIDs
+  for netno in $(seq 0 $AZN); do
+    declare -i off=$netno
+    OLDIFS="$IFS"; IFS="|"
+    while read sep vmid sep; do
+      VMS[$off]=$vmid
+      VMSTIMES[$off]=${STMS[$netno]}
+      let off+=$NONETS
+    done  < <(nova list | grep ${RPRE}VM_VM_NET$netno)
+  done
+  collectPorts
 }
 
-
+# Classic creation of all VMs, one by one
 createVMs()
 {
   if test -n "$BOOTALLATONCE"; then createVMsAll; return; fi
@@ -1298,11 +1328,11 @@ setmetaVMs()
   done
 }
 
+# Wait for VMs being accessible behind fwdmasq (ports 222+)
 wait222()
 {
   local NCPROXY pno ctr JHNO waiterr red
   declare -i waiterr=0
-  # Wait for VMs being accessible behind fwdmasq (ports 222+)
   #if test -n "$http_proxy"; then NCPROXY="-X connect -x $http_proxy"; fi
   MAXWAIT=90
   for JHNO in $(seq 0 $(($NONETS-1))); do
@@ -1348,6 +1378,7 @@ wait222()
   return $waiterr
 }
 
+# Test ssh and test for user_data (or just plain ls) and internet ping (via SNAT instance)
 # $1 => Keypair
 # $2 => IP
 # $3 => Port
@@ -1385,6 +1416,7 @@ testlsandping()
   if test $RC != 0; then return 1; else return 0; fi
 }
 
+# Test internet access of JumpHosts (via ssh)
 testjhinet()
 {
   local RC R JHNO
@@ -1406,13 +1438,13 @@ testjhinet()
   if test -n "$ERR"; then echo -e "$RED $ERR $NORM"; fi
 }
 
+# Test VM access (fwdmasq) and outgoing SNAT inet on all VMs
 testsnat()
 {
   local FAIL ERRJH pno RC JHNO
   unset SSH_AUTH_SOCK
   ERR=""
   ERRJH=()
-  #echo "Test VM access (fwdmasq) and outgoing SNAT inet ... "
   declare -i FAIL=0
   for JHNO in $(seq 0 $(($NONETS-1))); do
     declare -i no=$JHNO
@@ -1525,6 +1557,7 @@ allstats()
  stats $1 TOTTIME    0 "Total setup Stats "
 }
 
+# Helper to find a resource ...
 findres()
 {
   local FILT=${1:-$RPRE}
@@ -1565,6 +1598,8 @@ cleanup()
   deleteRouters
 }
 
+# Network cleanups can fail if VM deletion failed, so cleanup again
+# and wait until networks have disappeared
 waitnetgone()
 {	
   local DVMS DFIPS DJHVMS DKPS VOLS DJHVOLS
@@ -1614,6 +1649,7 @@ waitnetgone()
   unset IGNORE_ERRORS
 }
 
+# Clean/Delete old OpenStack project
 cleanprj()
 {
   if test ${#OS_PROJECT_NAME} -le 5; then echo -e "$RED ERROR: Won't delete $OS_PROJECT_NAME$NORM" 1>&2; return 1; fi
@@ -1623,6 +1659,7 @@ cleanprj()
   echo -e "${REV}Note: Removed Project $OS_PROJECT_NAME ($?)${NORM}"
 }
 
+# Create a new OpenStack project
 createnewprj()
 {
   # First cleanup old project
@@ -1635,6 +1672,7 @@ createnewprj()
   sleep 10
 }
 
+# Allow for many recipients
 parse_notification_addresses()
 {
   # Parses from Environment
