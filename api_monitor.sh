@@ -77,7 +77,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.29
+VERSION=1.30
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -1128,6 +1128,7 @@ declare -a REDIRS
 calcRedirs()
 {
   local port ptn pi IP STR off
+  REDIRS=()
   if test ${#PORTS[*]} -gt 0; then
     declare -i ptn=222
     declare -i pi=0
@@ -1143,10 +1144,8 @@ calcRedirs()
     done
     #echo -e "$RE0$RE1"
   else
-    echo "NOT GOOD: GUESSING VM IPs due to empty PORTS ${PORTS[*]}"
-    # We don't know the IP addresses yet -- rely on sequential alloc starting at .4 (OTC)
-    # FIXME: This is broken by assuming NONETS=2
-    REDIRS=( 10.250.0.$((4+($NOVMS-1)/$NONETS)) 10.250.1.$((4+($NOVMS-2)/$NONETS)) )
+    echo " Not guessing VM IPs, delay port forwarding to later stage"
+    #REDIRS=( 10.250.0.$((4+($NOVMS-1)/$NONETS)) 10.250.1.$((4+($NOVMS-2)/$NONETS)) )
   fi
 }
 
@@ -1191,10 +1190,34 @@ $RD
   done
 }
 
+collectPorts()
+{
+  local PORTLIST vm vmid
+  PORTLIST="$(neutron port-list -c id -c device_id -c fixed_ips -c device_id -f json)"
+  for vm in $(seq 0 ${#VMS[*]}); do
+    vmid=${VMS[$vm]}
+    port=$(echo "$PORTLIST" | jq ".[] | select(.device_id == \"$vmid\") | .id" | tr -d '"')
+    PORTS[$vm]=$port
+  done
+}
+
 setPortForward()
 {
   if test -n "$MANUALSETUP"; then return; fi
-  # TODO: Log into JHs and set FW_FORWARD_MASQ
+  # If we need to collect port info, do so now
+  if test -z "${PORTS[*]}"; then collectPorts; fi 
+  calcRedirs
+  #echo "$VIP ${REDIRS[*]}"
+  for JHNUM in $(seq 0 $(($NONETS-1))); do
+    if test -z "${REDIRS[$JHNUM]}"; then
+      echo "ERROR: No redirections?" 1>&2
+      return 1
+    fi
+    FWDMASQ=$( echo ${REDIRS[$JHNUM]} )
+    ssh-keygen -R ${FLOATS[$JHNUM]} -f ~/.ssh/known_hosts >/dev/null 2>&1
+    echo ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[$JHNUM]} sudo sh -c \"sed -i "s@^FW_FORWARD_MASQ=.*\$@FW_FORWARD_MASQ=\"$FWDMASQ\"@" /etc/sysconfig/SuSEfirewall2 && systemctl restart SuSEfirewall2\"
+    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[$JHNUM]} sudo "sh -c \"sed -i \"s@^FW_FORWARD_MASQ=.*\$@FW_FORWARD_MASQ=\"$FWDMASQ\"@\" /etc/sysconfig/SuSEfirewall2 && systemctl restart SuSEfirewall2\""
+ done 
 }
 
 waitJHVMs()
