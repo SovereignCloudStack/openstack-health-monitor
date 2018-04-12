@@ -1,7 +1,7 @@
 #!/bin/bash
 # api_monitor.sh
 # 
-# Testscript testing the reliability and performance of OpenStack API
+# Test script testing the reliability and performance of OpenStack API
 # It works by doing a real scenario test: Setting up a real environment
 # With routers, nets, jumphosts, disks, VMs, ...
 # 
@@ -11,7 +11,7 @@
 #
 # Status:
 # - Errors not yet handled everywhere
-# - Volume and NIC attachment not yet implemented
+# - Live Volume and NIC attachment not yet implemented
 # - Log too verbose for permament operation ...
 #
 # (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017-7/2017
@@ -19,7 +19,7 @@
 #
 # General approach:
 # - create router (VPC)
-# - create 1+$NONETS (1+2) nets
+# - create 1+$NONETS (1+2) nets -- $NONETS is normally the # of AZs
 # - create 1+$NONETS subnets
 # - create security groups
 # - create virtual IP (for outbound SNAT via JumpHosts)
@@ -31,20 +31,22 @@
 # - associating a floating IP to each Jumphost
 # - configuring the virtIP as default route
 # - JumpHosts do SNAT for outbound traffic and port forwarding for inbound
+#   (this requires SUSE images with SFW2-snat package to work)
 # - create N internal VMs striped over the nets and AZs by
 #   a) creating disks (from image) -- if option -d is not used
-#   b) creating a port
+#   b) creating a port -- if option -P is not used
 #   c) creating VM (from volume or from image, dep. on -d)
 #   (Steps a and c take long, so we do many in parallel and poll for progress)
 #   d) do some property changes to VMs
 # - after everything is complete, we wait for the VMs to be up
-# - we ping them, log in via ssh and see whether they can ping to the outside world
+# - we ping them, log in via ssh and see whether they can ping to the outside world (quad9)
 # - NOT YET: attach an additional disk
 # - NOT YET: attach an additional NIC
 # 
 # - Finally, we clean up ev'thing in reverse order
 #   (We have kept track of resources to clean up.
-#    We can also identify them by name, which helps if we got interrupted.)
+#    We can also identify them by name, which helps if we got interrupted, or
+#    some cleanup action failed.)
 #
 # So we end up testing: Router, incl. default route (for SNAT instance),
 #  networks, subnets, and virtual IP, security groups and floating IPs,
@@ -67,33 +69,35 @@
 #
 # Prerequisites:
 # - Working python-XXXclient tools (glance, neutron, nova, cinder)
-# - otc.sh (for SMN)
+# - otc.sh from otc-tools (for optional SMN -m and project creation -p)
 # - sendmail (if email notification is requested)
 #
 # Example:
-# Run 100 loops deploying (and deleting) 2+$NOVMS VMs (including nets, volumes etc.),
-# with daily statistics sent to SMN...API-Notes #  and Alarms to SMN...APIMonitor
+# Run 100 loops deploying (and deleting) 2+8 VMs (including nets, volumes etc.),
+# with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
 VERSION=1.29
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
-if test -z "$PINGTARGET"; then PINGTARGET=google-public-dns-b.google.com; fi
+#if test -z "$PINGTARGET"; then PINGTARGET=google-public-dns-b.google.com; fi
+if test -z "$PINGTARGET"; then PINGTARGET=dns.quad9.net; fi
 
 # Prefix for test resources
 FORCEDEL=NONONO
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
 SHORT_DOMAIN="${OS_USER_DOMAIN_NAME##*OTC*00000000001000}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
+
 # Number of VMs and networks
-NOVMS=12
-NONETS=2
 AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/')
 if test -z "$AZS"; then AZS=(eu-de-01 eu-de-02);
 else AZS=($AZS); fi
 #echo "${#AZS[*]} AZs: ${AZS[*]}"
 NOAZS=${#AZS[*]}
+NOVMS=12
+NONETS=$NOAZS
 MANUALPORTSETUP=1
 if [[ $OS_AUTH_URL == *otc*t-systems.com* ]]; then
   NAMESERVER=${NAMESERVER:-100.125.4.25}
@@ -155,7 +159,7 @@ usage()
   #echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-p] CLEANUP|DEPLOY"
   echo "Usage: api_monitor.sh [options]"
   echo " -n N   number of VMs to create (beyond 2 JumpHosts, def: 12)"
-  echo " -N N   number of networks/subnets/jumphosts to create (def: 2)"
+  echo " -N N   number of networks/subnets/jumphosts to create (def: # AZs)"
   echo " -l LOGFILE record all command in LOGFILE"
   echo " -e ADR sets eMail address for notes/alarms (assumes working MTA)"
   echo "         second -e splits eMails; notes go to first, alarms to second eMail"
@@ -164,6 +168,8 @@ usage()
   echo " -s     sends stats as well once per day, not just alarms"
   echo " -S     sends stats to grafana via local telegraf http_listener"
   echo " -d     boot Directly from image (not via volume)"
+  echo " -P     do not create Port before VM creation -- BROKEN"
+  echo " -D     create all VMs with one API call (implies -d -P) -- BROKEN"
   echo " -i N   sets max number of iterations (def = -1 = inf)"
   echo " -g N   increase VM volume size by N GB"
   echo " -G N   increase JH volume size by N GB"
@@ -183,7 +189,9 @@ while test -n "$1"; do
     "help"|"-h"|"--help") usage;;
     "-s") SENDSTATS=1;;
     "-S") GRAFANA=1;;
+    "-P") unset MANUALPORTSETUP; shift;;
     "-d") BOOTFROMIMAGE=1;;
+    "-D") BOOTALLATONCE=1; BOOTFROMIMAGE=1; unset MANUALPORTSETUP;;
     "-e") if test -z "$EMAIL"; then EMAIL="$2"; else EMAIL2="$2"; fi; shift;;
     "-m") if test -z "$SMNID"; then SMNID="$2"; else SMNID2="$2"; fi; shift;;
     "-i") MAXITER=$2; shift;;
@@ -1115,13 +1123,11 @@ deleteFIPs()
   deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
 }
 
+# Create a list of port forwarding rules (redirection/fwdmasq)
 declare -a REDIRS
-createJHVMs()
+calcRedirs()
 {
-  local VIP IP STR odd ptn RD USERDATA JHNUM port
-  REDIRS=()
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
-  VIP=$(extract_ip "$OSTACKRESP")
+  local port ptn pi IP STR off
   if test ${#PORTS[*]} -gt 0; then
     declare -i ptn=222
     declare -i pi=0
@@ -1142,10 +1148,31 @@ createJHVMs()
     # FIXME: This is broken by assuming NONETS=2
     REDIRS=( 10.250.0.$((4+($NOVMS-1)/$NONETS)) 10.250.1.$((4+($NOVMS-2)/$NONETS)) )
   fi
+}
+
+createJHVMs()
+{
+  local VIP IP STR odd ptn RD USERDATA JHNUM port
+  REDIRS=()
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
+  VIP=$(extract_ip "$OSTACKRESP")
+  calcRedirs
   #echo "$VIP ${REDIRS[*]}"
   for JHNUM in $(seq 0 $(($NONETS-1))); do
-    RD=$(echo -n "${REDIRS[$JHNUM]}" |  sed 's@^0@         - 0@')
-    USERDATA="#cloud-config
+    if test -z "${REDIRS[$JHNUM]}"; then
+      USERDATA="#cloud-config
+otc:
+   internalnet:
+      - 10.250/16
+   snat:
+      masqnet:
+         - INTERNALNET
+   addip:
+      eth0: $VIP
+"
+    else
+      RD=$(echo -n "${REDIRS[$JHNUM]}" |  sed 's@^0@         - 0@')
+      USERDATA="#cloud-config
 otc:
    internalnet:
       - 10.250/16
@@ -1157,11 +1184,17 @@ $RD
    addip:
       eth0: $VIP
 "
+    fi
     echo "$USERDATA" > user_data.yaml
     cat user_data.yaml >> $LOGFILE
-    # of course nova boot --image ... --nic net-id ... would be easier
     createResources 1 NOVABSTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[$JHNUM]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone ${AZS[$(($JHNUM%$NOAZS))]} --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[$JHNUM]} ${RPRE}VM_JH$JHNUM || return
   done
+}
+
+setPortForward()
+{
+  if test -n "$MANUALSETUP"; then return; fi
+  # TODO: Log into JHs and set FW_FORWARD_MASQ
 }
 
 waitJHVMs()
@@ -1181,8 +1214,24 @@ waitdelJHVMs()
   waitlistResources NOVASTATS JHVM VMDSTATS JVMSTIME "XDELX" "$FORCEDEL" 2 $NOVATIMEOUT nova list
 }
 
+createVMsAll()
+{
+  local UDTMP=./user_data_VM.$$.yaml
+  echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.$$.ALL\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP
+  local STM=$(date +%s)
+  for azno in $(seq 0 $AZN); do
+    AZ=${AZS[$azno]}
+    THISNOVM=$((($NOVMS+$AZN-1)/$AZN))
+    ostackcmd_tm NOVABSTATS $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone $AZ --security-groups ${SGROUPS[1]} --nic net-id=${NETS[$azno]} --user-data $UDTMP ${RPRE}VM_VM_AZ$azno --min-count=$THISNOVM --max-count=$THISNOVM
+    # TODO: Error handling
+  done
+  # TODO: Collect IDs and Ports
+}
+
+
 createVMs()
 {
+  if test -n "$BOOTALLATONCE"; then createVMsAll; return; fi
   local UDTMP=./user_data_VM.$$.yaml
   for no in $(seq 0 $NOVMS); do
     echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.$$.$no\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP.$no
@@ -1212,7 +1261,7 @@ waitVMs()
 deleteVMs()
 {
   VMSTIME=()
-  deleteResources NOVASTATS VM VMSTIME $NOVATIMEOUT nova delete
+  deleteResources NOVASTATS VM VMSTIME $NOVABOOTTIMEOUT nova delete
 }
 waitdelVMs()
 {
@@ -1297,7 +1346,12 @@ testlsandping()
     ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 ls >/dev/null 2>&1 || return 2
   else
     # Test whether user_data file injection worked
-    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1 || return 2
+    if test -n "$BOOTALLATAONCE"; then
+      # no indiv user data per VM when mass booting ...
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1 || return 2
+    else
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1 || return 2
+    fi
   fi
   PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   if test $? = 0; then echo $PING; return 0; fi
@@ -1719,6 +1773,7 @@ else # test "$1" = "DEPLOY"; then
               waitJHVMs
               waitVMs
               setmetaVMs
+              setPortForward
               WSTART=$(date +%s)
               wait222
               WAITERRORS=$?
