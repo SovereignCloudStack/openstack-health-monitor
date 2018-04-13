@@ -1265,7 +1265,7 @@ createVMsAll()
   local UDTMP=./user_data_VM.$$.yaml
   echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.$$.ALL\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP
   declare -a STMS
-  echo -n "Create VMs in batches:"
+  echo -n "Create VMs in batches: "
   for netno in $(seq 0 $(($NONETS-1))); do
     AZ=${AZS[$(($netno%$NOAZS))]}
     THISNOVM=$((($NOVMS+$NONETS-$netno-1)/$NONETS))
@@ -1329,8 +1329,8 @@ waitVMs()
 # Remove VMs (one by one or by batch if we created in batches)
 deleteVMs()
 {
-  if test -z "${VMS[*]}"; then return; fi
   VMSTIME=()
+  if test -z "${VMS[*]}"; then return; fi
   if test -n "$BOOTALLATONCE"; then
     local DT vm
     echo "Del VM in batch: ${VMS[*]}"
