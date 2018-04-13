@@ -1266,7 +1266,7 @@ createVMsAll()
     AZ=${AZS[$(($netno%$NOAZS))]}
     THISNOVM=$((($NOVMS+$NONETS-$netno-1)/$NONETS))
     STMS[$netno]=$(date +%s)
-    ostackcmd_tm NOVABSTATS $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone $AZ --security-groups ${SGROUPS[1]} --nic net-id=${NETS[$netno]} --user-data $UDTMP ${RPRE}VM_VM_NET$netno --min-count=$THISNOVM --max-count=$THISNOVM
+    ostackcmd_tm NOVABSTATS $(($NOVABOOTTIMEOUT+$THISNOVM*$DEFTIMEOUT/2)) nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone $AZ --security-groups ${SGROUPS[1]} --nic net-id=${NETS[$netno]} --user-data $UDTMP ${RPRE}VM_VM_NET$netno --min-count=$THISNOVM --max-count=$THISNOVM
     # TODO: Error handling
   done
   sleep 1
@@ -1334,7 +1334,7 @@ deleteVMs()
     ostackcmd_tm NOVASTATS $NOVABOOTTIMEOUT nova delete ${VMS[*]}
     for vm in $(seq 0 $(($NOVMS-1))); do VMSTIME[$vm]=$DT; done
   else
-    deleteResources NOVASTATS VM VMSTIME $NOVABOOTTIMEOUT nova delete
+    deleteResources NOVASTATS VM VMSTIME $(($NOVMS*$DEFTIMEOUT+$NOVATIMEOUT)) nova delete
   fi
 }
 
