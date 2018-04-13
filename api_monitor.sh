@@ -1265,8 +1265,8 @@ createVMsAll()
   echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.$$.ALL\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP
   declare -a STMS
   for netno in $(seq 0 $(($NONETS-1))); do
-    AZ=${AZS[$(($netno%$AZNOS))]}
-    THISNOVM=$((($NOVMS+$netno-1)/$netno))
+    AZ=${AZS[$(($netno%$NOAZS))]}
+    THISNOVM=$((($NOVMS+$NONETS-$netno-1)/$NONETS))
     STMS[$netno]=$(date +%s)
     ostackcmd_tm NOVABSTATS $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone $AZ --security-groups ${SGROUPS[1]} --nic net-id=${NETS[$netno]} --user-data $UDTMP ${RPRE}VM_VM_NET$netno --min-count=$THISNOVM --max-count=$THISNOVM
     # TODO: Error handling
