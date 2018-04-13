@@ -720,7 +720,7 @@ waitlistResources()
       if test -z "${SLIST[$i]}"; then STATSTR+=$(colstat "${STATI[$i]}" "$COMP1" "$COMP2"); continue; fi
       local STAT=$(echo "$OSTACKRESP" | grep "^| $rsrc" | sed -e "s@$PARSE@\1@" -e 's/ *$//')
       #echo "STATUS: \"$STAT\""
-      if test "$COMP1" == "XDELX" -a -z "$STAT"; then STAT="XDELX"; unset SLIST[$i]; fi
+      if test "$COMP1" == "XDELX" -a -z "$STAT"; then STAT="XDELX"; fi
       STATI[$i]="$STAT"
       STATSTR+=$(colstat "$STAT" "$COMP1" "$COMP2")
       STE=$?
@@ -735,9 +735,9 @@ waitlistResources()
           echo "ERROR: $NM $rsrc status $STAT" 1>&2 #; return 1
         fi
         # Found
-        unset SLIST[$i]
         TM=$(date +%s)
         TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
+        unset SLIST[$i]
         eval ${CSTAT}+="($TM)"
         if test -n "$GRAFANA"; then
           # log time / rc to grafana
@@ -1283,7 +1283,7 @@ createVMsAll()
     while read sep vmid sep; do
       #echo -n " VM$off=$vmid"
       IFS=" " VMS[$off]=$(echo $vmid)
-      IFS=" " VMSTIMES[$off]=${STMS[$netno]}
+      IFS=" " VMSTIME[$off]=${STMS[$netno]}
       let off+=$NONETS
     done  < <(echo "$OSTACKRESP" | grep "${RPRE}VM_VM_NET$netno")
     IFS="$OLDIFS"
@@ -1336,7 +1336,7 @@ deleteVMs()
     echo "Del VM in batch: ${VMS[*]}"
     DT=$(date +%s)
     ostackcmd_tm NOVASTATS $NOVABOOTTIMEOUT nova delete ${VMS[*]}
-    for vm in $(seq 0 $(($NOVMS-1))); do VMSTIME[$vm]=$DT; done
+    for vm in $(seq 0 $((${#VMS[*]}-1))); do VMSTIME[$vm]=$DT; done
   else
     deleteResources NOVASTATS VM VMSTIME $(($NOVMS*$DEFTIMEOUT+$NOVATIMEOUT)) nova delete
   fi
