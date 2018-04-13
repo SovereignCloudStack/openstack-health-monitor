@@ -1249,7 +1249,7 @@ waitJHVMs()
 deleteJHVMs()
 {
   JVMSTIME=()
-  deleteResources NOVASTATS JHVM JVMSTIME $NOVATIMEOUT nova delete
+  deleteResources NOVABSTATS JHVM JVMSTIME $NOVATIMEOUT nova delete
 }
 
 waitdelJHVMs()
@@ -1271,7 +1271,7 @@ createVMsAll()
     THISNOVM=$((($NOVMS+$NONETS-$netno-1)/$NONETS))
     STMS[$netno]=$(date +%s)
     ostackcmd_tm NOVABSTATS $(($NOVABOOTTIMEOUT+$THISNOVM*$DEFTIMEOUT/2)) nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone $AZ --security-groups ${SGROUPS[1]} --nic net-id=${NETS[$netno]} --user-data $UDTMP ${RPRE}VM_VM_NET$netno --min-count=$THISNOVM --max-count=$THISNOVM
-    # TODO: Error handling
+    # TODO: More error handling here?
   done
   sleep 1
   # Collect VMIDs
@@ -1335,10 +1335,10 @@ deleteVMs()
     local DT vm
     echo "Del VM in batch: ${VMS[*]}"
     DT=$(date +%s)
-    ostackcmd_tm NOVASTATS $(($NOVMS*$DEFTIMEOUT/2+$NOVABOOTTIMEOUT)) nova delete ${VMS[*]}
+    ostackcmd_tm NOVABSTATS $(($NOVMS*$DEFTIMEOUT/2+$NOVABOOTTIMEOUT)) nova delete ${VMS[*]}
     for vm in $(seq 0 $((${#VMS[*]}-1))); do VMSTIME[$vm]=$DT; done
   else
-    deleteResources NOVASTATS VM VMSTIME $NOVABOOTTIMEOUT nova delete
+    deleteResources NOVABSTATS VM VMSTIME $NOVABOOTTIMEOUT nova delete
   fi
 }
 
