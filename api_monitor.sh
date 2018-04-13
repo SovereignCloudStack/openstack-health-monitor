@@ -1335,10 +1335,10 @@ deleteVMs()
     local DT vm
     echo "Del VM in batch: ${VMS[*]}"
     DT=$(date +%s)
-    ostackcmd_tm NOVASTATS $NOVABOOTTIMEOUT nova delete ${VMS[*]}
+    ostackcmd_tm NOVASTATS $(($NOVMS*$DEFTIMEOUT/2+$NOVABOOTTIMEOUT)) nova delete ${VMS[*]}
     for vm in $(seq 0 $((${#VMS[*]}-1))); do VMSTIME[$vm]=$DT; done
   else
-    deleteResources NOVASTATS VM VMSTIME $(($NOVMS*$DEFTIMEOUT+$NOVATIMEOUT)) nova delete
+    deleteResources NOVASTATS VM VMSTIME $NOVABOOTTIMEOUT nova delete
   fi
 }
 
