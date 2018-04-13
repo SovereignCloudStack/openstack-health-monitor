@@ -1126,7 +1126,7 @@ createFIPs()
 # Delete VIP nexthop and EIPs
 deleteFIPs()
 {
-  if test -n "$SNATROUTE" -a -n "${ROUTERS[0]}" -a -n "$FIPS"; then
+  if test -n "$SNATROUTE" -a -n "${ROUTERS[0]}"; then
     ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --no-routes
   fi
   deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
