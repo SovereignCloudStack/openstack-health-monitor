@@ -713,8 +713,7 @@ waitlistResources()
       if test $NERR -ge 4 -a "$COMP1" != "XDELX" -o $NERR -ge 20; then return 1; fi
       sleep 10
     fi
-    local TM REST
-    read TM REST < <(echo "$OSTACKRESP")
+    local TM
     for i in $(seq 0 $LAST ); do
       local rsrc=${RLIST[$i]}
       if test -z "${SLIST[$i]}"; then STATSTR+=$(colstat "${STATI[$i]}" "$COMP1" "$COMP2"); continue; fi
