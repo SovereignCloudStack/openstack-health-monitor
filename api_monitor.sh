@@ -24,7 +24,7 @@
 # - create security groups
 # - create virtual IP (for outbound SNAT via JumpHosts)
 # - create SSH keys
-# - create $AZ JumpHost VMs by
+# - create $NOAZS JumpHost VMs by
 #   a) creating disks (from image)
 #   b) creating ports
 #   c) creating VMs
@@ -77,7 +77,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.30
+VERSION=1.31
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -926,7 +926,7 @@ createSGroups()
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
   updAPIerr $?
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max $((222+($NOVMS-1)/$NONETS)) --remote-ip-prefix 0/0 $SG0)
+  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max $((222+($NOVMS-1)/$NOAZS)) --remote-ip-prefix 0/0 $SG0)
   updAPIerr $?
   NETSTATS+=( $TM )
   read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
@@ -979,8 +979,8 @@ deleteVIPs()
 createJHPorts()
 {
   local RESP RC TM ID
-  createResources $NONETS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} ${JHNETS[0]} || return
-  for i in `seq 0 $((NONETS-1))`; do
+  createResources $NOAZS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} ${JHNETS[0]} || return
+  for i in `seq 0 $((NOAZS-1))`; do
     let APICALLS+=1
     RESP=$(ostackcmd_id id $NETTIMEOUT neutron port-update ${JHPORTS[$i]} --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1)
     RC=$?
@@ -1011,7 +1011,7 @@ deletePorts()
 createJHVols()
 {
   JVOLSTIME=()
-  createResources $NONETS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id $CINDERTIMEOUT cinder create --image-id $JHIMGID --name ${RPRE}RootVol_JH\$no --availability-zone \${AZS[\$AZN]} $JHVOLSIZE
+  createResources $NOAZS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id $CINDERTIMEOUT cinder create --image-id $JHIMGID --name ${RPRE}RootVol_JH\$no --availability-zone \${AZS[\$AZN]} $JHVOLSIZE
 }
 
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
@@ -1078,7 +1078,7 @@ SNATROUTE=""
 createFIPs()
 {
   local VIP FLOAT
-  #createResources $NONETS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} ${JHNETS[0]} || return
+  #createResources $NOAZS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} ${JHNETS[0]} || return
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list || return 1
   EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| [0-9a-f-]* | \([^ ]*\).*$/\1/')
   # Not needed on OTC, but for most other OpenStack clouds:
@@ -1090,9 +1090,9 @@ createFIPs()
   #echo "Wait for JHPorts: "
   waitResources NETSTATS JHPORT JPORTSTAT JVMSTIME "NONNULL" "NONONO" "device_owner" $NETTIMEOUT neutron port-show
   # Now FIP creation is safe
-  createResources $NONETS FIPSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL $EXTNET
+  createResources $NOAZS FIPSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL $EXTNET
   if test $? != 0; then return 1; fi
-  # TODO: Use API to tell VPC that the VIP is the next hop (route table)
+  # Use API to tell VPC that the VIP is the next hop (route table)
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   # Find out whether the router does SNAT ...
@@ -1142,16 +1142,18 @@ calcRedirs()
       ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show $port
       IP=$(extract_ip "$OSTACKRESP")
       STR="0/0,$IP,tcp,$ptn,22"
-      off=$(($pi%$NONETS))
+      off=$(($pi%$NOAZS))
       REDIRS[$off]="${REDIRS[$off]}$STR
 "
-      if test $(($off+1)) = $NONETS; then let ptn+=1; fi
+      if test $(($off+1)) == $NOAZS; then let ptn+=1; fi
       let pi+=1
     done
-    #echo -e "$RE0$RE1"
+    #for off in $(seq 0 $(($NOAZS-1))); do
+    #  echo " REDIR $off: ${REDIRS[$off]}"
+    #done
   else
     echo " Not guessing VM IPs, delay port forwarding to later stage"
-    #REDIRS=( 10.250.0.$((4+($NOVMS-1)/$NONETS)) 10.250.1.$((4+($NOVMS-2)/$NONETS)) )
+    #REDIRS=( 10.250.0.$((4+($NOVMS-1)/$NOAZS)) 10.250.1.$((4+($NOVMS-2)/$NOAZS)) )
   fi
 }
 
@@ -1164,7 +1166,7 @@ createJHVMs()
   VIP=$(extract_ip "$OSTACKRESP")
   calcRedirs
   #echo "$VIP ${REDIRS[*]}"
-  for JHNUM in $(seq 0 $(($NONETS-1))); do
+  for JHNUM in $(seq 0 $(($NOAZS-1))); do
     if test -z "${REDIRS[$JHNUM]}"; then
       # No fwdmasq config possible yet
       USERDATA="#cloud-config
@@ -1203,11 +1205,12 @@ collectPorts()
 {
   local PORTLIST vm vmid
   PORTLIST="$(neutron port-list -c id -c device_id -c fixed_ips -c device_id -f json)"
-  for vm in $(seq 0 ${#VMS[*]}); do
+  for vm in $(seq 0 $(($NOVMS-1))); do
     vmid=${VMS[$vm]}
     port=$(echo "$PORTLIST" | jq ".[] | select(.device_id == \"$vmid\") | .id" | tr -d '"')
     PORTS[$vm]=$port
   done
+  #echo " Ports: ${PORTS[*]}"
 }
 
 # When NOT creating ports before JHVM starts, we cannot pass the port fwd information
@@ -1220,7 +1223,7 @@ setPortForward()
   if test -z "${PORTS[*]}"; then collectPorts; fi 
   calcRedirs
   #echo "$VIP ${REDIRS[*]}"
-  for JHNUM in $(seq 0 $(($NONETS-1))); do
+  for JHNUM in $(seq 0 $(($NOAZS-1))); do
     if test -z "${REDIRS[$JHNUM]}"; then
       echo "ERROR: No redirections?" 1>&2
       return 1
@@ -1229,7 +1232,7 @@ setPortForward()
     ssh-keygen -R ${FLOATS[$JHNUM]} -f ~/.ssh/known_hosts >/dev/null 2>&1
     SHEBANG='#!'
     SCRIPT=$(echo "$SHEBANG/bin/bash
-sed -i \'s@^FW_FORWARD_MASQ=.*\$@FW_FORWARD_MASQ=\"$FWDMASQ\"@\' /etc/sysconfig/SuSEfirewall2
+sed -i 's@^FW_FORWARD_MASQ=.*\$@FW_FORWARD_MASQ=\"$FWDMASQ\"@' /etc/sysconfig/SuSEfirewall2
 systemctl restart SuSEfirewall2
 ")
     echo "$SCRIPT" | ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[$JHNUM]} "cat - >upd_sfw2"
@@ -1261,7 +1264,7 @@ createVMsAll()
   local UDTMP=./user_data_VM.$$.yaml
   echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.$$.ALL\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP
   declare -a STMS
-  for netno in $(seq 0 $NONETS); do
+  for netno in $(seq 0 $(($NONETS-1))); do
     AZ=${AZS[$(($netno%$AZNOS))]}
     THISNOVM=$((($NOVMS+$netno-1)/$netno))
     STMS[$netno]=$(date +%s)
@@ -1269,7 +1272,7 @@ createVMsAll()
     # TODO: Error handling
   done
   # Collect VMIDs
-  for netno in $(seq 0 $AZN); do
+  for netno in $(seq 0 $(($NONETS-1))); do
     declare -i off=$netno
     OLDIFS="$IFS"; IFS="|"
     while read sep vmid sep; do
@@ -1335,7 +1338,7 @@ wait222()
   declare -i waiterr=0
   #if test -n "$http_proxy"; then NCPROXY="-X connect -x $http_proxy"; fi
   MAXWAIT=90
-  for JHNO in $(seq 0 $(($NONETS-1))); do
+  for JHNO in $(seq 0 $(($NOAZS-1))); do
     echo -n "${FLOATS[$JHNO]} "
     echo -n "ping "
     declare -i ctr=0
@@ -1424,7 +1427,7 @@ testjhinet()
   ERR=""
   #echo "Test JH access and outgoing inet ... "
   declare -i RC=0
-  for JHNO in $(seq 0 $(($NONETS-1))); do
+  for JHNO in $(seq 0 $(($NOAZS-1))); do
     echo -n "Access JH$JHNO (${FLOATS[$JHNO]}): "
     testlsandping ${KEYPAIRS[0]} ${FLOATS[$JHNO]}
     R=$?
@@ -1446,14 +1449,14 @@ testsnat()
   ERR=""
   ERRJH=()
   declare -i FAIL=0
-  for JHNO in $(seq 0 $(($NONETS-1))); do
+  for JHNO in $(seq 0 $(($NOAZS-1))); do
     declare -i no=$JHNO
     for red in ${REDIRS[$JHNO]}; do
       pno=${red#*tcp,}
       pno=${pno%%,*}
       testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
       RC=$?
-      let no+=$NONETS
+      let no+=$NOAZS
       if test $RC == 2; then
         ERRJH[$JHNO]="${ERRJH[$JHNO]}$red "
       elif test $RC == 1; then
@@ -1465,14 +1468,14 @@ testsnat()
   if test ${#ERRJH[*]} != 0; then echo -e "$RED $ERR $NORM"; ERR=""; sleep 12; fi
   # Process errors: Retry
   # FIXME: Is it actually worth retrying? Does it really improve the results?
-  for JHNO in $(seq 0 $(($NONETS-1))); do
+  for JHNO in $(seq 0 $(($NOAZS-1))); do
     no=$JHNO
     for red in ${ERRJH[$JHNO]}; do
       pno=${red#*tcp,}
       pno=${pno%%,*}
       testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
       RC=$?
-      let no+=$NONETS
+      let no+=$NOAZS
       if test $RC == 2; then
         let FAIL+=2
         ERR="${ERR}(2)ssh VM$JHNO $red ls; "
@@ -1485,7 +1488,7 @@ testsnat()
   if test -n "$ERR"; then echo -e "$RED $ERR ($FAIL) $NORM"; fi
   if test ${#ERRJH[*]} != 0; then
     echo -en "$BOLD RETRIED: "
-    for JHNO in $(seq 0 $(($NONETS-1))); do
+    for JHNO in $(seq 0 $(($NOAZS-1))); do
       test -n "${ERRJH[$JHNO]}" && echo -n "$JHNO: ${ERRJH[$JHNO]} "
     done
     echo -e "$NORM"
@@ -1790,7 +1793,7 @@ if test "$1" = "CLEANUP"; then
 else # test "$1" = "DEPLOY"; then
  if test "$REFRESHPRJ" != 0 && test $(($RUNS%$REFRESHPRJ)) == 0; then createnewprj; fi
  # Complete setup
- echo -e "$BOLD *** Start deployment $NONETS SNAT JumpHosts + $NOVMS VMs *** $NORM"
+ echo -e "$BOLD *** Start deployment $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM"
  date
  # Image IDs
  JHIMGID=$(ostackcmd_search $JHIMG $GLANCETIMEOUT glance image-list $JHIMGFILT | awk '{ print $2; }')
@@ -1826,7 +1829,7 @@ else # test "$1" = "DEPLOY"; then
            createPorts
            waitJHVols
            if createJHVMs; then
-            let ROUNDVMS=$NONETS
+            let ROUNDVMS=$NOAZS
             if createFIPs; then
              waitVols
              if createVMs; then
@@ -1891,7 +1894,7 @@ else # test "$1" = "DEPLOY"; then
     #waiterr $WAITERR
  fi
  allstats
- echo "This run: Overall $ROUNDVMS / ($NOVMS + $NONETS) VMs, $APICALLS API calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, $(date +'%Y-%m-%d %H:%M:%S %Z')"
+ echo "This run: Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS API calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, $(date +'%Y-%m-%d %H:%M:%S %Z')"
 #else
 #  usage
 fi
@@ -1921,7 +1924,7 @@ $(allstats)
 
 #TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$(hostname)|$OS_PROJECT_NAME
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
-#RUN: $RUNS|$((($NONETS+$NOVMS)*$RUNS))|$CUMAPICALLS
+#RUN: $RUNS|$((($NOAZS+$NOVMS)*$RUNS))|$CUMAPICALLS
 #ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS
 $(allstats -m)
 " 0
