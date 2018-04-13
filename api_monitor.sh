@@ -582,6 +582,7 @@ deleteResources()
 # $1 => status string
 # $2 => wanted1
 # $3 => wanted2 (optional)
+# Return code: 2 == found, 1 == ERROR, 0 in progress
 colstat()
 {
   if test "$2" == "NONNULL" -a -n "$1" -a "$1" != "null"; then
@@ -719,30 +720,33 @@ waitlistResources()
       if test -z "${SLIST[$i]}"; then STATSTR+=$(colstat "${STATI[$i]}" "$COMP1" "$COMP2"); continue; fi
       local STAT=$(echo "$OSTACKRESP" | grep "^| $rsrc" | sed -e "s@$PARSE@\1@" -e 's/ *$//')
       #echo "STATUS: \"$STAT\""
-      if test "$COMP1" == "XDELX" -a -z "$STAT"; then STAT="XDELX"; fi
+      if test "$COMP1" == "XDELX" -a -z "$STAT"; then STAT="XDELX"; unset SLIST[$i]; fi
       STATI[$i]="$STAT"
       STATSTR+=$(colstat "$STAT" "$COMP1" "$COMP2")
       STE=$?
       #echo -en "Wait $RNM: $STATSTR\r"
+      # Found or ERROR
       if test $STE != 0; then
-        if test $STE = 1; then
+        # ERROR
+        if test $STE == 1; then
           # Really wait for deletion of errored resources?
           if test "$COMP2" == "XDELX"; then continue; fi
           let WERR+=1
           echo "ERROR: $NM $rsrc status $STAT" 1>&2 #; return 1
         fi
+        # Found
+        unset SLIST[$i]
         TM=$(date +%s)
-	TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
-	eval ${CSTAT}+="($TM)"
-	if test -n "$GRAFANA"; then
-	  # log time / rc to grafana
-	  if test $STE -ge 2; then RC=0; else RC=$STE; fi
-	  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)" >/dev/null
-	fi
-	unset SLIST[$i]
+        TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
+        eval ${CSTAT}+="($TM)"
+        if test -n "$GRAFANA"; then
+          # log time / rc to grafana
+          if test $STE -ge 2; then RC=0; else RC=$STE; fi
+          curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)" >/dev/null
+        fi
       fi
     done
-    echo -en "Wait $RNM: $STATSTR\r"
+    echo -en "Wait $RNM[${#SLIST[*]}/${#RLIST[*]}]: $STATSTR \r"
     if test -z "${SLIST[*]}"; then echo; return $WERR; fi
     sleep 3
     let ctr+=1
@@ -1281,7 +1285,7 @@ createVMsAll()
       IFS=" " VMS[$off]=$(echo $vmid)
       IFS=" " VMSTIMES[$off]=${STMS[$netno]}
       let off+=$NONETS
-    done  < <(echo "$OSTACKRESP" | grep ${RPRE}VM_VM_NET$netno)
+    done  < <(echo "$OSTACKRESP" | grep "${RPRE}VM_VM_NET$netno")
     IFS="$OLDIFS"
     #echo
   done
