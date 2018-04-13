@@ -77,7 +77,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.31
+VERSION=1.32
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -1200,12 +1200,12 @@ $RD
 # Fill PORTS array by matching part's device_ids with the VM UUIDs
 collectPorts()
 {
-  local PORTLIST vm vmid
-  PORTLIST="$(neutron port-list -c id -c device_id -c fixed_ips -f json)"
+  local vm vmid
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
   for vm in $(seq 0 $(($NOVMS-1))); do
     vmid=${VMS[$vm]}
-    if test -z "$vmid"; then echo "ERROR: Lack VMID for VM $vm" 1>&2; continue; fi
-    port=$(echo "$PORTLIST" | jq ".[] | select(.device_id == \"$vmid\") | .id" | tr -d '"')
+    if test -z "$vmid"; then sendalarm 1 "nova list" "VM $vm not found" $NOVATIMEOUT; continue; fi
+    port=$(echo "$OSTACKRESP" | jq ".[] | select(.device_id == \"$vmid\") | .id" | tr -d '"')
     PORTS[$vm]=$port
   done
   echo "VM Ports: ${PORTS[*]}"
@@ -1315,21 +1315,38 @@ createVMs()
   fi
   rm $UDTMP.*
 }
+
+# Wait for VMs to get into active state
 waitVMs()
 {
   #waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" nova show
   waitlistResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
 }
+
+# Remove VMs (one by one or by batch if we created in batches)
 deleteVMs()
 {
+  if test -z "${VMS[*]}"; then return; fi
   VMSTIME=()
-  deleteResources NOVASTATS VM VMSTIME $NOVABOOTTIMEOUT nova delete
+  if test -n "$BOOTALLATONCE"; then
+    local DT vm
+    echo "Del VM in batch: ${VMS[*]}"
+    DT=$(date +%s)
+    ostackcmd_tm NOVASTATS $NOVABOOTTIMEOUT nova delete ${VMS[*]}
+    for vm in $(seq 0 $(($NOVMS-1))); do VMSTIME[$vm]=$DT; done
+  else
+    deleteResources NOVASTATS VM VMSTIME $NOVABOOTTIMEOUT nova delete
+  fi
 }
+
+# Wait for VMs to disappear
 waitdelVMs()
 {
   #waitdelResources NOVASTATS VM VMDSTATS VMSTIME nova show
   waitlistResources NOVASTATS VM VMDSTATS VMSTIME XDELX $FORCEDEL 2 $NOVATIMEOUT nova list
 }
+
+# Meta data setting for test purposes
 setmetaVMs()
 {
   for no in `seq 0 $(($NOVMS-1))`; do
@@ -1409,7 +1426,7 @@ testlsandping()
     ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 ls >/dev/null 2>&1 || return 2
   else
     # Test whether user_data file injection worked
-    if test -n "$BOOTALLATAONCE"; then
+    if test -n "$BOOTALLATONCE"; then
       # no indiv user data per VM when mass booting ...
       ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1 || return 2
     else
