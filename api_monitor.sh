@@ -1151,9 +1151,6 @@ calcRedirs()
     #for off in $(seq 0 $(($NOAZS-1))); do
     #  echo " REDIR $off: ${REDIRS[$off]}"
     #done
-  else
-    echo " Not guessing VM IPs, delay port forwarding to later stage"
-    #REDIRS=( 10.250.0.$((4+($NOVMS-1)/$NOAZS)) 10.250.1.$((4+($NOVMS-2)/$NOAZS)) )
   fi
 }
 
@@ -1204,20 +1201,21 @@ $RD
 collectPorts()
 {
   local PORTLIST vm vmid
-  PORTLIST="$(neutron port-list -c id -c device_id -c fixed_ips -c device_id -f json)"
+  PORTLIST="$(neutron port-list -c id -c device_id -c fixed_ips -f json)"
   for vm in $(seq 0 $(($NOVMS-1))); do
     vmid=${VMS[$vm]}
+    if test -z "$vmid"; then echo "ERROR: Lack VMID for VM $vm" 1>&2; continue; fi
     port=$(echo "$PORTLIST" | jq ".[] | select(.device_id == \"$vmid\") | .id" | tr -d '"')
     PORTS[$vm]=$port
   done
-  #echo " Ports: ${PORTS[*]}"
+  echo "VM Ports: ${PORTS[*]}"
 }
 
 # When NOT creating ports before JHVM starts, we cannot pass the port fwd information
 # via user-data as we don't know the IP addresses. So modify VM via ssh.
 setPortForward()
 {
-  if test -n "$MANUALSETUP"; then return; fi
+  if test -n "$MANUALPORTSETUP"; then return; fi
   local JHNUM FWDMASQ SHEBANG SCRIPT
   # If we need to collect port info, do so now
   if test -z "${PORTS[*]}"; then collectPorts; fi 
@@ -1264,6 +1262,7 @@ createVMsAll()
   local UDTMP=./user_data_VM.$$.yaml
   echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.$$.ALL\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP
   declare -a STMS
+  echo -n "Create VMs in batches:"
   for netno in $(seq 0 $(($NONETS-1))); do
     AZ=${AZS[$(($netno%$NOAZS))]}
     THISNOVM=$((($NOVMS+$NONETS-$netno-1)/$NONETS))
@@ -1271,17 +1270,24 @@ createVMsAll()
     ostackcmd_tm NOVABSTATS $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone $AZ --security-groups ${SGROUPS[1]} --nic net-id=${NETS[$netno]} --user-data $UDTMP ${RPRE}VM_VM_NET$netno --min-count=$THISNOVM --max-count=$THISNOVM
     # TODO: Error handling
   done
+  sleep 1
   # Collect VMIDs
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova list
   for netno in $(seq 0 $(($NONETS-1))); do
     declare -i off=$netno
     OLDIFS="$IFS"; IFS="|"
+    #nova list | grep ${RPRE}VM_VM_NET$netno
     while read sep vmid sep; do
-      VMS[$off]=$vmid
-      VMSTIMES[$off]=${STMS[$netno]}
+      #echo -n " VM$off=$vmid"
+      IFS=" " VMS[$off]=$(echo $vmid)
+      IFS=" " VMSTIMES[$off]=${STMS[$netno]}
       let off+=$NONETS
-    done  < <(nova list | grep ${RPRE}VM_VM_NET$netno)
+    done  < <(echo "$OSTACKRESP" | grep ${RPRE}VM_VM_NET$netno)
+    IFS="$OLDIFS"
+    #echo
   done
-  collectPorts
+  echo "${VMS[*]}"
+  #collectPorts
 }
 
 # Classic creation of all VMs, one by one
@@ -1582,6 +1588,8 @@ cleanup()
   deleteJHVMs
   KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   deleteKeypairs
+  VIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
+  deleteVIPs
   VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
   waitdelVMs; deleteVols
   JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) )
@@ -1589,8 +1597,6 @@ cleanup()
   PORTS=( $(findres ${RPRE}Port_VM neutron port-list) )
   JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
   deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
-  VIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
-  deleteVIPs
   SGROUPS=( $(findres "" neutron security-group-list) )
   deleteSGroups
   SUBNETS=( $(findres "" neutron subnet-list) )
