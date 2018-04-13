@@ -475,7 +475,7 @@ ostackcmd_tm()
   local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
   test "$1" = "openstack" && shift
   if test -n "$GRAFANA"; then
-    # log time / rc to grafana
+    # log time / rc to grafana telegraph
     rc2grafana $RC
     curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)" >/dev/null
   fi
