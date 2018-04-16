@@ -3,7 +3,7 @@
 export OS_DOMAIN=OTC00000000001000000449
 export OS_USER_DOMAIN_NAME=OTC00000000001000000449
 export OS_TENANT_NAME=eu-de
-export OS_PROJECT_NAME=${OS_PROJECT_NAME:-"eu-de_APIMonior2"}
+export OS_PROJECT_NAME=${OS_PROJECT_NAME:-"eu-de_APIMonitor2"}
 export OS_AUTH_URL=https://iam.eu-de.otc.t-systems.com:443/v3
 export OS_ENDPOINT_TYPE=publicURL
 export NOVA_ENDPOINT_TYPE=publicURL
@@ -14,7 +14,7 @@ export OS_VOLUME_API_VERSION=2
 
 export EMAIL_PARAM=${EMAIL_PARAM:-"t-systems@garloff.de"}
 
-# Terminate on auth error early
+# Terminate early on auth error
 openstack server list >/dev/null
 
 # Cleanup previous interrupted runs
