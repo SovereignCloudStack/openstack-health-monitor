@@ -849,7 +849,7 @@ createRouters()
 
 deleteRouters()
 {
-  deleteResources NETSTATS ROUTER "" $FIPTIMEOUT neutron router-delete
+  deleteResources NETSTATS ROUTER "" $(($FIPTIMEOUT+8)) neutron router-delete
 }
 
 createNets()
@@ -1915,7 +1915,7 @@ else # test "$1" = "DEPLOY"; then
  THISRUNTIME=$(($(date +%s)-$MSTART))
  TOTTIME+=($THISRUNTIME)
  # Raise an alarm if we have not yet sent one and we're very slow despite this
- if test -n "$BOOTALLATONCE"; then LIN=512; FACT=24; else LIN=484; FACT=32; fi
+ if test -n "$BOOTALLATONCE"; then LIN=500; FACT=20; else LIN=484; FACT=32; fi
  if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $(($LIN+$FACT*$NOVMS)); then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME" $(($LIN+$FACT*$NOVMS))
     #waiterr $WAITERR
