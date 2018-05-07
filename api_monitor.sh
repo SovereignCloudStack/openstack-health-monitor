@@ -81,8 +81,8 @@ VERSION=1.32
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
-#if test -z "$PINGTARGET"; then PINGTARGET=google-public-dns-b.google.com; fi
-if test -z "$PINGTARGET"; then PINGTARGET=dns.quad9.net; fi
+if test -z "$PINGTARGET"; then PINGTARGET=google-public-dns-b.google.com; fi
+#if test -z "$PINGTARGET"; then PINGTARGET=dns.quad9.net; fi
 
 # Prefix for test resources
 FORCEDEL=NONONO
