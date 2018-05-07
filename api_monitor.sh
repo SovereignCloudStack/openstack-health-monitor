@@ -81,8 +81,8 @@ VERSION=1.32
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
-if test -z "$PINGTARGET"; then PINGTARGET=google-public-dns-b.google.com; fi
-#if test -z "$PINGTARGET"; then PINGTARGET=dns.quad9.net; fi
+if test -z "$PINGTARGET"; then PINGTARGET=dns.quad9.net; fi
+if test -z "$PINGTARGET2"; then PINGTARGET2=google-public-dns-b.google.com; fi
 
 # Prefix for test resources
 FORCEDEL=NONONO
@@ -1438,8 +1438,8 @@ testlsandping()
   fi
   PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   if test $? = 0; then echo $PING; return 0; fi
-  sleep 3
-  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
+  sleep 1
+  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
   echo "$PING"
   if test $RC != 0; then return 1; else return 0; fi
@@ -1460,7 +1460,7 @@ testjhinet()
     if test $R == 2; then
       RC=2; ERR="${ERR}ssh JH$JHNO ls; "
     elif test $R == 1; then
-      let CUMPINGERRORS+=1; ERR="${ERR}ssh JH$JHNO ping $PINGTARGET; "
+      let CUMPINGERRORS+=1; ERR="${ERR}ssh JH$JHNO ping $PINGTARGET || ping $PINGTARGET2; "
     fi
   done
   if test $RC = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $ERR $NORM"; return $RC; fi
@@ -1487,7 +1487,7 @@ testsnat()
         ERRJH[$JHNO]="${ERRJH[$JHNO]}$red "
       elif test $RC == 1; then
         let PINGERRORS+=1
-        ERR="${ERR}ssh VM$JHNO $red ping $PINGTARGET; "
+        ERR="${ERR}ssh VM$JHNO $red ping $PINGTARGET || ping $PINGTARGET2; "
       fi
     done
   done
@@ -1507,7 +1507,7 @@ testsnat()
         ERR="${ERR}(2)ssh VM$JHNO $red ls; "
       elif test $RC == 1; then
         let PINGERRORS+=1
-        ERR="${ERR}(2)ssh VM$JHNO $red ping $PINGTARGET; "
+        ERR="${ERR}(2)ssh VM$JHNO $red ping $PINGTARGET || ping $PINGTARGET2; "
       fi
     done
   done
