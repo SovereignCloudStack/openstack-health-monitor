@@ -77,7 +77,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.32
+VERSION=1.33
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -528,7 +528,7 @@ createResources()
     #echo "DEBUG: ostackcmd_id $CMD => $RC" 1>&2
     updAPIerr $RC
     local TM
-    read TM ID < <(echo "$RESP")
+    read TM ID <<<"$RESP"
     eval ${STATNM}+="($TM)"
     let ctr+=1
     # Workaround for teuto.net
@@ -552,6 +552,7 @@ createResources()
 deleteResources()
 {
   local STATNM=$1; local RNM=$2; local DTIME=$3
+  local ERR=0
   shift; shift; shift
   local TIMEOUT=$1; shift
   eval local LIST=( \"\${${ORNM}S[@]}\" )
@@ -561,6 +562,7 @@ deleteResources()
   test -n "$LIST" && echo -n "Del $RNM: "
   #for rsrc in $LIST; do
   local LN=${#LIST[@]}
+  local RESP
   while test ${#LIST[*]} -gt 0; do
     local rsrc=${LIST[-1]}
     echo -n "$rsrc "
@@ -568,14 +570,16 @@ deleteResources()
     if test -n "$DTIME"; then eval "${DTIME}+=( $DTM )"; fi
     local TM
     let APICALLS+=1
-    read TM < <(ostackcmd_id id $TIMEOUT $@ $rsrc)
+    RESP=$(ostackcmd_id id $TIMEOUT $@ $rsrc)
     local RC="$?"
     updAPIerr $RC
+    read TM ID <<<"$RESP"
     eval ${STATNM}+="($TM)"
-    if test $RC != 0; then echo "ERROR" 1>&2; return 1; fi
+    if test $RC != 0; then echo "ERROR; Continue anyway ..." 1>&2; let ERR+=1; fi
     unset LIST[-1]
   done
   test $LN -gt 0 && echo
+  return $ERR
 }
 
 # Convert status to colored one-char string
@@ -637,7 +641,7 @@ waitResources()
       local RC=$?
       updAPIerr $RC
       local TM STAT
-      read TM STAT < <(echo "$RESP")
+      read TM STAT <<<"$RESP"
       eval ${STATNM}+="( $TM )"
       if test $RC != 0; then echo "\nERROR: Querying $RNM $rsrc failed" 1>&2; return 1; fi
       STATI[$i]=$STAT
@@ -791,7 +795,7 @@ waitdelResources()
       local RC=$?
       updAPIerr $RC
       local TM STAT
-      read TM STAT < <(echo "$RESP")
+      read TM STAT <<<"$RESP"
       eval ${STATNM}+="( $TM )"
       if test $RC != 0; then
         TM=$(date +%s)
@@ -828,14 +832,16 @@ showResources()
 {
   local STATNM=$1
   local RNM=$2
+  local RESP
   shift; shift
   local TIMEOUT=$1; shift
   eval local LIST=( \"\${$RNM}S[@]\" )
   local rsrc TM
   while rsrc in ${LIST}; do
     let APICALLS+=1
-    read TM ID < <(ostackcmd_id id $TIMEOUT $@ $rsrc)
+    RESP=$(ostackcmd_id id $TIMEOUT $@ $rsrc)
     updAPIerr $?
+    #read TM ID <<<"$RESP"
   done
 }
 
@@ -901,6 +907,7 @@ deleteRIfaces()
 # Setup security groups with their rulesets
 createSGroups()
 {
+  local RESP
   NAMES=( ${RPRE}SG_JumpHost ${RPRE}SG_Internal )
   createResources 2 NETSTATS SGROUP NAME NONE "" id $NETTIMEOUT neutron security-group-create "\$VAL" || return
   # And set rules ... (we don't need to keep track of and delete them)
@@ -909,44 +916,56 @@ createSGroups()
   # Configure SGs: We can NOT allow any references to SG0, as the allowed-address-pair setting renders SGs useless
   #  that reference the SG0
   let APICALLS+=10
-  #read TM ID < <(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG0 $SG0)
-  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-ip-prefix $JHSUBNETIP $SG0)
+  #RESP=$(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG0 $SG0)
+  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-ip-prefix $JHSUBNETIP $SG0)
   updAPIerr $?
+  read TM ID <<<"$RESP"
   NETSTATS+=( $TM )
-  #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG0 $SG0)
+  #RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG0 $SG0)
+  #updAPIerr $?
+  #read TM ID <<<"$RESP"
   #NETSTATS+=( $TM )
   # Configure SGs: Internal ingress allowed
-  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG1)
+  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG1)
   updAPIerr $?
+  read TM ID <<<"$RESP"
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG1 $SG1)
+  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG1 $SG1)
   updAPIerr $?
+  read TM ID <<<"$RESP"
   NETSTATS+=( $TM )
   # Configure RPRE_SG_JumpHost rule: All from the other group, port 22 and 222- from outside
-  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG0)
+  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG0)
   updAPIerr $?
+  read TM ID <<<"$RESP"
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
+  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
   updAPIerr $?
+  read TM ID <<<"$RESP"
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max $((222+($NOVMS-1)/$NOAZS)) --remote-ip-prefix 0/0 $SG0)
+  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max $((222+($NOVMS-1)/$NOAZS)) --remote-ip-prefix 0/0 $SG0)
   updAPIerr $?
+  read TM ID <<<"$RESP"
   NETSTATS+=( $TM )
-  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
+  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
   updAPIerr $?
+  read TM ID <<<"$RESP"
   NETSTATS+=( $TM )
   # Configure RPRE_SG_Internal rule: ssh and https and ping from the other group
-  #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-group-id $SG0 $SG1)
-  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix $JHSUBNETIP $SG1)
+  #RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-group-id $SG0 $SG1)
+  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix $JHSUBNETIP $SG1)
   updAPIerr $?
+  read TM ID <<<"$RESP"
   NETSTATS+=( $TM )
-  #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-group-id $SG0 $SG1)
-  #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-ip-prefix $JHSUBNETIP $SG1)
+  #RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-group-id $SG0 $SG1)
+  #RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-ip-prefix $JHSUBNETIP $SG1)
   #updAPIerr $?
+  #read TM ID <<<"$RESP"
   #NETSTATS+=( $TM )
-  #read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-group-id $SG0 $SG1)
-  read TM ID < <(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix $JHSUBNETIP $SG1)
+  #RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-group-id $SG0 $SG1)
+  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix $JHSUBNETIP $SG1)
   updAPIerr $?
+  read TM ID <<<"$RESP"
   NETSTATS+=( $TM )
   #neutron security-group-show $SG0
   #neutron security-group-show $SG1
@@ -988,7 +1007,7 @@ createJHPorts()
     RESP=$(ostackcmd_id id $NETTIMEOUT neutron port-update ${JHPORTS[$i]} --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1)
     RC=$?
     updAPIerr $RC
-    read TM ID < <(echo "$RESP")
+    read TM ID <<<"$RESP"
     NETSTATS+=( $TM )
     if test $RC != 0; then echo "ERROR: Failed setting allowed-adr-pair for port ${JHPORTS[$i]}" 1>&2; return 1; fi
   done
@@ -1080,7 +1099,7 @@ extract_ip()
 SNATROUTE=""
 createFIPs()
 {
-  local VIP FLOAT
+  local VIP FLOAT RESP
   #createResources $NOAZS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} ${JHNETS[0]} || return
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list || return 1
   EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| [0-9a-f-]* | \([^ ]*\).*$/\1/')
@@ -1099,7 +1118,9 @@ createFIPs()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   # Find out whether the router does SNAT ...
-  read TM EXTGW < <(ostackcmd_id external_gateway_info $NETTIMEOUT neutron router-show ${ROUTERS[0]})
+  RESP=$(ostackcmd_id external_gateway_info $NETTIMEOUT neutron router-show ${ROUTERS[0]})
+  updAPIerr $?
+  read TM EXTGW <<<"$RESP"
   NETSTATS+=( $TM )
   SNAT=$(echo $EXTGW | sed 's/^[^,]*, "enable_snat": \([^ }]*\).*$/\1/')
   if test "$SNAT" = "false"; then
@@ -1823,21 +1844,23 @@ else # test "$1" = "DEPLOY"; then
  date
  # Image IDs
  JHIMGID=$(ostackcmd_search $JHIMG $GLANCETIMEOUT glance image-list $JHIMGFILT | awk '{ print $2; }')
- if test -z "$JHIMGID"; then echo "ERROR: No image $JHIMG found, aborting."; exit 1; fi
+ if test -z "$JHIMGID"; then sendalarm 1 "No JH image $JHIMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
  IMGID=$(ostackcmd_search $IMG $GLANCETIMEOUT glance image-list $IMGFILT | awk '{ print $2; }')
- if test -z "$IMGID"; then echo "ERROR: No image $IMG found, aborting."; exit 1; fi
+ if test -z "$IMGID"; then sendalarm 1 "No image $IMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
  let APICALLS+=2
  # Retrieve root volume size
- read TM SZ < <(ostackcmd_id min_disk $GLANCETIMEOUT glance image-show $JHIMGID)
+ OR=$(ostackcmd_id min_disk $GLANCETIMEOUT glance image-show $JHIMGID)
  if test $? != 0; then
   let APIERRORS+=1; sendalarm 1 "glance image-show failed" "" $GLANCETIMEOUT
  else
+  read TM SZ <<<"$OR"
   JHVOLSIZE=$(($SZ+$ADDJHVOLSIZE))
  fi
- read TM SZ < <(ostackcmd_id min_disk $GLANCETIMEOUT glance image-show $IMGID)
+ OR=$(ostackcmd_id min_disk $GLANCETIMEOUT glance image-show $IMGID)
  if test $? != 0; then
   let APIERRORS+=1; sendalarm 1 "glance image-show failed" "" $GLANCETIMEOUT
  else
+  read TM SZ <<<"$OR"
   VOLSIZE=$(($SZ+$ADDVMVOLSIZE))
  fi
  let APICALLS+=2
