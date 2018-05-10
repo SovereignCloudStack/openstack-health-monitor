@@ -88,6 +88,7 @@ if test -z "$PINGTARGET2"; then PINGTARGET2=google-public-dns-b.google.com; fi
 FORCEDEL=NONONO
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
 SHORT_DOMAIN="${OS_USER_DOMAIN_NAME##*OTC*00000000001000}"
+ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_PROJECT_NAME#*_}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
 
 # Number of VMs and networks
@@ -251,15 +252,15 @@ sendalarm()
   if test $1 = 0; then
     PRE="Note"
     RES=""
-    echo -e "$BOLD$PRE on $SHORT_DOMAIN/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$BOLD$PRE on $ALARMPRE/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
   elif test $1 -gt 128; then
     PRE="TIMEOUT $4"
     RES=" => $1"
-    echo -e "$RED$PRE on $SHORT_DOMAIN/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$RED$PRE on $ALARMPRE/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
   else
     PRE="ALARM $1"
     RES=" => $1"
-    echo -e "$RED$PRE on $SHORT_DOMAIN/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$RED$PRE on $ALARMPRE/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
   fi
   TOMSG=""
   if test "$4" != "0" -a $1 != 0; then
@@ -279,7 +280,7 @@ sendalarm()
   do
     echo "From: ${RPRE%_} $(hostname) <$FROM>
 To: $RECEIVER
-Subject: $PRE on $SHORT_DOMAIN: $2
+Subject: $PRE on $ALARMPRE: $2
 Date: $(date -R)
 
 $PRE on $SHORT_DOMAIN/$OS_PROJECT_NAME
@@ -304,7 +305,7 @@ $TOMSG" | /usr/sbin/sendmail -t -f $FROM
 ${RPRE%_} on $(hostname):
 $2
 $3
-$TOMSG" | otc.sh notifications publish $RECEIVER "$PRE from $(hostname)/$SHORT_DOMAIN"
+$TOMSG" | otc.sh notifications publish $RECEIVER "$PRE from $(hostname)/$ALARMPRE"
   done
 }
 
