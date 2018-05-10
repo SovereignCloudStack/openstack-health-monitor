@@ -177,6 +177,7 @@ usage()
   echo " -w N   sets error wait (API, VM): 0-inf seconds or neg value for interactive wait"
   echo " -W N   sets error wait (VM only): 0-inf seconds or neg value for interactive wait"
   echo " -p N   use a new project every N iterations"
+  echo " -c     noColors: don't use bold/red/... ASCII sequences"
   echo "Or: api_monitor.sh [-f] CLEANUP XXX to clean up all resources with prefix XXX"
   exit 0
 }
@@ -190,7 +191,7 @@ while test -n "$1"; do
     "help"|"-h"|"--help") usage;;
     "-s") SENDSTATS=1;;
     "-S") GRAFANA=1;;
-    "-P") unset MANUALPORTSETUP; shift;;
+    "-P") unset MANUALPORTSETUP;;
     "-d") BOOTFROMIMAGE=1;;
     "-D") BOOTALLATONCE=1; BOOTFROMIMAGE=1; unset MANUALPORTSETUP;;
     "-e") if test -z "$EMAIL"; then EMAIL="$2"; else EMAIL2="$2"; fi; shift;;
@@ -202,6 +203,7 @@ while test -n "$1"; do
     "-W") VMERRWAIT=$2; shift;;
     "-f") FORCEDEL=XDELX;;
     "-p") REFRESHPRJ=$2; shift;;
+    "-c") NOCOL=1;;
     "CLEANUP") break;;
     *) echo "Unknown argument \"$1\""; exit 1;;
   esac
@@ -238,6 +240,14 @@ if ! neutron router-list >/dev/null; then
   exit 2
 fi
 
+if test "$NOCOL" == "1"; then
+  BOLD="**"
+  REV="__"
+  NORM=" "
+  RED="!!"
+  GREEN="++"
+  YELLOW=".."
+fi
 
 # Alarm notification
 # $1 => return code
