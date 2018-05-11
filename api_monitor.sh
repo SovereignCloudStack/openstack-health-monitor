@@ -90,6 +90,7 @@ if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
 SHORT_DOMAIN="${OS_USER_DOMAIN_NAME##*OTC*00000000001000}"
 ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_PROJECT_NAME#*_}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
+GRAFANANM=api-monitoring
 
 # Number of VMs and networks
 AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/')
@@ -167,7 +168,7 @@ usage()
   echo " -m URN sets notes/alarms by SMN (pass URN of queue)"
   echo "         second -m splits notifications; notes to first, alarms to second URN"
   echo " -s     sends stats as well once per day, not just alarms"
-  echo " -S     sends stats to grafana via local telegraf http_listener"
+  echo " -S [NM] sends stats to grafana via local telegraf http_listener (def for NM=api-monitoring)"
   echo " -d     boot Directly from image (not via volume)"
   echo " -P     do not create Port before VM creation"
   echo " -D     create all VMs with one API call (implies -d -P)"
@@ -190,7 +191,8 @@ while test -n "$1"; do
     "-l") LOGFILE=$2; shift;;
     "help"|"-h"|"--help") usage;;
     "-s") SENDSTATS=1;;
-    "-S") GRAFANA=1;;
+    "-S") GRAFANA=1;
+	if test -n "$2" -a "$2" != "CLEANUP" -a "$2" != "DEPLOY" -a "${2:0:1}" != "-"; then GRAFANANM="$2"; shift; fi;;
     "-P") unset MANUALPORTSETUP;;
     "-d") BOOTFROMIMAGE=1;;
     "-D") BOOTALLATONCE=1; BOOTFROMIMAGE=1; unset MANUALPORTSETUP;;
@@ -438,7 +440,7 @@ ostackcmd_id()
   if test -n "$GRAFANA"; then
       # log time / rc to grafana
       rc2grafana $RC
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)" >/dev/null
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)" >/dev/null
   fi
 
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
@@ -488,7 +490,7 @@ ostackcmd_tm()
   if test -n "$GRAFANA"; then
     # log time / rc to grafana telegraph
     rc2grafana $RC
-    curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)" >/dev/null
+    curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)" >/dev/null
   fi
   eval "${STATNM}+=( $TIM )"
   echo "$LSTART/$LEND/: $@ => $OSTACKRESP" >> $LOGFILE
@@ -670,7 +672,7 @@ waitResources()
 	if test -n "$GRAFANA"; then
 	  # log time / rc to grafana
 	  if test $STE -ge 2; then RC=0; else RC=$STE; fi
-	  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)" >/dev/null
+	  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)" >/dev/null
 	fi
 	unset SLIST[$i]
       fi
@@ -757,7 +759,7 @@ waitlistResources()
         if test -n "$GRAFANA"; then
           # log time / rc to grafana
           if test $STE -ge 2; then RC=0; else RC=$STE; fi
-          curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)" >/dev/null
+          curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)" >/dev/null
         fi
       fi
     done
@@ -820,7 +822,7 @@ waitdelResources()
       if test -n "$GRAFANA"; then
 	# log time / rc to grafana
         rc2grafana $RC
-	curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "api-monitoring,cmd=wait$RNM,method=DEL duration=$TM,return_code=$GRC $(date +%s%N)" >/dev/null
+	curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=DEL duration=$TM,return_code=$GRC $(date +%s%N)" >/dev/null
       fi
       #echo -en "WaitDel $RNM: $STATSTR\r"
     done
