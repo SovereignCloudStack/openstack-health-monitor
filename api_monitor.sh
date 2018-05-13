@@ -1311,6 +1311,7 @@ waitdelJHVMs()
 createVMsAll()
 {
   local netno AZ THISNOVM vmid off STMS
+  local ERRS=0
   local UDTMP=./user_data_VM.$$.yaml
   echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.$$.ALL\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP
   declare -a STMS
@@ -1320,6 +1321,7 @@ createVMsAll()
     THISNOVM=$((($NOVMS+$NONETS-$netno-1)/$NONETS))
     STMS[$netno]=$(date +%s)
     ostackcmd_tm NOVABSTATS $(($NOVABOOTTIMEOUT+$THISNOVM*$DEFTIMEOUT/2)) nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone $AZ --security-groups ${SGROUPS[1]} --nic net-id=${NETS[$netno]} --user-data $UDTMP ${RPRE}VM_VM_NET$netno --min-count=$THISNOVM --max-count=$THISNOVM
+    let ERRS+=$?
     # TODO: More error handling here?
   done
   sleep 1
@@ -1340,6 +1342,7 @@ createVMsAll()
   done
   echo "${VMS[*]}"
   #collectPorts
+  return $ERRS
 }
 
 # Classic creation of all VMs, one by one
@@ -1365,7 +1368,9 @@ createVMs()
       createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
     fi
   fi
+  local RC=$?
   rm $UDTMP.*
+  return $RC
 }
 
 # Wait for VMs to get into active state
