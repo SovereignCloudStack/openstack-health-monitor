@@ -77,7 +77,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.33
+VERSION=1.34
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -122,7 +122,7 @@ DEFTIMEOUT=16
 REFRESHPRJ=0
 
 echo "Running api_monitor.sh v$VERSION"
-if test "$1" != "CLEANUP"; then echo "Using $RPRE prefix for api_monitor resources on $OS_USER_DOMAIN_NAME (${AZS[*]})"; fi
+if test "$1" != "CLEANUP"; then echo "Using $RPRE prefix for resrcs on $OS_USER_DOMAIN_NAME/$OS_PROJECT_NAME (${AZS[*]})"; fi
 
 # Images, flavors, disk sizes
 JHIMG="${JHIMG:-Standard_openSUSE_42_JeOS_latest}"
@@ -363,7 +363,7 @@ errwait()
 {
   if test $1 -lt 0; then
     local ans
-    echo -n "ERROR: Hit Enter to continue: "
+    echo -en "${YELLOW}ERROR: Hit Enter to continue: $NORM"
     read ans
   else
     sleep $1
@@ -411,8 +411,8 @@ ostackcmd_search()
     errwait $ERRWAIT
   fi
   local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
-  if test "$RC" != "0"; then echo "$TIM $RC"; echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
-  if test -z "$ID"; then echo "$TIM $RC"; echo "ERROR: $@ => $RC $RESP => $SEARCH not found" 1>&2; return $RC; fi
+  if test "$RC" != "0"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: $@ => $RC $RESP$NORM" 1>&2; return $RC; fi
+  if test -z "$ID"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: $@ => $RC $RESP => $SEARCH not found$NORM" 1>&2; return $RC; fi
   echo "$TIM $ID"
   return $RC
 }
@@ -453,7 +453,7 @@ ostackcmd_id()
   else
     ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed -e "s/^| *$IDNM *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
     echo "$LSTART/$LEND/$ID: $@ => $RC $RESP" >> $LOGFILE
-    if test "$RC" != "0"; then echo "$TIM $RC"; echo "ERROR: $@ => $RC $RESP" 1>&2; return $RC; fi
+    if test "$RC" != "0"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: $@ => $RC $RESP$NORM" 1>&2; return $RC; fi
   fi
   echo "$TIM $ID"
   return $RC
@@ -546,7 +546,7 @@ createResources()
     let ctr+=1
     # Workaround for teuto.net
     if test "$1" = "cinder" && [[ $OS_AUTH_URL == *teutostack* ]]; then echo -en " ${RED}+5s${NORM} " 1>&2; sleep 5; fi
-    if test $RC != 0; then echo "ERROR: $RNM creation failed" 1>&2; return 1; fi
+    if test $RC != 0; then echo -e "${YELLOW}ERROR: $RNM creation failed$NORM" 1>&2; return 1; fi
     if test -n "$ID" -a "$RNM" != "NONE"; then echo -n "$ID "; fi
     eval ${RNM}S+="($ID)"
   done
@@ -568,6 +568,7 @@ deleteResources()
   local ERR=0
   shift; shift; shift
   local TIMEOUT=$1; shift
+  local FAILDEL=()
   eval local LIST=( \"\${${ORNM}S[@]}\" )
   #eval local varAlias=( \"\${myvar${varname}[@]}\" )
   eval local LIST=( \"\${${RNM}S[@]}\" )
@@ -588,10 +589,23 @@ deleteResources()
     updAPIerr $RC
     read TM ID <<<"$RESP"
     eval ${STATNM}+="($TM)"
-    if test $RC != 0; then echo "ERROR; Continue anyway ..." 1>&2; let ERR+=1; fi
+    if test $RC != 0; then
+      echo -e "${YELLOW}ERROR deleting $RNM $rsrc; retry and continue ...$NORM" 1>&2
+      let ERR+=1
+      sleep 2
+      RESP=$(ostackcmd_id id $(($TIMEOUT+8)) $@ $rsrc)
+      RC=$?
+      updAPIerr $RC
+      if test $RC != 0; then FAILDEL+=($rsrc); fi
+    fi
     unset LIST[-1]
   done
   test $LN -gt 0 && echo
+  # FIXME: Should we try again immediately?
+  if test -n "$FAILDEL"; then
+    echo "Store failed dels in REM${RNM}S for later re-cleanup: $FAILDEL"
+    eval "REM${RNM}S=(${FAILDEL[*]})"
+  fi
   return $ERR
 }
 
@@ -656,14 +670,14 @@ waitResources()
       local TM STAT
       read TM STAT <<<"$RESP"
       eval ${STATNM}+="( $TM )"
-      if test $RC != 0; then echo "\nERROR: Querying $RNM $rsrc failed" 1>&2; return 1; fi
+      if test $RC != 0; then echo -e "\n${YELLOW}ERROR: Querying $RNM $rsrc failed$NORM" 1>&2; return 1; fi
       STATI[$i]=$STAT
       STATSTR+=$(colstat "$STAT" "$COMP1" "$COMP2")
       STE=$?
       echo -en "Wait $RNM: $STATSTR\r"
       if test $STE != 0; then
 	if test $STE = 1; then
-          echo "\nERROR: $NM $rsrc status $STAT" 1>&2 #; return 1
+          echo -e "\n${YELLOW}ERROR: $NM $rsrc status $STAT$NORM" 1>&2 #; return 1
           let WERR+=1
         fi
         TM=$(date +%s)
@@ -723,7 +737,7 @@ waitlistResources()
     local CMD=`eval echo $@ 2>&1`
     ostackcmd_tm $STATNM $TIMEOUT $CMD
     if test $? != 0; then
-      echo "\nERROR: $CMD => $OSTACKRESP" 1>&2
+      echo -e "\n${YELLOW}ERROR: $CMD => $OSTACKRESP$NORM" 1>&2
       # Only bail out after 4th error;
       # so we retry in case there are spurious 500/503 (throttling) errors
       # Do not give up so early on waiting for deletion ...
@@ -749,7 +763,7 @@ waitlistResources()
           # Really wait for deletion of errored resources?
           if test "$COMP2" == "XDELX"; then continue; fi
           let WERR+=1
-          echo "ERROR: $NM $rsrc status $STAT" 1>&2 #; return 1
+          echo -e "${YELLOW}ERROR: $NM $rsrc status $STAT$NORM" 1>&2 #; return 1
         fi
         # Found
         TM=$(date +%s)
@@ -1022,7 +1036,7 @@ createJHPorts()
     updAPIerr $RC
     read TM ID <<<"$RESP"
     NETSTATS+=( $TM )
-    if test $RC != 0; then echo "ERROR: Failed setting allowed-adr-pair for port ${JHPORTS[$i]}" 1>&2; return 1; fi
+    if test $RC != 0; then echo -e "${YELLOW}ERROR: Failed setting allowed-adr-pair for port ${JHPORTS[$i]}$NORM" 1>&2; return 1; fi
   done
 }
 
@@ -1163,6 +1177,7 @@ deleteFIPs()
   if test -n "$SNATROUTE" -a -n "${ROUTERS[0]}"; then
     ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --no-routes
   fi
+  OLDFIPS=(${FIPS[*]})
   deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
 }
 
@@ -1260,7 +1275,7 @@ setPortForward()
   #echo "$VIP ${REDIRS[*]}"
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
     if test -z "${REDIRS[$JHNUM]}"; then
-      echo "ERROR: No redirections?" 1>&2
+      echo -e "${YELLOW}ERROR: No redirections?$NORM" 1>&2
       return 1
     fi
     FWDMASQ=$( echo ${REDIRS[$JHNUM]} )
@@ -1670,7 +1685,14 @@ waitnetgone()
   VMS=( $(findres ${RPRE}VM_VM nova list) ); DVMS=(${VMS[*]})
   deleteVMs
   ROUTERS=( $(findres "" neutron router-list) )
-  FIPS=( $(neutron floatingip-list | grep '10\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') ); DFIPS=(${FIPS[*]})
+  # Floating IPs don't have a name and are thus hard to associate with us
+  if test -n "${OLDFIPS[*]}"; then
+    OFFILT=$(echo "\\(${OLDFIPS[*]}\\)" | sed 's@ @\\|@g')
+    FIPS=( $(neutron floatingip-list | grep "$OFFILT") )
+  else
+    FIPS=( $(neutron floatingip-list | grep '10\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  fi
+  DFIPS=(${FIPS[*]})
   deleteFIPs
   JHVMS=( $(findres ${RPRE}VM_JH nova list) ); DJHVMS=(${JHVMS[*]})
   deleteJHVMs
@@ -1681,8 +1703,9 @@ waitnetgone()
   JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) ); DJHVOLS=(${JHVOLUMES[*]})
   waitdelJHVMs; deleteJHVols
   if test -n "$DVMS$DFIPS$DJHVMS$DKPS$DVOL$DJHVOLS"; then
-    echo "ERROR: Found VMs $DVMS FIPs $DFIPS JHVMs $DJHVMS Keypairs $DKPS Volumes $DVOLS JHVols $DJHVOLS" 1>&2
-    sendalarm 1 Cleanup "Found VMs $DVMS FIPs $DFIPS JHVMs $DJHVMS Keypairs $DKPS Volumes $DVOLS JHVols $DJHVOLS" 0
+    echo -e "${YELLOW}ERROR: Found VMs $DVMS FIPs $DFIPS JHVMs $DJHVMS Keypairs $DKPS Volumes $DVOLS JHVols $DJHVOLS\n VMs $REMVMS FIPS $REMFIPS JHVMs $REMHJVMS Keypairs $REMKPS Volumes $REMVOLS JHVols $REMJHVOLS$NORM" 1>&2
+    sendalarm 1 Cleanup "Found VMs $DVMS FIPs $DFIPS JHVMs $DJHVMS Keypairs $DKPS Volumes $DVOLS JHVols $DJHVOLS
+ VMs $REMVMS FIPs $REMFIPS JHVMs $REMJHVMS Keypairs $REMKPS Volumes $REMVOLS JHVols $REMJHVOLS" 0
   fi
   # Cleanup: These might be left over ...
   local to
@@ -1715,7 +1738,7 @@ waitnetgone()
 # Clean/Delete old OpenStack project
 cleanprj()
 {
-  if test ${#OS_PROJECT_NAME} -le 5; then echo -e "$RED ERROR: Won't delete $OS_PROJECT_NAME$NORM" 1>&2; return 1; fi
+  if test ${#OS_PROJECT_NAME} -le 5; then echo -e "${YELLOW}ERROR: Won't delete $OS_PROJECT_NAME$NORM" 1>&2; return 1; fi
   #TODO: Wait for resources being gone
   sleep 10
   otc.sh iam deleteproject $OS_PROJECT_NAME 2>/dev/null || otc.sh iam cleanproject $OS_PROJECT_NAME
@@ -1799,6 +1822,7 @@ declare -i CUMVMERRORS=0
 declare -i CUMWAITERRORS=0
 declare -i CUMVMS=0
 declare -i RUNS=0
+declare -i SUCCRUNS=0
 
 LASTDATE=$(date +%Y-%m-%d)
 LASTTIME=$(date +%H:%M:%S)
@@ -1917,12 +1941,12 @@ else # test "$1" = "DEPLOY"; then
                 sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
                 errwait $VMERRWAIT
               fi
-              # TODO: Test login to all normal VMs (not just the last two)
               # TODO: Create disk ... and attach to JH VMs ... and test access
               # TODO: Attach additional net interfaces to JHs ... and test IP addr
               MSTOP=$(date +%s)
               WAITTIME+=($(($MSTOP-$WSTART)))
               echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
+              let SUCCRUNS+=1
               sleep 5
               #read ANS
               # Subtract waiting time (5s here)
@@ -1976,7 +2000,7 @@ if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXI
   sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $(hostname) testing $SHORT_DOMAIN/$OS_PROJECT_NAME:
 
-$RUNS deployments ($CUMVMS VMs, $CUMAPICALLS API calls)
+$RUNS deployments ($SUCCRUNS successful, $CUMVMS/$(($RUNS*($NOAZS+$NOVMS))) VMs, $CUMAPICALLS API calls)
 $CUMVMERRORS VM LOGIN ERRORS
 $CUMWAITERRORS VM TIMEOUT ERRORS
 $CUMAPIERRORS API ERRORS
@@ -1987,7 +2011,7 @@ $(allstats)
 
 #TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$(hostname)|$OS_PROJECT_NAME
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
-#RUN: $RUNS|$((($NOAZS+$NOVMS)*$RUNS))|$CUMAPICALLS
+#RUN: $RUNS|$SUCCRUNS|$CUMVMS|$((($NOAZS+$NOVMS)*$RUNS))|$CUMAPICALLS
 #ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS
 $(allstats -m)
 " 0
@@ -2023,5 +2047,5 @@ fi
 waitnetgone
 let loop+=1
 done
-rm ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem
+rm -f ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem
 if test "$REFRESHPRJ" != 0; then cleanprj; fi
