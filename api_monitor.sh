@@ -935,6 +935,7 @@ deleteRIfaces()
 createSGroups()
 {
   local RESP
+  local OLDAPIERRS=$APIERRORS
   NAMES=( ${RPRE}SG_JumpHost ${RPRE}SG_Internal )
   createResources 2 NETSTATS SGROUP NAME NONE "" id $NETTIMEOUT neutron security-group-create "\$VAL" || return
   # And set rules ... (we don't need to keep track of and delete them)
@@ -942,7 +943,7 @@ createSGroups()
   SG1=${SGROUPS[1]}
   # Configure SGs: We can NOT allow any references to SG0, as the allowed-address-pair setting renders SGs useless
   #  that reference the SG0
-  let APICALLS+=10
+  let APICALLS+=9
   #RESP=$(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG0 $SG0)
   RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-ip-prefix $JHSUBNETIP $SG0)
   updAPIerr $?
@@ -996,6 +997,7 @@ createSGroups()
   NETSTATS+=( $TM )
   #neutron security-group-show $SG0
   #neutron security-group-show $SG1
+  test $OLDAPIERRS == $APIERRORS
 }
 
 cleanupPorts()
