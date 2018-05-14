@@ -121,8 +121,11 @@ DEFTIMEOUT=16
 
 REFRESHPRJ=0
 
-echo "Running api_monitor.sh v$VERSION"
-if test "$1" != "CLEANUP"; then echo "Using $RPRE prefix for resrcs on $OS_USER_DOMAIN_NAME/$OS_PROJECT_NAME (${AZS[*]})"; fi
+DOMAIN=$(grep '^search' /etc/resolv.conf | awk '{ print $2; }'; exit ${PIPESTATUS[0]}) || DOMAIN=otc.t-systems.com
+HOSTNAME=$(hostname)
+FQDN=$(hostname -f 2>/dev/null) || FQDN=$HOSTNAME.$DOMAIN
+echo "Running api_monitor.sh v$VERSION on host $FQDN"
+if test "$1" != "CLEANUP"; then echo "Using $RPRE prefix for api_monitor resources on $OS_USER_DOMAIN_NAME (${AZS[*]})"; fi
 
 # Images, flavors, disk sizes
 JHIMG="${JHIMG:-Standard_openSUSE_42_JeOS_latest}"
@@ -264,15 +267,15 @@ sendalarm()
   if test $1 = 0; then
     PRE="Note"
     RES=""
-    echo -e "$BOLD$PRE on $ALARMPRE/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$BOLD$PRE on $SHORT_DOMAIN/${RPRE%_} on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   elif test $1 -gt 128; then
     PRE="TIMEOUT $4"
     RES=" => $1"
-    echo -e "$RED$PRE on $ALARMPRE/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$RED$PRE on $SHORT_DOMAIN/${RPRE%_} on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   else
     PRE="ALARM $1"
     RES=" => $1"
-    echo -e "$RED$PRE on $ALARMPRE/${RPRE%_} on $(hostname): $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$RED$PRE on $SHORT_DOMAIN/${RPRE%_} on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   fi
   TOMSG=""
   if test "$4" != "0" -a $1 != 0; then
@@ -287,17 +290,17 @@ sendalarm()
     if test -n "$EMAIL2" -a $1 != 0; then EM="$EMAIL2"; else EM="$EMAIL"; fi
     RECEIVER_LIST=("$EM" "${RECEIVER_LIST[@]}")
   fi
-  FROM="$LOGNAME@$(hostname -f)"
+  FROM="$LOGNAME@$FQDN"
   for RECEIVER in "${RECEIVER_LIST[@]}"
   do
-    echo "From: ${RPRE%_} $(hostname) <$FROM>
+    echo "From: ${RPRE%_} $HOSTNAME <$FROM>
 To: $RECEIVER
 Subject: $PRE on $ALARMPRE: $2
 Date: $(date -R)
 
 $PRE on $SHORT_DOMAIN/$OS_PROJECT_NAME
 
-${RPRE%_} on $(hostname):
+${RPRE%_} on $HOSTNAME:
 $2
 $3
 $TOMSG" | /usr/sbin/sendmail -t -f $FROM
@@ -314,10 +317,10 @@ $TOMSG" | /usr/sbin/sendmail -t -f $FROM
   for RECEIVER in "${RECEIVER_LIST[@]}"
   do
     echo "$PRE on $SHORT_DOMAIN/$OS_PROJECT_NAME: $DATE
-${RPRE%_} on $(hostname):
+${RPRE%_} on $HOSTNAME:
 $2
 $3
-$TOMSG" | otc.sh notifications publish $RECEIVER "$PRE from $(hostname)/$ALARMPRE"
+$TOMSG" | otc.sh notifications publish $RECEIVER "$PRE from $HOSTNAME/$SHORT_DOMAIN"
   done
 }
 
@@ -2016,7 +2019,7 @@ CDATE=$(date +%Y-%m-%d)
 CTIME=$(date +%H:%M:%S)
 if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXITER; then
   sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
-$RPRE $VERSION on $(hostname) testing $SHORT_DOMAIN/$OS_PROJECT_NAME:
+$RPRE $VERSION on $HOSTNAME testing $SHORT_DOMAIN/$OS_PROJECT_NAME:
 
 $RUNS deployments ($SUCCRUNS successful, $CUMVMS/$(($RUNS*($NOAZS+$NOVMS))) VMs, $CUMAPICALLS API calls)
 $CUMVMERRORS VM LOGIN ERRORS
@@ -2027,13 +2030,13 @@ $CUMPINGERRORS Ping failures
 
 $(allstats)
 
-#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$(hostname)|$OS_PROJECT_NAME
+#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$HOSTNAME|$OS_PROJECT_NAME
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
 #RUN: $RUNS|$SUCCRUNS|$CUMVMS|$((($NOAZS+$NOVMS)*$RUNS))|$CUMAPICALLS
 #ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS
 $(allstats -m)
 " 0
-  echo "#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$(hostname)|$OS_PROJECT_NAME
+  echo "#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$HOSTNAME|$OS_PROJECT_NAME
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
 #RUN: $RUNS|$CUMVMS|$CUMAPICALLS
 #ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS
