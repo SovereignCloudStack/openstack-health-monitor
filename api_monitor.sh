@@ -464,6 +464,7 @@ ostackcmd_id()
 # $2 = timeout (in s)
 # $3-oo command
 # DO NOT call this in a subshell
+# As this is not in a subshell, we can also do API error counting directly ...
 OSTACKRESP=""
 ostackcmd_tm()
 {
@@ -1178,6 +1179,11 @@ deleteFIPs()
 {
   if test -n "$SNATROUTE" -a -n "${ROUTERS[0]}"; then
     ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --no-routes
+    if test $? != 0; then
+      echo -e "${YELLOW}ERROR: router --no-routes failed, retry ...${NORM}" 1>&2
+      sleep 2
+      ostackcmd_tm NETSTATS $(($NETTIMEOUT+8)) neutron router-update ${ROUTERS[0]} --no-routes
+    fi
   fi
   OLDFIPS=(${FIPS[*]})
   deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
@@ -1392,6 +1398,11 @@ deleteVMs()
     echo "Del VM in batch: ${VMS[*]}"
     DT=$(date +%s)
     ostackcmd_tm NOVABSTATS $(($NOVMS*$DEFTIMEOUT/2+$NOVABOOTTIMEOUT)) nova delete ${VMS[*]}
+    if test $? != 0; then
+      echo -e "${YELLOW}ERROR: VM delete call returned error. Retrying ...$NORM" 1>&2
+      sleep 2
+      ostackcmd_tm NOVABSTATS $(($NOVMS*$DEFTIMEOUT/2+$NOVABOOTTIMEOUT)) nova delete ${VMS[*]}
+    fi
     for vm in $(seq 0 $((${#VMS[*]}-1))); do VMSTIME[$vm]=$DT; done
   else
     deleteResources NOVABSTATS VM VMSTIME $NOVABOOTTIMEOUT nova delete
