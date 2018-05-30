@@ -172,6 +172,7 @@ usage()
   echo "         second -m splits notifications; notes to first, alarms to second URN"
   echo " -s     sends stats as well once per day, not just alarms"
   echo " -S [NM] sends stats to grafana via local telegraf http_listener (def for NM=api-monitoring)"
+  echo " -q     do not send any alarms"
   echo " -d     boot Directly from image (not via volume)"
   echo " -P     do not create Port before VM creation"
   echo " -D     create all VMs with one API call (implies -d -P)"
@@ -201,6 +202,7 @@ while test -n "$1"; do
     "-D") BOOTALLATONCE=1; BOOTFROMIMAGE=1; unset MANUALPORTSETUP;;
     "-e") if test -z "$EMAIL"; then EMAIL="$2"; else EMAIL2="$2"; fi; shift;;
     "-m") if test -z "$SMNID"; then SMNID="$2"; else SMNID2="$2"; fi; shift;;
+    "-q") NOALARM=1;;
     "-i") MAXITER=$2; shift;;
     "-g") ADDVMVOLSIZE=$2; shift;;
     "-G") ADDJHVOLSIZE=$2; shift;;
@@ -280,7 +282,9 @@ sendalarm()
   TOMSG=""
   if test "$4" != "0" -a $1 != 0; then
     TOMSG="(Timeout: ${4}s)"
+    echo -e "$BOLD$PRE(Timeout> ${4}s)$NORM" 1>&2
   fi
+  if test -n "$NOALARM"; then return; fi
   if test $1 != 0; then
     RECEIVER_LIST=("${ALARM_EMAIL_ADDRESSES[@]}")
   else
