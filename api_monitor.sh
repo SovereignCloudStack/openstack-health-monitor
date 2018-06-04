@@ -1434,14 +1434,16 @@ setmetaVMs()
 # Wait for VMs being accessible behind fwdmasq (ports 222+)
 wait222()
 {
-  local NCPROXY pno ctr JHNO waiterr red
+  local NCPROXY pno ctr JHNO waiterr perr red ST TIM
   declare -i waiterr=0
+  ST=$(date %s)
   #if test -n "$http_proxy"; then NCPROXY="-X connect -x $http_proxy"; fi
   MAXWAIT=90
   for JHNO in $(seq 0 $(($NOAZS-1))); do
     echo -n "${FLOATS[$JHNO]} "
     echo -n "ping "
     declare -i ctr=0
+    perr=0
     # First test JH
     while test $ctr -le $MAXWAIT; do
       ping -c1 -w2 ${FLOATS[$JHNO]} >/dev/null 2>&1 && break
@@ -1449,7 +1451,7 @@ wait222()
       echo -n "."
       let ctr+=1
     done
-    if test $ctr -ge $MAXWAIT; then echo -e "${RED}JumpHost$JHNO (${FLOATS[$JHNO]}) not pingable${NORM}"; let waiterr+=1; fi
+    if test $ctr -ge $MAXWAIT; then echo -e "${RED}JumpHost$JHNO (${FLOATS[$JHNO]}) not pingable${NORM}"; let waiterr+=1; perr=1; fi
     # Now ssh
     echo -n " ssh "
     declare -i ctr=0
@@ -1462,6 +1464,13 @@ wait222()
     if [ $ctr -ge $MAXWAIT ]; then
       echo -ne " $RED timeout $NORM"
       let waiterr+=1
+      let perr+=1
+    fi
+    if test -n "$GRAFANA"; then
+      TIM=$(($(date %s)-$ST))
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$perr $(date +%s%N)" >/dev/null
+    fi
+    if [ $ctr -ge $MAXWAIT ]; then
       # It does not make sense to wait for machines behind JH if JH is not reachable
       local skip=$(echo ${REDIRS[$JHNO]} | wc -w)
       sleep $skip
@@ -1470,6 +1479,7 @@ wait222()
     fi
     # Now test VMs behind JH
     for red in ${REDIRS[$JHNO]}; do
+      local verr=0
       pno=${red#*tcp,}
       pno=${pno%%,*}
       declare -i ctr=0
@@ -1480,8 +1490,12 @@ wait222()
         sleep 2
         let ctr+=1
       done
-      if [ $ctr -ge $MAXWAIT ]; then echo -ne " $RED timeout $NORM"; let waiterr+=1; fi
+      if [ $ctr -ge $MAXWAIT ]; then echo -ne " $RED timeout $NORM"; let waiterr+=1; verr=1; fi
       MAXWAIT=30
+      if test -n "$GRAFANA"; then
+        TIM=$(($(date %s)-$ST))
+        curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=VM$JHNO:$pno duration=$TIM,return_code=$verr $(date +%s%N)" >/dev/null
+      fi
     done
     MAXWAIT=60
   done
@@ -1545,10 +1559,10 @@ testjhinet()
     elif test $R == 1; then
       let CUMPINGERRORS+=1; ERR="${ERR}ssh JH$JHNO ping $PINGTARGET || ping $PINGTARGET2; "
     fi
-    if test -n "$GRAFANA"; then
-      TIM=$(($(date %s)-$ST))
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$R $(date +%s%N)" >/dev/null
-    fi
+#    if test -n "$GRAFANA"; then
+#      TIM=$(($(date %s)-$ST))
+#      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$R $(date +%s%N)" >/dev/null
+#    fi
   done
   if test $RC = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $ERR $NORM"; return $RC; fi
   if test -n "$ERR"; then echo -e "$RED $ERR $NORM"; fi
