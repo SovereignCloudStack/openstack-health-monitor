@@ -125,7 +125,9 @@ DOMAIN=$(grep '^search' /etc/resolv.conf | awk '{ print $2; }'; exit ${PIPESTATU
 HOSTNAME=$(hostname)
 FQDN=$(hostname -f 2>/dev/null) || FQDN=$HOSTNAME.$DOMAIN
 echo "Running api_monitor.sh v$VERSION on host $FQDN"
-if test "$1" != "CLEANUP"; then echo "Using $RPRE prefix for api_monitor resources on $OS_USER_DOMAIN_NAME (${AZS[*]})"; fi
+if test "$1" != "CLEANUP" -a "$2" != "CLEANUP"; then
+  echo "Using $RPRE prefix for resrcs on $OS_USER_DOMAIN_NAME/$OS_PROJECT_NAME (${AZS[*]})"
+fi
 
 # Images, flavors, disk sizes
 JHIMG="${JHIMG:-Standard_openSUSE_42_JeOS_latest}"
