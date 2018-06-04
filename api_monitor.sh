@@ -1459,7 +1459,15 @@ wait222()
       sleep 2
       let ctr+=1
     done
-    if [ $ctr -ge $MAXWAIT ]; then echo -ne " $RED timeout $NORM"; let waiterr+=1; fi
+    if [ $ctr -ge $MAXWAIT ]; then
+      echo -ne " $RED timeout $NORM"
+      let waiterr+=1
+      # It does not make sense to wait for machines behind JH if JH is not reachable
+      local skip=$(echo ${REDIRS[$JHNO]} | wc -w)
+      sleep $skip
+      let waiterr+=$skip
+      continue
+    fi
     # Now test VMs behind JH
     for red in ${REDIRS[$JHNO]}; do
       pno=${red#*tcp,}
