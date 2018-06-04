@@ -1514,7 +1514,7 @@ wait222()
       if [ $ctr -ge $MAXWAIT ]; then echo -ne " $RED timeout $NORM"; let waiterr+=1; verr=1; fi
       MAXWAIT=30
       if test -n "$GRAFANA"; then
-        TIM=$(($(date %s)-$ST))
+        TIM=$(($(date +%s)-$ST))
         curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=VM$JHNO:$pno duration=$TIM,return_code=$verr $(date +%s%N)" >/dev/null
       fi
     done
