@@ -77,7 +77,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.34
+VERSION=1.35
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -1522,10 +1522,11 @@ testlsandping()
 # Test internet access of JumpHosts (via ssh)
 testjhinet()
 {
-  local RC R JHNO
+  local RC R JHNO ST TIM
   unset SSH_AUTH_SOCK
   ERR=""
   #echo "Test JH access and outgoing inet ... "
+  ST=$(date +%s)
   declare -i RC=0
   for JHNO in $(seq 0 $(($NOAZS-1))); do
     echo -n "Access JH$JHNO (${FLOATS[$JHNO]}): "
@@ -1535,6 +1536,10 @@ testjhinet()
       RC=2; ERR="${ERR}ssh JH$JHNO ls; "
     elif test $R == 1; then
       let CUMPINGERRORS+=1; ERR="${ERR}ssh JH$JHNO ping $PINGTARGET || ping $PINGTARGET2; "
+    fi
+    if test -n "$GRAFANA"; then
+      TIM=$(($(date %s)-$ST))
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$R $(date +%s%N)" >/dev/null
     fi
   done
   if test $RC = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $ERR $NORM"; return $RC; fi
