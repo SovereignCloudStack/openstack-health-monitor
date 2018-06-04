@@ -740,7 +740,9 @@ waitlistResources()
   #echo "$PARSE"
   declare -i ctr=0
   declare -i WERR=0
-  while test -n "${SLIST[*]}" -a $ctr -le 240; do
+  local MAXWAIT
+  if test -n "$CSTAT"; then MAXWAIT=240; else MAXWAIT=30; fi
+  while test -n "${SLIST[*]}" -a $ctr -le $MAXWAIT; do
     local STATSTR=""
     local CMD=`eval echo $@ 2>&1`
     ostackcmd_tm $STATNM $TIMEOUT $CMD
@@ -777,11 +779,13 @@ waitlistResources()
         TM=$(date +%s)
         TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
         unset SLIST[$i]
-        eval ${CSTAT}+="($TM)"
-        if test -n "$GRAFANA"; then
-          # log time / rc to grafana
-          if test $STE -ge 2; then RC=0; else RC=$STE; fi
-          curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)" >/dev/null
+	if test -n "$CSTAT"; then
+          eval ${CSTAT}+="($TM)"
+          if test -n "$GRAFANA"; then
+            # log time / rc to grafana
+            if test $STE -ge 2; then RC=0; else RC=$STE; fi
+            curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)" >/dev/null
+          fi
         fi
       fi
     done
@@ -1150,7 +1154,7 @@ createFIPs()
   waitResources NETSTATS JHPORT JPORTSTAT JVMSTIME "NONNULL" "NONONO" "device_owner" $NETTIMEOUT neutron port-show
   # Now FIP creation is safe
   createResources $NOAZS FIPSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL $EXTNET
-  if test $? != 0; then return 1; fi
+  if test $? != 0 -o -n "$INJECTFIPERR"; then return 1; fi
   # Use API to tell VPC that the VIP is the next hop (route table)
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
@@ -1194,6 +1198,16 @@ deleteFIPs()
   fi
   OLDFIPS=(${FIPS[*]})
   deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
+  # Extra treatment: Try again to avoid leftover FIPs
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 0
+  local FIPSLEFT=""
+  for FIP in ${OLDFIPS[*]}; do
+    if echo "$FIPSLEFT" | grep "^| $FIP" >/dev/null 2>&1; then FIPSLEFT="$FIPSLEFT$FIP "; fi
+  done
+  if test -n "$FIPSLEFT"; then
+    echo -e "${RED}Delete FIP again: $FIP${NORM}" 1>&2
+    ostackcmd_tm NETSTATS $FIPTIMEOUT neutron floatingip-delete $FIPSLEFT
+  fi
 }
 
 # Create a list of port forwarding rules (redirection/fwdmasq)
@@ -1312,6 +1326,11 @@ waitJHVMs()
 }
 deleteJHVMs()
 {
+  # The platform can take a long long time to delete a VM in build state, so better wait a bit
+  # to see whether it becomes active, so deletion has a better chance to suceed in finite time
+  # Note: We wait ~100s (30x4s) and don't disturb VMCSTATS by this, empty CSTATS is handled
+  #  as special case in waitlistResources
+  waitlistResources NOVASTATS JHVM "" JVMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
   JVMSTIME=()
   deleteResources NOVABSTATS JHVM JVMSTIME $NOVATIMEOUT nova delete
 }
@@ -1436,7 +1455,7 @@ wait222()
 {
   local NCPROXY pno ctr JHNO waiterr perr red ST TIM
   declare -i waiterr=0
-  ST=$(date %s)
+  ST=$(date +%s)
   #if test -n "$http_proxy"; then NCPROXY="-X connect -x $http_proxy"; fi
   MAXWAIT=90
   for JHNO in $(seq 0 $(($NOAZS-1))); do
