@@ -1488,7 +1488,7 @@ wait222()
       let perr+=1
     fi
     if test -n "$GRAFANA"; then
-      TIM=$(($(date %s)-$ST))
+      TIM=$(($(date +%s)-$ST))
       curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$perr $(date +%s%N)" >/dev/null
     fi
     if [ $ctr -ge $MAXWAIT ]; then
@@ -1581,7 +1581,7 @@ testjhinet()
       let CUMPINGERRORS+=1; ERR="${ERR}ssh JH$JHNO ping $PINGTARGET || ping $PINGTARGET2; "
     fi
 #    if test -n "$GRAFANA"; then
-#      TIM=$(($(date %s)-$ST))
+#      TIM=$(($(date +%s)-$ST))
 #      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$R $(date +%s%N)" >/dev/null
 #    fi
   done
