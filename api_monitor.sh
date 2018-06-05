@@ -185,6 +185,7 @@ usage()
   echo " -W N   sets error wait (VM only): 0-inf seconds or neg value for interactive wait"
   echo " -p N   use a new project every N iterations"
   echo " -c     noColors: don't use bold/red/... ASCII sequences"
+  echo " -x     assume eXclusive project, clean all floating IPs found"
   echo "Or: api_monitor.sh [-f] CLEANUP XXX to clean up all resources with prefix XXX"
   exit 0
 }
@@ -213,6 +214,7 @@ while test -n "$1"; do
     "-f") FORCEDEL=XDELX;;
     "-p") REFRESHPRJ=$2; shift;;
     "-c") NOCOL=1;;
+    "-x") CLEANALLFIPS=1;;
     "CLEANUP") break;;
     *) echo "Unknown argument \"$1\""; exit 1;;
   esac
@@ -1207,7 +1209,8 @@ deleteFIPs()
     if echo "$FIPSLEFT" | grep "^| $FIP" >/dev/null 2>&1; then FIPSLEFT="$FIPSLEFT$FIP "; fi
   done
   if test -n "$FIPSLEFT"; then
-    echo -e "${RED}Delete FIP again: $FIP${NORM}" 1>&2
+    sendalarm 1 "Cleanup Floating IPs $FIPSLEFT again"
+    #echo -e "${RED}Delete FIP again: $FIP${NORM}" 1>&2
     ostackcmd_tm NETSTATS $FIPTIMEOUT neutron floatingip-delete $FIPSLEFT
   fi
 }
@@ -1759,9 +1762,11 @@ waitnetgone()
   deleteVMs
   ROUTERS=( $(findres "" neutron router-list) )
   # Floating IPs don't have a name and are thus hard to associate with us
-  if test -n "${OLDFIPS[*]}"; then
+  if test -n "$CLEANALLFIPS"; then
+    FIPS=( $(neutron floatingip-list | grep '[0-9]\{1,3\}\.[0-9]\{1,3\}\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  elif test -n "${OLDFIPS[*]}"; then
     OFFILT=$(echo "\\(${OLDFIPS[*]}\\)" | sed 's@ @\\|@g')
-    FIPS=( $(neutron floatingip-list | grep "$OFFILT") )
+    FIPS=( $(neutron floatingip-list | grep "$OFFILT" | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   else
     FIPS=( $(neutron floatingip-list | grep '10\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   fi
