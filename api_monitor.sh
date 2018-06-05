@@ -746,6 +746,7 @@ waitlistResources()
   declare -i WERR=0
   local MAXWAIT
   if test -n "$CSTAT"; then MAXWAIT=240; else MAXWAIT=30; fi
+  if test -z "${RLIST[*]}"; then return 0; fi
   while test -n "${SLIST[*]}" -a $ctr -le $MAXWAIT; do
     local STATSTR=""
     local CMD=`eval echo $@ 2>&1`
@@ -1329,13 +1330,14 @@ waitJHVMs()
   #waitResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NA" "status" nova show
   waitlistResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
 }
+
 deleteJHVMs()
 {
   # The platform can take a long long time to delete a VM in build state, so better wait a bit
-  # to see whether it becomes active, so deletion has a better chance to suceed in finite time
+  # to see whether it becomes active, so deletion has a better chance to suceed in finite time.
   # Note: We wait ~100s (30x4s) and don't disturb VMCSTATS by this, empty CSTATS is handled
   #  as special case in waitlistResources
-  waitlistResources NOVASTATS JHVM "" JVMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
+  waitlistResources NOVASTATS JHVM "" JVMSTIME "ACTIVE" "ERROR" 2 $NOVATIMEOUT nova list
   JVMSTIME=()
   deleteResources NOVABSTATS JHVM JVMSTIME $NOVATIMEOUT nova delete
 }
