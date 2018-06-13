@@ -286,7 +286,7 @@ sendalarm()
   TOMSG=""
   if test "$4" != "0" -a $1 != 0; then
     TOMSG="(Timeout: ${4}s)"
-    echo -e "$BOLD$PRE(Timeout> ${4}s)$NORM" 1>&2
+    echo -e "$BOLD$PRE(Timeout: ${4}s)$NORM" 1>&2
   fi
   if test -n "$NOALARM"; then return; fi
   if test $1 != 0; then
@@ -554,7 +554,7 @@ createResources()
     updAPIerr $RC
     local TM
     read TM ID <<<"$RESP"
-    eval ${STATNM}+="($TM)"
+    if test $RC == 0; then eval ${STATNM}+="($TM)"; fi
     let ctr+=1
     # Workaround for teuto.net
     if test "$1" = "cinder" && [[ $OS_AUTH_URL == *teutostack* ]]; then echo -en " ${RED}+5s${NORM} " 1>&2; sleep 5; fi
@@ -600,7 +600,6 @@ deleteResources()
     local RC="$?"
     updAPIerr $RC
     read TM ID <<<"$RESP"
-    eval ${STATNM}+="($TM)"
     if test $RC != 0; then
       echo -e "${YELLOW}ERROR deleting $RNM $rsrc; retry and continue ...$NORM" 1>&2
       let ERR+=1
@@ -609,6 +608,8 @@ deleteResources()
       RC=$?
       updAPIerr $RC
       if test $RC != 0; then FAILDEL+=($rsrc); fi
+    else
+      eval ${STATNM}+="($TM)"
     fi
     unset LIST[-1]
   done
