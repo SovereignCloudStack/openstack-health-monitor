@@ -1559,6 +1559,7 @@ testlsandping()
       ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1 || return 2
     fi
   fi
+  # TODO: Add test for accessing 100.125.0.1 (Provider net)
   PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   if test $? = 0; then echo $PING; return 0; fi
   sleep 1
