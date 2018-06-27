@@ -13,6 +13,8 @@
 # - Errors not yet handled everywhere
 # - Live Volume and NIC attachment not yet implemented
 # - Log too verbose for permament operation ...
+# - Script allows to create multiple nets/subnets independent from no of AZs, but the
+#   assumption at some places probably still wrongly is that NONETS == NOAZS.
 #
 # (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017-7/2017
 # License: CC-BY-SA (2.0)
@@ -42,6 +44,7 @@
 # - we ping them, log in via ssh and see whether they can ping to the outside world (quad9)
 # - NOT YET: attach an additional disk
 # - NOT YET: attach an additional NIC
+# - NOT YET: Load-Balancer
 # 
 # - Finally, we clean up ev'thing in reverse order
 #   (We have kept track of resources to clean up.
