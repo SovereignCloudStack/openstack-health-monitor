@@ -749,7 +749,6 @@ waitlistResources()
   #echo "$PARSE"
   declare -i ctr=0
   declare -i WERR=0
-  local MAXWAIT
   if test -n "$CSTAT"; then MAXWAIT=240; else MAXWAIT=30; fi
   if test -z "${RLIST[*]}"; then return 0; fi
   while test -n "${SLIST[*]}" -a $ctr -le $MAXWAIT; do
