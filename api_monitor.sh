@@ -740,6 +740,7 @@ waitlistResources()
   local TIMEOUT=$1; shift
   local STATI=()
   eval local RLIST=( \"\${${RNM}S[@]}\" )
+  eval RRLIST=( \"\${${RNM}S[@]}\" )
   eval local SLIST=( \"\${${STIME}[@]}\" )
   local LAST=$(( ${#RLIST[@]} - 1 ))
   local PARSE="^|"
@@ -787,6 +788,7 @@ waitlistResources()
         # Found
         TM=$(date +%s)
         TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
+        unset RRLIST[$i]
         unset SLIST[$i]
 	if test -n "$CSTAT"; then
           eval ${CSTAT}+="($TM)"
@@ -803,8 +805,8 @@ waitlistResources()
     sleep 3
     let ctr+=1
   done
-  if test $ctr -ge 320; then let WERR+=1; fi
-  if test -n "${SLIST[*]}"; then echo -e "\nLEFT: ${RED}${SLIST[*]}${NORM}"; else echo; fi
+  if test $ctr -ge $MAXWAIT; then let WERR+=${#SLIST[*]}; fi
+  if test -n "${SLIST[*]}"; then echo -e "\nLEFT: ${RED}${RRLIST[*]}:${SLIST[*]}${NORM}"; else echo; fi
   return $WERR
 }
 
@@ -2006,7 +2008,13 @@ else # test "$1" = "DEPLOY"; then
              if createVMs; then
               let ROUNDVMS+=$NOVMS
               waitJHVMs
+              RC=$?
+              if test $RC != 0; then
+                # Errors will be counted later again
+                sendalarm $RC "Timeout waiting for JHVM " "${RRLIST[*]}" $((4*$MAXWAIT))
+              fi
               waitVMs
+              # TODO: Raise ALARM here if needed
               setmetaVMs
               setPortForward
               WSTART=$(date +%s)
