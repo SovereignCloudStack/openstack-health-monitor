@@ -80,7 +80,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.35
+VERSION=1.36
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -96,10 +96,13 @@ SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
 GRAFANANM=api-monitoring
 
 # Number of VMs and networks
-AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/')
-if test -z "$AZS"; then AZS=(eu-de-01 eu-de-02);
-else AZS=($AZS); fi
-#echo "${#AZS[*]} AZs: ${AZS[*]}"
+if test -z "$AZS"; then
+  AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/')
+  if test -z "$AZS"; then AZS=$(otc.sh vm listaz 2>/dev/null | grep -v region); fi
+  if test -z "$AZS"; then AZS="eu-de-01 eu-de-02"; fi
+fi
+AZS=($AZS)
+#echo "${#AZS[*]} AZs: ${AZS[*]}"; exit 0
 NOAZS=${#AZS[*]}
 NOVMS=12
 NONETS=$NOAZS
