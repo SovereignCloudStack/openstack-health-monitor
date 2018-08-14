@@ -1742,14 +1742,14 @@ cleanup()
   deleteFIPs
   JHVMS=( $(findres ${RPRE}VM_JH nova list) )
   deleteJHVMs
-  KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
-  deleteKeypairs
   VIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
   deleteVIPs
   VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
   waitdelVMs; deleteVols
   JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) )
   waitdelJHVMs; deleteJHVols
+  KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  deleteKeypairs
   PORTS=( $(findres ${RPRE}Port_VM neutron port-list) )
   JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
   deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
@@ -1785,12 +1785,12 @@ waitnetgone()
   deleteFIPs
   JHVMS=( $(findres ${RPRE}VM_JH nova list) ); DJHVMS=(${JHVMS[*]})
   deleteJHVMs
-  KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') ); DKPS=(${KEYPAIRS[*]})
-  deleteKeypairs
   VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) ); DVOLS=(${VOLUMES[*]})
   waitdelVMs; deleteVols
   JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) ); DJHVOLS=(${JHVOLUMES[*]})
   waitdelJHVMs; deleteJHVols
+  KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') ); DKPS=(${KEYPAIRS[*]})
+  deleteKeypairs
   if test -n "$DVMS$DFIPS$DJHVMS$DKPS$DVOL$DJHVOLS"; then
     echo -e "${YELLOW}ERROR: Found VMs $DVMS FIPs $DFIPS JHVMs $DJHVMS Keypairs $DKPS Volumes $DVOLS JHVols $DJHVOLS\n VMs $REMVMS FIPS $REMFIPS JHVMs $REMHJVMS Keypairs $REMKPS Volumes $REMVOLS JHVols $REMJHVOLS$NORM" 1>&2
     sendalarm 1 Cleanup "Found VMs $DVMS FIPs $DFIPS JHVMs $DJHVMS Keypairs $DKPS Volumes $DVOLS JHVols $DJHVOLS
