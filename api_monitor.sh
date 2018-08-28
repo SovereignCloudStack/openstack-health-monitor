@@ -1210,7 +1210,7 @@ deleteFIPs()
     fi
   fi
   OLDFIPS=(${FIPS[*]})
-  deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-disassocciate
+  deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-disassociate
   deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
   # Extra treatment: Try again to avoid leftover FIPs
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 0
