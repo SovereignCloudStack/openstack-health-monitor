@@ -1210,6 +1210,7 @@ deleteFIPs()
     fi
   fi
   OLDFIPS=(${FIPS[*]})
+  # osTicket #361989: We suddenly need to disassociate before we can delete. Bug?
   deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-disassociate
   deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
   # Extra treatment: Try again to avoid leftover FIPs
