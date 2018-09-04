@@ -116,12 +116,14 @@ MAXITER=-1
 ERRWAIT=1
 VMERRWAIT=2
 
+unset DISASSOC
+
 # API timeouts
 NETTIMEOUT=16
 FIPTIMEOUT=32
 NOVATIMEOUT=24
 NOVABOOTTIMEOUT=48
-CINDERTIMEOUT=20
+CINDERTIMEOUT=24
 GLANCETIMEOUT=32
 DEFTIMEOUT=16
 
@@ -192,6 +194,7 @@ usage()
   echo " -p N   use a new project every N iterations"
   echo " -c     noColors: don't use bold/red/... ASCII sequences"
   echo " -x     assume eXclusive project, clean all floating IPs found"
+  echo " -I     dIsassociate floating IPs before deleting them"
   echo "Or: api_monitor.sh [-f] CLEANUP XXX to clean up all resources with prefix XXX"
   exit 0
 }
@@ -221,6 +224,7 @@ while test -n "$1"; do
     "-p") REFRESHPRJ=$2; shift;;
     "-c") NOCOL=1;;
     "-x") CLEANALLFIPS=1;;
+    "-I") DISASSOC=1;;
     "CLEANUP") break;;
     *) echo "Unknown argument \"$1\""; exit 1;;
   esac
@@ -1210,8 +1214,10 @@ deleteFIPs()
     fi
   fi
   OLDFIPS=(${FIPS[*]})
-  # osTicket #361989: We suddenly need to disassociate before we can delete. Bug?
-  deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-disassociate
+  if test -n "$DISASSOC"; then
+    # osTicket #361989: We suddenly need to disassociate before we can delete. Bug?
+    deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-disassociate
+  fi
   deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
   # Extra treatment: Try again to avoid leftover FIPs
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 0
