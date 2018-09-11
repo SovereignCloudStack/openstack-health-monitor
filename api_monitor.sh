@@ -80,7 +80,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.37
+VERSION=1.38
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -294,7 +294,7 @@ sendalarm()
     echo -e "$RED$PRE on $SHORT_DOMAIN/${RPRE%_} on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   fi
   TOMSG=""
-  if test "$4" != "0" -a $1 != 0; then
+  if test "$4" != "0" -a $1 != 0 -a $1 != 1; then
     TOMSG="(Timeout: ${4}s)"
     echo -e "$BOLD$PRE(Timeout: ${4}s)$NORM" 1>&2
   fi
@@ -626,7 +626,7 @@ deleteResources()
   test $LN -gt 0 && echo
   # FIXME: Should we try again immediately?
   if test -n "$FAILDEL"; then
-    echo "Store failed dels in REM${RNM}S for later re-cleanup: $FAILDEL"
+    echo "Store failed dels in REM${RNM}S for later re-cleanup: ${FAILDEL[*]}"
     eval "REM${RNM}S=(${FAILDEL[*]})"
   fi
   return $ERR
@@ -1754,6 +1754,9 @@ cleanup()
   deleteVIPs
   VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
   waitdelVMs; deleteVols
+  # When we boot from image, names are different ...
+  VOLUMES=( $(findres ${RPRE}VM_VM cinder list) )
+  deleteVols
   JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) )
   waitdelJHVMs; deleteJHVols
   KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
