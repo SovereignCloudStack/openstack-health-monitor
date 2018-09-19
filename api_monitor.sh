@@ -2029,10 +2029,7 @@ else # test "$1" = "DEPLOY"; then
               waitVMs
               # TODO: Raise ALARM here if needed
               setmetaVMs
-              setPortForward
-              WSTART=$(date +%s)
-              wait222
-              WAITERRORS=$?
+              # Test JumpHosts
               testjhinet
               RC=$?
               if test $RC != 0; then
@@ -2040,6 +2037,11 @@ else # test "$1" = "DEPLOY"; then
                 sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
                 errwait $VMERRWAIT
               fi
+              # Test normal hosts
+              setPortForward
+              WSTART=$(date +%s)
+              wait222
+              WAITERRORS=$?
               testsnat
               RC=$?
               let VMERRORS+=$((RC/2))
