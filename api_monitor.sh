@@ -2159,3 +2159,5 @@ let loop+=1
 done
 rm -f ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem
 if test "$REFRESHPRJ" != 0; then cleanprj; fi
+
+exit $(($CUMAPIERRORS+$APITIMEOUTS+$CUMVMERRORS+$CUMPINGERRORS+$CUMWAITERRORS))
