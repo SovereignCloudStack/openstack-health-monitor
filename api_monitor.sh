@@ -80,7 +80,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.38
+VERSION=1.39
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -138,6 +138,7 @@ if test "$1" != "CLEANUP" -a "$2" != "CLEANUP"; then
 fi
 
 # Images, flavors, disk sizes
+# TODO: Move on to Standard_openSUSE_15_latest
 JHIMG="${JHIMG:-Standard_openSUSE_42_JeOS_latest}"
 JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
 IMG="${IMG:-Standard_CentOS_7_latest}"
@@ -146,7 +147,7 @@ JHFLAVOR=${JHFLAVOR:-computev1-1}
 FLAVOR=${FLAVOR:-s2.medium.1}
 
 if [[ "$JHIMG" != *openSUSE* ]]; then
-	echo "WARN: Need openSUSE_42 als JumpHost for port forwarding via user_data" 1>&2
+	echo "WARN: Need openSUSE as JumpHost for port forwarding via user_data" 1>&2
 	exit 1
 fi
 
@@ -956,6 +957,7 @@ createRIfaces()
 deleteRIfaces()
 {
   if test -z "${ROUTERS[0]}"; then return 0; fi
+  echo "Delete Router Interfaces ..."
   deleteResources NETSTATS SUBNET "" $FIPTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
   deleteResources NETSTATS JHSUBNET "" $FIPTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
 }
@@ -1555,6 +1557,7 @@ wait222()
 testlsandping()
 {
   unset SSH_AUTH_SOCK
+  MAXWAIT=25
   if test -z "$3" -o "$3" = "22"; then
     unset pport
     ssh-keygen -R $2 -f ~/.ssh/known_hosts >/dev/null 2>&1
@@ -1564,14 +1567,17 @@ testlsandping()
   fi
   if test -z "$pport"; then
     # no user_data on JumpHosts
-    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 ls >/dev/null 2>&1 || return 2
+    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" linux@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 2;
+    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" linux@$2 ls >/dev/null 2>&1; } || return 2
   else
     # Test whether user_data file injection worked
     if test -n "$BOOTALLATONCE"; then
       # no indiv user data per VM when mass booting ...
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1 || return 2
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" linux@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 1;
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" linux@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1; } || return 2
     else
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" linux@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1 || return 2
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" linux@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 1;
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" linux@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1; } || return 2
     fi
   fi
   # TODO: Add test for accessing 100.125.0.1 (Provider net)
@@ -2016,18 +2022,21 @@ else # test "$1" = "DEPLOY"; then
            waitJHVols
            if createJHVMs; then
             let ROUNDVMS=$NOAZS
-            if createFIPs; then
-             waitVols
-             if createVMs; then
-              let ROUNDVMS+=$NOVMS
-              waitJHVMs
-              RC=$?
+            waitVols
+            if createVMs; then
+             let ROUNDVMS+=$NOVMS
+             waitJHVMs
+             RC=$?
+             if test $RC != 0; then
+               # Errors will be counted later again
+               sendalarm $RC "Timeout waiting for JHVM " "${RRLIST[*]}" $((4*$MAXWAIT))
+             fi
+             if createFIPs; then
+              waitVMs
               if test $RC != 0; then
                 # Errors will be counted later again
-                sendalarm $RC "Timeout waiting for JHVM " "${RRLIST[*]}" $((4*$MAXWAIT))
+                sendalarm $RC "Timeout waiting for VM " "${RRLIST[*]}" $((4*$MAXWAIT))
               fi
-              waitVMs
-              # TODO: Raise ALARM here if needed
               setmetaVMs
               # Test JumpHosts
               testjhinet
@@ -2060,8 +2069,8 @@ else # test "$1" = "DEPLOY"; then
               # Subtract waiting time (5s here)
               MSTART=$(($MSTART+$(date +%s)-$MSTOP))
               # TODO: Detach and delete disks again
-             fi; deleteVMs
-            fi; deleteFIPs
+             fi; deleteFIPs
+            fi; deleteVMs
            fi; deleteJHVMs
           fi; deleteKeypairs
          fi; waitdelVMs; deleteVols
