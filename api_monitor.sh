@@ -1980,6 +1980,7 @@ if test "$1" = "CLEANUP"; then
   echo -e "$BOLD *** Start cleanup $RPRE *** $NORM"
   cleanup
   echo -e "$BOLD *** Cleanup complete *** $NORM"
+  # We always return 0 here, as we don't want to stop the testing on failed cleanups.
   exit 0
 else # test "$1" = "DEPLOY"; then
  if test "$REFRESHPRJ" != 0 && test $(($RUNS%$REFRESHPRJ)) == 0; then createnewprj; fi
