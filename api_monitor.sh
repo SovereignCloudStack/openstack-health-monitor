@@ -97,8 +97,8 @@ GRAFANANM=api-monitoring
 
 # Number of VMs and networks
 if test -z "$AZS"; then
-  AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/')
-  if test -z "$AZS"; then AZS=$(otc.sh vm listaz 2>/dev/null | grep -v region); fi
+  AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
+  if test -z "$AZS"; then AZS=$(otc.sh vm listaz 2>/dev/null | grep -v region | sort -n); fi
   if test -z "$AZS"; then AZS="eu-de-01 eu-de-02"; fi
 fi
 AZS=($AZS)
