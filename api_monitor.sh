@@ -139,7 +139,7 @@ fi
 
 # Images, flavors, disk sizes
 # TODO: Move on to Standard_openSUSE_15_latest
-JHIMG="${JHIMG:-Standard_openSUSE_42_JeOS_latest}"
+JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
 JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
 IMG="${IMG:-Standard_CentOS_7_latest}"
 IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
