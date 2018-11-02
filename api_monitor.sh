@@ -143,7 +143,8 @@ JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
 JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
 IMG="${IMG:-Standard_CentOS_7_latest}"
 IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
-JHFLAVOR=${JHFLAVOR:-computev1-1}
+#JHFLAVOR=${JHFLAVOR:-computev1-1}
+JHFLAVOR=${JHFLAVOR:-s2.medium.1}
 FLAVOR=${FLAVOR:-s2.medium.1}
 
 if [[ "$JHIMG" != *openSUSE* ]]; then

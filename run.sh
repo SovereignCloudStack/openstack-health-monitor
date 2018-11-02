@@ -37,10 +37,30 @@ for ENV in $TOCLEAN; do
 done
 
 # Reduce API load during night hours for upgrade work
+echo $TZ
 YEAR=$(date +%Y)
 MONTH=$(date +%m)
 DAY=$(date +%d)
 HOUR=$(date +%H)
+
+# use Xen JumpHosts (ommputev1-1 aka c1.medium.1) until Mar 31, 2019, but not during
+# L1TF reboot windows on Nov 3,4,5/17,18,19 2018.
+unset JHFLAVOR
+if test $YEAR == 2019 -a $MONTH -le 3; then export JHFLAVOR=computev1-1; fi
+if test $YEAR -lt 2018; then export JHFLAVOR=computev1-1; fi
+if test $YEAR == 2018; then
+  if test $MONTH != 11; then JHFLAVOR=computev1-1
+  else if test $DAY != 3 -a $DAY != 4 -a $DAY != 5 -a $DAY != 17 -a $DAY != 18 -a $DAY != 19; then JHFLAVOR=computev1-1
+       else if test $DAY == 3 -o $DAY == 17 && test $HOUR -lt 19; then JHFLAVOR=computev1-1
+            else if test $DAY == 5 -o $DAY == 19 && test $HOUR -gt 8; then JHFLAVOR=computev1-1
+                 else if test $HOUR -gt 8 -a $HOUR -lt 19; then JHFLAVOR=computev1-1; fi
+                 fi
+            fi
+       fi
+  fi
+fi
+
+export JHFLAVOR
 if test $YEAR == 2018 -a $MONTH == 06 -a $DAY -ge 04 -a $DAY -le 10 && test $HOUR -ge 16 -o $HOUR -lt 7; then
   bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 1
 else
