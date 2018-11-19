@@ -2110,9 +2110,10 @@ else # test "$1" = "DEPLOY"; then
  THISRUNTIME=$(($(date +%s)-$MSTART))
  TOTTIME+=($THISRUNTIME)
  # Raise an alarm if we have not yet sent one and we're very slow despite this
- if test -n "$BOOTALLATONCE"; then LIN=500; FACT=20; else LIN=484; FACT=32; fi
- if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $(($LIN+$FACT*$NOVMS)); then
-    sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME" $(($LIN+$FACT*$NOVMS))
+ if test -n "$BOOTALLATONCE"; then CON=492; FACT=20; else CON=484; FACT=32; fi
+ MAXCYC=$(($CON+8*$NOAZS+$FACT*$NOVMS))
+ if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $MAXCYC; then
+    sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME" $MAXCYC
     #waiterr $WAITERR
  fi
  allstats
