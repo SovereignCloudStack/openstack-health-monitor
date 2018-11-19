@@ -2113,7 +2113,7 @@ else # test "$1" = "DEPLOY"; then
  if test -n "$BOOTALLATONCE"; then CON=492; FACT=20; else CON=484; FACT=32; fi
  MAXCYC=$(($CON+8*$NOAZS+$FACT*$NOVMS))
  if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $MAXCYC; then
-    sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME" $MAXCYC
+    sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME (max $MAXCYC)" $MAXCYC
     #waiterr $WAITERR
  fi
  allstats
