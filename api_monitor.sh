@@ -16,6 +16,10 @@
 # - Script allows to create multiple nets/subnets independent from no of AZs, but the
 #   assumption at some places probably still wrongly is that NONETS == NOAZS.
 #
+# TODO:
+# - Convert from neutron/cinder/nova/... to openstack
+# - Align sendalarm with Grafana database entries
+#
 # (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017-7/2017
 # License: CC-BY-SA (2.0)
 #
@@ -2052,6 +2056,7 @@ else # test "$1" = "DEPLOY"; then
               fi
               setmetaVMs
               # Test JumpHosts
+	      # NOTE: Alarms and Grafana error logging are not fully aligned here
               testjhinet
               RC=$?
               if test $RC != 0; then
