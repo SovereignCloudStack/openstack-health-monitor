@@ -80,7 +80,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.39
+VERSION=1.40
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -1569,16 +1569,16 @@ testlsandping()
   fi
   if test -z "$pport"; then
     # no user_data on JumpHosts
-    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" linux@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 2;
+    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=10"  linux@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 4;
     ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" linux@$2 ls >/dev/null 2>&1; } || return 2
   else
     # Test whether user_data file injection worked
     if test -n "$BOOTALLATONCE"; then
       # no indiv user data per VM when mass booting ...
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" linux@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 1;
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  linux@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
       ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" linux@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1; } || return 2
     else
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" linux@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 1;
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  linux@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
       ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" linux@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1; } || return 2
     fi
   fi
@@ -1603,6 +1603,15 @@ testjhinet()
   declare -i RC=0
   for JHNO in $(seq 0 $(($NOAZS-1))); do
     echo -n "Access JH$JHNO (${FLOATS[$JHNO]}): "
+    # Do wait up to 40s for ping
+    declare -i ctr=0
+    while test $ctr -lt 10; do
+      ping -c1 -w2 ${FLOATS[$JHNO]} >/dev/null 2>&1 && break
+      sleep 2
+      echo -n "."
+      let ctr+=1
+    done
+    # Wait up to 30s for ssh
     testlsandping ${KEYPAIRS[0]} ${FLOATS[$JHNO]}
     R=$?
     if test $R == 2; then
@@ -1610,6 +1619,7 @@ testjhinet()
     elif test $R == 1; then
       let CUMPINGERRORS+=1; ERR="${ERR}ssh JH$JHNO ping $PINGTARGET || ping $PINGTARGET2; "
     fi
+# Don't generate entry here, we'll test this again in wait222, which records the fail/time
 #    if test -n "$GRAFANA"; then
 #      TIM=$(($(date +%s)-$ST))
 #      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$R $(date +%s%N)" >/dev/null
@@ -2046,7 +2056,7 @@ else # test "$1" = "DEPLOY"; then
               RC=$?
               if test $RC != 0; then
                 let VMERRORS+=$RC
-                sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
+                sendalarm $RC "$ERR" "" 70
                 errwait $VMERRWAIT
               fi
               # Test normal hosts
@@ -2054,6 +2064,11 @@ else # test "$1" = "DEPLOY"; then
               WSTART=$(date +%s)
               wait222
               WAITERRORS=$?
+              # No need to send alarm yet, will do after testsnat
+              #if test $WAITERRORS != 0; then
+              #  sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
+              #  errwait $VMERRWAIT
+              #fi
               testsnat
               RC=$?
               let VMERRORS+=$((RC/2))
