@@ -60,9 +60,9 @@ if test $YEAR == 2018; then
   fi
 fi
 # Out of resources, see #985505
-if test $YEAR == 2018 -a $DAY == 28; then unset JHFLAVOR; fi
+#if test $YEAR == 2018 -a $DAY == 28; then unset JHFLAVOR; fi
 
-mv last.log prev.log
+mv last.log prev.log || true
 export JHFLAVOR
 if test $YEAR == 2018 -a $MONTH == 06 -a $DAY -ge 04 -a $DAY -le 10 && test $HOUR -ge 16 -o $HOUR -lt 7; then
   bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 1
