@@ -59,6 +59,8 @@ if test $YEAR == 2018; then
        fi
   fi
 fi
+# Out of resources, see #985505
+if test $YEAR == 2018 -a $DAY == 28; then unset JHFLAVOR; fi
 
 mv last.log prev.log
 export JHFLAVOR
