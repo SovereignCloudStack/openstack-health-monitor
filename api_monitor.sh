@@ -468,7 +468,7 @@ ostackcmd_id()
   if test -n "$GRAFANA"; then
       # log time / rc to grafana
       rc2grafana $RC
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)"
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)" >> grafana.log
   fi
 
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
@@ -519,7 +519,7 @@ ostackcmd_tm()
   if test -n "$GRAFANA"; then
     # log time / rc to grafana telegraph
     rc2grafana $RC
-    curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)"
+    curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)" >> grafana.log
   fi
   eval "${STATNM}+=( $TIM )"
   echo "$LSTART/$LEND/: $@ => $OSTACKRESP" >> $LOGFILE
@@ -716,7 +716,7 @@ waitResources()
 	if test -n "$GRAFANA"; then
 	  # log time / rc to grafana
 	  if test $STE -ge 2; then RC=0; else RC=$STE; fi
-	  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)"
+	  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)" >> grafana.log
 	fi
 	unset SLIST[$i]
       fi
@@ -808,7 +808,7 @@ waitlistResources()
           if test -n "$GRAFANA"; then
             # log time / rc to grafana
             if test $STE -ge 2; then RC=0; else RC=$STE; fi
-            curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)"
+            curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)" >> grafana.log
           fi
         fi
       fi
@@ -872,7 +872,7 @@ waitdelResources()
       if test -n "$GRAFANA"; then
 	# log time / rc to grafana
         rc2grafana $RC
-	curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=DEL duration=$TM,return_code=$GRC $(date +%s%N)"
+	curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=DEL duration=$TM,return_code=$GRC $(date +%s%N)" >> grafana.log
       fi
       #echo -en "WaitDel $RNM: $STATSTR\r"
     done
@@ -1518,7 +1518,7 @@ wait222()
     fi
     if test -n "$GRAFANA"; then
       TIM=$(($(date +%s)-$ST))
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$perr $(date +%s%N)"
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$perr $(date +%s%N)" >> grafana.log
     fi
     if [ $ctr -ge $MAXWAIT ]; then
       # It does not make sense to wait for machines behind JH if JH is not reachable
@@ -1544,7 +1544,7 @@ wait222()
       MAXWAIT=42
       if test -n "$GRAFANA"; then
         TIM=$(($(date +%s)-$ST))
-        curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=VM$JHNO:$pno duration=$TIM,return_code=$verr $(date +%s%N)"
+        curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=VM$JHNO:$pno duration=$TIM,return_code=$verr $(date +%s%N)" >> grafana.log
       fi
     done
     MAXWAIT=60
