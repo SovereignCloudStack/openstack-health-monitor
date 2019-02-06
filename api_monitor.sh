@@ -76,15 +76,18 @@
 #
 # Prerequisites:
 # - Working python-XXXclient tools (glance, neutron, nova, cinder)
-# - otc.sh from otc-tools (for optional SMN -m and project creation -p)
-# - sendmail (if email notification is requested)
+# - otc.sh from otc-tools (only if using optional SMN -m and project creation -p)
+# - sendmail (only if email notification is requested)
+# - python2 or 3 for math used to calc statistics
+# - SUSE image with the SNAT/port-fwd (SuSEfirewall2-snat) for the JumpHosts
+# - Any image for the VMs that allows login as user DEFLTUSER (linux) with injected key
 #
 # Example:
 # Run 100 loops deploying (and deleting) 2+8 VMs (including nets, volumes etc.),
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.40
+VERSION=1.41
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -127,7 +130,7 @@ NETTIMEOUT=16
 FIPTIMEOUT=32
 NOVATIMEOUT=24
 NOVABOOTTIMEOUT=48
-CINDERTIMEOUT=24
+CINDERTIMEOUT=32
 GLANCETIMEOUT=32
 DEFTIMEOUT=16
 
@@ -150,6 +153,7 @@ IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
 #JHFLAVOR=${JHFLAVOR:-computev1-1}
 JHFLAVOR=${JHFLAVOR:-s2.medium.1}
 FLAVOR=${FLAVOR:-s2.medium.1}
+DEFLTUSER=${DEFLTUSER:-linux}
 
 if [[ "$JHIMG" != *openSUSE* ]]; then
 	echo "WARN: Need openSUSE as JumpHost for port forwarding via user_data" 1>&2
@@ -175,6 +179,9 @@ NORM="\e[0;0m"
 RED="\e[0;31m"
 GREEN="\e[0;32m"
 YELLOW="\e[0;33m"
+
+# python3?
+if test -n "$(type -p python3)"; then PYTHON3=$(type -p python3); else unset PYTHON3; fi
 
 usage()
 {
@@ -416,6 +423,18 @@ killin()
   kill -SIGKILL $1
 }
 
+# Do some math (python syntax)
+# $1 => formatting
+# $2 => math expr
+math()
+{
+  if test -n ${PYTHON3}; then
+    python3 -c "print(\"$1\" % ($2))"
+  else
+    python -c "print \"$1\" % ($2)"
+  fi
+}
+
 # Command wrapper for openstack list commands
 # $1 = search term
 # $2 = timeout (in s)
@@ -438,7 +457,7 @@ ostackcmd_search()
     sendalarm $RC "$*" "$RESP" $TIMEOUT
     errwait $ERRWAIT
   fi
-  local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
+  local TIM=$(math "%.2f" "$LEND-$LSTART")
   if test "$RC" != "0"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: $@ => $RC $RESP$NORM" 1>&2; return $RC; fi
   if test -z "$ID"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: $@ => $RC $RESP => $SEARCH not found$NORM" 1>&2; return $RC; fi
   echo "$TIM $ID"
@@ -462,7 +481,7 @@ ostackcmd_id()
   fi
   local RC=$?
   local LEND=$(date +%s.%3N)
-  local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
+  local TIM=$(math "%.2f" "$LEND-$LSTART")
 
   test "$1" = "openstack" && shift
   if test -n "$GRAFANA"; then
@@ -513,8 +532,9 @@ ostackcmd_tm()
     sendalarm $RC "$*" "$OSTACKRESP" $TIMEOUT
     errwait $ERRWAIT
   fi
+  #OSTACKRESP=$(echo "$OSTACKRESP" | grep -v 'is deprecated')
   local LEND=$(date +%s.%3N)
-  local TIM=$(python -c "print \"%.2f\" % ($LEND-$LSTART)")
+  local TIM=$(math "%.2f" "$LEND-$LSTART")
   test "$1" = "openstack" && shift
   if test -n "$GRAFANA"; then
     # log time / rc to grafana telegraph
@@ -711,7 +731,7 @@ waitResources()
           let WERR+=1
         fi
         TM=$(date +%s)
-	TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
+	TM=$(math "%i" "$TM-${SLIST[$i]}")
 	eval ${CSTAT}+="($TM)"
 	if test -n "$GRAFANA"; then
 	  # log time / rc to grafana
@@ -800,7 +820,7 @@ waitlistResources()
         fi
         # Found
         TM=$(date +%s)
-        TM=$(python -c "print \"%i\" % ($TM-${SLIST[$i]})")
+        TM=$(math "%i" "$TM-${SLIST[$i]}")
         unset RRLIST[$i]
         unset SLIST[$i]
 	if test -n "$CSTAT"; then
@@ -862,7 +882,7 @@ waitdelResources()
       eval ${STATNM}+="( $TM )"
       if test $RC != 0; then
         TM=$(date +%s)
-	TM=$(python -c "print \"%i\" % ($TM-${DLIST[$i]})")
+	TM=$(math "%i" "$TM-${DLIST[$i]}")
 	eval ${DSTAT}+="($TM)"
 	unset DLIST[$i]
         STAT="XDELX"
@@ -1246,11 +1266,13 @@ calcRedirs()
 {
   local port ptn pi IP STR off
   REDIRS=()
+  #echo "#DEBUG: cR Ports ${PORTS[*]}"
   if test ${#PORTS[*]} -gt 0; then
     declare -i ptn=222
     declare -i pi=0
     for port in ${PORTS[*]}; do
       ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show $port
+      #echo "##DEBUG: $OSTACKRESP"
       IP=$(extract_ip "$OSTACKRESP")
       STR="0/0,$IP,tcp,$ptn,22"
       off=$(($pi%$NOAZS))
@@ -1273,7 +1295,7 @@ createJHVMs()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   calcRedirs
-  #echo "$VIP ${REDIRS[*]}"
+  #echo "#DEBUG: $VIP ${REDIRS[*]}"
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
     if test -z "${REDIRS[$JHNUM]}"; then
       # No fwdmasq config possible yet
@@ -1313,10 +1335,15 @@ collectPorts()
 {
   local vm vmid
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
+  OSTACKRESP=$(echo "$OSTACKRESP" | sed 's@neutron CLI is deprecated and will be removed in the future. Use openstack CLI instead.@@g')
+  #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'"
+  #echo "#DEBUG: cP VMs ${VMS[*]}"
   for vm in $(seq 0 $(($NOVMS-1))); do
     vmid=${VMS[$vm]}
     if test -z "$vmid"; then sendalarm 1 "nova list" "VM $vm not found" $NOVATIMEOUT; continue; fi
-    port=$(echo "$OSTACKRESP" | jq ".[] | select(.device_id == \"$vmid\") | .id" | tr -d '"')
+    #port=$(echo "$OSTACKRESP" | jq -r '.[]' | grep -C4 "$vmid")
+    #echo -e "#DEBUG: $port"
+    port=$(echo -e "$OSTACKRESP" | jq -r ".[] | select(.device_id == \"$vmid\") | .id" | tr -d '"')
     PORTS[$vm]=$port
   done
   echo "VM Ports: ${PORTS[*]}"
@@ -1331,7 +1358,7 @@ setPortForward()
   # If we need to collect port info, do so now
   if test -z "${PORTS[*]}"; then collectPorts; fi 
   calcRedirs
-  #echo "$VIP ${REDIRS[*]}"
+  #echo "#DEBUG: sPF VIP REDIR $VIP ${REDIRS[*]}"
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
     if test -z "${REDIRS[$JHNUM]}"; then
       echo -e "${YELLOW}ERROR: No redirections?$NORM" 1>&2
@@ -1344,8 +1371,8 @@ setPortForward()
 sed -i 's@^FW_FORWARD_MASQ=.*\$@FW_FORWARD_MASQ=\"$FWDMASQ\"@' /etc/sysconfig/SuSEfirewall2
 systemctl restart SuSEfirewall2
 ")
-    echo "$SCRIPT" | ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[$JHNUM]} "cat - >upd_sfw2"
-    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" linux@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_sfw2"
+    echo "$SCRIPT" | ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" ${DEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_sfw2"
+    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" ${DEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_sfw2"
   done
 }
 
@@ -1573,24 +1600,24 @@ testlsandping()
   fi
   if test -z "$pport"; then
     # no user_data on JumpHosts
-    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=10"  linux@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 4;
-    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" linux@$2 ls >/dev/null 2>&1; } || return 2
+    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=10" ${DEFLTUSER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 4;
+    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${DEFLTUSER}@$2 ls >/dev/null 2>&1; } || return 2
   else
     # Test whether user_data file injection worked
     if test -n "$BOOTALLATONCE"; then
       # no indiv user data per VM when mass booting ...
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  linux@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" linux@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1; } || return 2
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${DEFLTUSER}@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${DEFLTUSER}@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1; } || return 2
     else
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  linux@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" linux@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1; } || return 2
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${DEFLTUSER}@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${DEFLTUSER}@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1; } || return 2
     fi
   fi
   # TODO: Add test for accessing 100.125.0.1 (Provider net)
-  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
+  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" ${DEFLTUSER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   if test $? = 0; then echo $PING; return 0; fi
   sleep 1
-  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" linux@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
+  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" ${DEFLTUSER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
   echo "$PING"
   if test $RC != 0; then return 1; else return 0; fi
@@ -1718,17 +1745,17 @@ stats()
   MAX=${SLIST[-1]}
   MID=$(($NO/2))
   if test $(($NO%2)) = 1; then MED=${SLIST[$MID]};
-  else MED=`python -c "print \"%.${DIG}f\" % ((${SLIST[$MID]}+${SLIST[$(($MID-1))]})/2)"`
+  else MED=`math "%.${DIG}f" "(${SLIST[$MID]}+${SLIST[$(($MID-1))]})/2"`
   fi
   NFQ=$(scale=3; echo "(($NO-1)*95)/100" | bc -l)
   NFQL=${NFQ%.*}; NFQR=$((NFQL+1)); NFQF=0.${NFQ#*.}
   #echo "DEBUG 95%: $NFQ $NFQL $NFR $NFQF"
   if test $NO = 1; then NFP=${SLIST[$NFQL]}; else
-    NFP=`python -c "print \"%.${DIG}f\" % (${SLIST[$NFQL]}*(1-$NFQF)+${SLIST[$NFQR]}*$NFQF)"`
+    NFP=`math "%.${DIG}f" "${SLIST[$NFQL]}*(1-$NFQF)+${SLIST[$NFQR]}*$NFQF"`
   fi
   AVGC="($(echo ${SLIST[*]}|sed 's/ /+/g'))/$NO"
   #echo "$AVGC"
-  #AVG=`python -c "print \"%.${DIG}f\" % ($AVGC)"`
+  #AVG=`math "%.${DIG}f" "$AVGC"`
   AVG=$(echo "scale=$DIG; $AVGC" | bc -l)
   if test -n "$MACHINE"; then
     echo "#$NM: $NO|$MIN|$MED|$AVG|$NFP|$MAX" | tee -a $LOGFILE
@@ -2115,7 +2142,7 @@ else # test "$1" = "DEPLOY"; then
  THISRUNTIME=$(($(date +%s)-$MSTART))
  TOTTIME+=($THISRUNTIME)
  # Raise an alarm if we have not yet sent one and we're very slow despite this
- if test -n "$BOOTALLATONCE"; then CON=492; FACT=20; else CON=484; FACT=32; fi
+ if test -n "$BOOTALLATONCE"; then CON=512; FACT=24; else CON=496; FACT=36; fi
  MAXCYC=$(($CON+8*$NOAZS+$FACT*$NOVMS))
  if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $MAXCYC; then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME (max $MAXCYC)" $MAXCYC
