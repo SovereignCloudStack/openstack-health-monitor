@@ -322,7 +322,7 @@ sendalarm()
     if test -n "$EMAIL2" -a $1 != 0; then EM="$EMAIL2"; else EM="$EMAIL"; fi
     RECEIVER_LIST=("$EM" "${RECEIVER_LIST[@]}")
   fi
-  FROM="$LOGNAME@$FQDN"
+  FROM="${FROM:-$LOGNAME@$FQDN}"
   for RECEIVER in "${RECEIVER_LIST[@]}"
   do
     echo "From: ${RPRE%_} $HOSTNAME <$FROM>
