@@ -1767,13 +1767,13 @@ stats()
 # [-m] for machine readable
 allstats()
 {
- stats $1 NETSTATS   2 "Neutron API Stats "
+ stats $1 NETSTATS   2 "Neutron CLI Stats "
  stats $1 FIPSTATS   2 "Neutron FIP Stats "
- stats $1 NOVASTATS  2 "Nova API Stats    "
+ stats $1 NOVASTATS  2 "Nova CLI Stats    "
  stats $1 NOVABSTATS 2 "Nova Boot Stats   "
  stats $1 VMCSTATS   0 "VM Creation Stats "
  stats $1 VMDSTATS   0 "VM Deletion Stats "
- stats $1 VOLSTATS   2 "Cinder API Stats  "
+ stats $1 VOLSTATS   2 "Cinder CLI Stats  "
  stats $1 VOLCSTATS  0 "Vol Creation Stats"
  stats $1 WAITTIME   0 "Wait for VM Stats "
  stats $1 TOTTIME    0 "Total setup Stats "
@@ -2149,7 +2149,7 @@ else # test "$1" = "DEPLOY"; then
     #waiterr $WAITERR
  fi
  allstats
- echo "This run: Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS API calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, $(date +'%Y-%m-%d %H:%M:%S %Z')"
+ echo "This run: Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS CLI calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, $(date +'%Y-%m-%d %H:%M:%S %Z')"
 #else
 #  usage
 fi
@@ -2168,7 +2168,7 @@ if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXI
   sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $HOSTNAME testing $SHORT_DOMAIN/$OS_PROJECT_NAME:
 
-$RUNS deployments ($SUCCRUNS successful, $CUMVMS/$(($RUNS*($NOAZS+$NOVMS))) VMs, $CUMAPICALLS API calls)
+$RUNS deployments ($SUCCRUNS successful, $CUMVMS/$(($RUNS*($NOAZS+$NOVMS))) VMs, $CUMAPICALLS CLI calls)
 $CUMVMERRORS VM LOGIN ERRORS
 $CUMWAITERRORS VM TIMEOUT ERRORS
 $CUMAPIERRORS API ERRORS
