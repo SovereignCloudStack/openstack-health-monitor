@@ -87,7 +87,10 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.41
+VERSION=1.42
+
+# TODO: Document settings that can be ovverriden by environment variables
+# such as PINGTARGET, ALARMPRE, SUCCWAIT, FROM, [JH]IMG, [JH]IMGFILT, DEFLTUSER, [JH]FLAVOR
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -135,6 +138,7 @@ GLANCETIMEOUT=32
 DEFTIMEOUT=16
 
 REFRESHPRJ=0
+SUCCWAIT=${SUCCWAIT:-5}
 
 DOMAIN=$(grep '^search' /etc/resolv.conf | awk '{ print $2; }'; exit ${PIPESTATUS[0]}) || DOMAIN=otc.t-systems.com
 HOSTNAME=$(hostname)
@@ -187,7 +191,7 @@ usage()
 {
   #echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-p] CLEANUP|DEPLOY"
   echo "Usage: api_monitor.sh [options]"
-  echo " -n N   number of VMs to create (beyond 2 JumpHosts, def: 12)"
+  echo " -n N   number of VMs to create (beyond #AZ JumpHosts, def: 12)"
   echo " -N N   number of networks/subnets/jumphosts to create (def: # AZs)"
   echo " -l LOGFILE record all command in LOGFILE"
   echo " -e ADR sets eMail address for notes/alarms (assumes working MTA)"
@@ -201,7 +205,7 @@ usage()
   echo " -P     do not create Port before VM creation"
   echo " -D     create all VMs with one API call (implies -d -P)"
   echo " -i N   sets max number of iterations (def = -1 = inf)"
-  echo " -g N   increase VM volume size by N GB"
+  echo " -g N   increase VM volume size by N GB (ignored for -d/-D)"
   echo " -G N   increase JH volume size by N GB"
   echo " -w N   sets error wait (API, VM): 0-inf seconds or neg value for interactive wait"
   echo " -W N   sets error wait (VM only): 0-inf seconds or neg value for interactive wait"
@@ -2114,8 +2118,7 @@ else # test "$1" = "DEPLOY"; then
               WAITTIME+=($(($MSTOP-$WSTART)))
               echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
               let SUCCRUNS+=1
-              sleep 5
-              #read ANS
+              if test $SUCCWAIT -ge 0; then sleep $SUCCWAIT; else echo -n "Hit enter to continue ..."; read ANS; fi
               # Subtract waiting time (5s here)
               MSTART=$(($MSTART+$(date +%s)-$MSTOP))
               # TODO: Detach and delete disks again
