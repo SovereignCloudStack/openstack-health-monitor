@@ -87,7 +87,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.42
+VERSION=1.43
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, SUCCWAIT, FROM, [JH]IMG, [JH]IMGFILT, DEFLTUSER, [JH]FLAVOR
@@ -286,6 +286,20 @@ if test "$NOCOL" == "1"; then
   RED="!!"
   GREEN="++"
   YELLOW=".."
+fi
+
+# Sanity checks
+# Last subnet is for the JumpHosts, thus we have 63 /22 networks avail within 10.250/16
+if test ${NONETS} -gt 63; then
+  echo "Can not create more than 63 (sub)networks"
+  exit 1
+fi
+
+# We reserve 6 IPs, so allow max 1018 in our /22 net
+if test $((NOVMS/NONETS)) -gt 1018; then
+  echo "Can not create more than 1018 VMs per (sub)net"
+  echo " Please decrease -n or increase -N"
+  exit 1
 fi
 
 # Alarm notification
@@ -957,16 +971,17 @@ deleteNets()
   deleteResources NETSTATS JHNET "" 12 neutron net-delete
 }
 
-JHSUBNETIP=10.250.250.0/24
+# We allocate 10.250.$((no*4)/22 for the VMs and 10.250.255.0/24 for all JumpHosts (one per AZ)
+JHSUBNETIP=10.250.255.0/24
 
 createSubNets()
 {
   if test -n "$NAMESERVER"; then
     createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 9.9.9.9 --dns-nameserver $NAMESERVER --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
-    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 9.9.9.9 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
+    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 9.9.9.9 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22"
   else
     createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
-    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$no.0/24"
+    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22"
   fi
 }
 
@@ -987,8 +1002,9 @@ createRIfaces()
 deleteRIfaces()
 {
   if test -z "${ROUTERS[0]}"; then return 0; fi
-  echo "Delete Router Interfaces ..."
+  echo -en "Delete Router Interfaces ...\n "
   deleteResources NETSTATS SUBNET "" $FIPTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
+  echo -n " "
   deleteResources NETSTATS JHSUBNET "" $FIPTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
 }
 
