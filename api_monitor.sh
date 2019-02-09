@@ -87,7 +87,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.43
+VERSION=1.44
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, SUCCWAIT, FROM, [JH]IMG, [JH]IMGFILT, DEFLTUSER, [JH]FLAVOR
@@ -211,6 +211,7 @@ usage()
   echo " -W N   sets error wait (VM only): 0-inf seconds or neg value for interactive wait"
   echo " -p N   use a new project every N iterations"
   echo " -c     noColors: don't use bold/red/... ASCII sequences"
+  echo " -C     full Connectivity check: Every VM pings every other"
   echo " -x     assume eXclusive project, clean all floating IPs found"
   echo " -I     dIsassociate floating IPs before deleting them"
   echo "Or: api_monitor.sh [-f] CLEANUP XXX to clean up all resources with prefix XXX"
@@ -241,6 +242,7 @@ while test -n "$1"; do
     "-f") FORCEDEL=XDELX;;
     "-p") REFRESHPRJ=$2; shift;;
     "-c") NOCOL=1;;
+    "-C") FULLCONN=1;;
     "-x") CLEANALLFIPS=1;;
     "-I") DISASSOC=1;;
     "CLEANUP") break;;
@@ -1735,6 +1737,56 @@ testsnat()
   return $FAIL
 }
 
+# Have each VM ping all VMs
+# OUTPUT:
+# FPRETRY: Number of retried pings
+# FPERR: Number of failed pings (=> $RC)
+fullconntest()
+{
+  cat > ${RPRE}ping << EOT
+#!/bin/bash
+myping()
+{
+  if ping -i1 -w1 \$1 >/dev/null 2>&1; then echo -n "."; return 0; fi
+  sleep 1
+  if ping -i1 -w2 \$1 >/dev/null 2>&1; then echo -n "o"; return 1; fi
+  echo -n "X"; return 2
+}
+RC=0
+for adr in "\$@"; do
+  myping \$adr
+  R=\$?; if test \$R -gt \$RC; then RC=\$R; fi
+done
+echo
+exit \$RC
+EOT
+  chmod +x ${RPRE}ping
+  # collect all IPs
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
+  OSTACKRESP=$(echo "$OSTACKRESP" | sed 's@neutron CLI is deprecated and will be removed in the future. Use openstack CLI instead.@@g')
+  IPS=()
+  for pno in $(seq 0 $((${#PORTS[*]}-1))); do
+    port=${PORTS[$pno]}
+    IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.id == \"$port\") | .fixed_ips[] | .ip_address" | tr -d '"')
+  done
+  echo "VM2VM Connectivity Check ... (${IPS[*]})"
+  RC=0
+  for JHNO in $(seq 0 $(($NOAZS-1))); do
+    no=$JHNO
+    for red in ${REDIRS[$JHNO]}; do
+      pno=${red#*tcp,}
+      pno=${pno%%,*}
+      scp -i ${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}:
+      #echo "ssh -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}"
+      ssh -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}
+      R=$?
+      if test $R -gt $RC; then RC=$R; fi
+      let CONNERRORS+=$R
+    done
+  done
+  rm ${RPRE}ping
+  return $RC
+}
 
 # [-m] STATLIST [DIGITS [NAME]]
 # m for machine readable
@@ -1989,6 +2041,7 @@ declare -i CUMAPITIMEOUTS=0
 declare -i CUMAPICALLS=0
 declare -i CUMVMERRORS=0
 declare -i CUMWAITERRORS=0
+declare -i CUMCONNERRORS=0
 declare -i CUMVMS=0
 declare -i RUNS=0
 declare -i SUCCRUNS=0
@@ -2004,6 +2057,7 @@ declare -i APIERRORS=0
 declare -i APITIMEOUTS=0
 declare -i VMERRORS=0
 declare -i WAITERRORS=0
+declare -i CONNERRORS=0
 declare -i APICALLS=0
 declare -i ROUNDVMS=0
 
@@ -2128,6 +2182,14 @@ else # test "$1" = "DEPLOY"; then
                 sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
                 errwait $VMERRWAIT
               fi
+              # Full connection test
+              if test -n "$FULLCONN"; then
+                fullconntest
+                if test $? -ge 2; then
+                  sendalarm 2 "Connectivity error" "" 3
+                  errwait $ERRWAIT
+                fi
+              fi
               # TODO: Create disk ... and attach to JH VMs ... and test access
               # TODO: Attach additional net interfaces to JHs ... and test IP addr
               MSTOP=$(date +%s)
@@ -2168,7 +2230,8 @@ else # test "$1" = "DEPLOY"; then
     #waiterr $WAITERR
  fi
  allstats
- echo "This run: Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS CLI calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, $(date +'%Y-%m-%d %H:%M:%S %Z')"
+ if test -n "$FULLCONN"; then CONNTXT=" $CONNERRORS Conn Errors, "; else CONNTXT=""; fi
+ echo "This run: Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS CLI calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, ${CONNTXT}$(date +'%Y-%m-%d %H:%M:%S %Z')"
 #else
 #  usage
 fi
@@ -2177,12 +2240,14 @@ let CUMAPITIMEOUTS+=$APITIMEOUTS
 let CUMVMERRORS+=$VMERRORS
 let CUMPINGERRORS+=$PINGERRORS
 let CUMWAITERRORS+=$WAITERRORS
+let CUMCONNERRPRS+=$CONNERRORS
 let CUMAPICALLS+=$APICALLS
 let CUMVMS+=$ROUNDVMS
 let RUNS+=1
 
 CDATE=$(date +%Y-%m-%d)
 CTIME=$(date +%H:%M:%S)
+if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn Errors\n"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
 if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXITER; then
   sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $HOSTNAME testing $SHORT_DOMAIN/$OS_PROJECT_NAME:
@@ -2193,13 +2258,13 @@ $CUMWAITERRORS VM TIMEOUT ERRORS
 $CUMAPIERRORS API ERRORS
 $CUMAPITIMEOUTS API TIMEOUTS
 $CUMPINGERRORS Ping failures
-
+$CONNTXT
 $(allstats)
 
 #TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$HOSTNAME|$OS_PROJECT_NAME
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
 #RUN: $RUNS|$SUCCRUNS|$CUMVMS|$((($NOAZS+$NOVMS)*$RUNS))|$CUMAPICALLS
-#ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS
+#ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS$CONNST
 $(allstats -m)
 " 0
   echo "#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$HOSTNAME|$OS_PROJECT_NAME
@@ -2207,12 +2272,13 @@ $(allstats -m)
 #RUN: $RUNS|$CUMVMS|$CUMAPICALLS
 #ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS
 $(allstats -m)" > Stats.$LASTDATA.$LASTTIME.$CDATE.$CTIME.psv
-  TOTERR+=$(($CUMVMERRORS+$CUMAPIERRORS+$CUMAPITIMEOUTS+$CUMPINGERRORS+$CUMWAITERRORS))
+  TOTERR+=$(($CUMVMERRORS+$CUMAPIERRORS+$CUMAPITIMEOUTS+$CUMPINGERRORS+$CUMWAITERRORS+$CUMCONNERRORS))
   CUMVMERRORS=0
   CUMAPIERRORS=0
   CUMAPITIMEOUTS=0
   CUMPINGERRORS=0
   CUMWAITERRORS=0
+  CUMCONNERRORS=0
   CUMAPICALLS=0
   CUMVMS=0
   LASTDATE="$CDATE"
