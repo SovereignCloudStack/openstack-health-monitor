@@ -1776,7 +1776,7 @@ EOT
     for red in ${REDIRS[$JHNO]}; do
       pno=${red#*tcp,}
       pno=${pno%%,*}
-      scp -i ${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}:
+      scp -i ${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
       #echo "ssh -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}"
       ssh -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}
       R=$?
@@ -2230,7 +2230,7 @@ else # test "$1" = "DEPLOY"; then
     #waiterr $WAITERR
  fi
  allstats
- if test -n "$FULLCONN"; then CONNTXT=" $CONNERRORS Conn Errors, "; else CONNTXT=""; fi
+ if test -n "$FULLCONN"; then CONNTXT="$CONNERRORS Conn Errors, "; else CONNTXT=""; fi
  echo "This run: Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS CLI calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, ${CONNTXT}$(date +'%Y-%m-%d %H:%M:%S %Z')"
 #else
 #  usage
