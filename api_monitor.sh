@@ -1755,6 +1755,7 @@ myping()
 RC=0
 for adr in "\$@"; do
   myping \$adr
+  # Should we just return the sum?
   R=\$?; if test \$R -gt \$RC; then RC=\$R; fi
 done
 echo
@@ -1769,6 +1770,8 @@ EOT
     port=${PORTS[$pno]}
     IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.id == \"$port\") | .fixed_ips[] | .ip_address" | tr -d '"')
   done
+  declare -i FPRETRY=0
+  declare -i FPERR=0
   echo "VM2VM Connectivity Check ... (${IPS[*]})"
   RC=0
   for JHNO in $(seq 0 $(($NOAZS-1))); do
@@ -1782,6 +1785,8 @@ EOT
       R=$?
       if test $R -gt $RC; then RC=$R; fi
       let CONNERRORS+=$R
+      if test $R -eq 1; then let FPRETRY+=1; fi
+      if test $R -ge 2; then let FPERR+=1; fi
     done
   done
   rm ${RPRE}ping
@@ -2185,6 +2190,7 @@ else # test "$1" = "DEPLOY"; then
               # Full connection test
               if test -n "$FULLCONN"; then
                 fullconntest
+                # Test for FPERR instead?
                 if test $? -ge 2; then
                   sendalarm 2 "Connectivity error" "" 3
                   errwait $ERRWAIT
