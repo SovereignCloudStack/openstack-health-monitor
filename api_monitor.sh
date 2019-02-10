@@ -1525,9 +1525,12 @@ waitdelVMs()
 # Meta data setting for test purposes
 setmetaVMs()
 {
+  echo -n "Set VM Metadata: "
   for no in `seq 0 $(($NOVMS-1))`; do
-    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova meta ${VMS[$no]} set deployment=cf server=$no || return 1
+    echo -n "${VMS[$no]} "
+    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova meta ${VMS[$no]} set deployment=cftest server=$no || return 1
   done
+  echo
 }
 
 # Wait for VMs being accessible behind fwdmasq (ports 222+)
@@ -1737,6 +1740,8 @@ testsnat()
   return $FAIL
 }
 
+declare -i FPRETRY=0
+declare -i FPERR=0
 # Have each VM ping all VMs
 # OUTPUT:
 # FPRETRY: Number of retried pings
@@ -1752,14 +1757,16 @@ myping()
   if ping -c1 -w3 \$1 >/dev/null 2>&1; then echo -n "o"; return 1; fi
   echo -n "X"; return 2
 }
-RC=0
+declare -i RETRIES=0
+declare -i FAILS=0
 for adr in "\$@"; do
   myping \$adr
-  # Should we just return the sum?
-  R=\$?; if test \$R -gt \$RC; then RC=\$R; fi
+  RC=\$?
+  if test \$RC == 1; then let RETRIES+=1; fi
+  if test \$RC == 2; then let FAILS+=1; fi
 done
-echo
-exit \$RC
+echo " \$RETRIES \$FAILS"
+exit \$((RETRIES+FAILS))
 EOT
   chmod +x ${RPRE}ping
   # collect all IPs
@@ -1770,8 +1777,8 @@ EOT
     port=${PORTS[$pno]}
     IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.id == \"$port\") | .fixed_ips[] | .ip_address" | tr -d '"')
   done
-  declare -i FPRETRY=0
-  declare -i FPERR=0
+  FPRETRY=0
+  FPERR=0
   echo "VM2VM Connectivity Check ... (${IPS[*]})"
   RC=0
   for JHNO in $(seq 0 $(($NOAZS-1))); do
@@ -1781,12 +1788,14 @@ EOT
       pno=${pno%%,*}
       scp -i ${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
       #echo "ssh -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}"
-      ssh -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}
+      PINGRES="$(ssh -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]})"
       R=$?
       if test $R -gt $RC; then RC=$R; fi
+      echo "$PINGRES"
       let CONNERRORS+=$R
-      if test $R -eq 1; then let FPRETRY+=1; fi
-      if test $R -ge 2; then let FPERR+=1; fi
+      PINGRES="${PINGRES#* }"
+      let FPRETRY+=${PINGRES% *}
+      let FPERR+=${PINGRES#* }
     done
   done
   rm ${RPRE}ping
@@ -2191,8 +2200,8 @@ else # test "$1" = "DEPLOY"; then
               if test -n "$FULLCONN"; then
                 fullconntest
                 # Test for FPERR instead?
-                if test $? -ge 2; then
-                  sendalarm 2 "Connectivity error" "" 3
+                if test $FPERR -gt 0; then
+                  sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY" 5
                   errwait $ERRWAIT
                 fi
               fi
@@ -2253,7 +2262,7 @@ let RUNS+=1
 
 CDATE=$(date +%Y-%m-%d)
 CTIME=$(date +%H:%M:%S)
-if test -n "$FULLCONN"; then CONNTXT=$(echo -e "$CUMCONNERRORS Conn Errors\n"); CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
+if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn Errors"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
 if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXITER; then
   sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $HOSTNAME testing $SHORT_DOMAIN/$OS_PROJECT_NAME:
@@ -2265,6 +2274,7 @@ $CUMAPIERRORS API ERRORS
 $CUMAPITIMEOUTS API TIMEOUTS
 $CUMPINGERRORS Ping failures
 $CONNTXT
+
 $(allstats)
 
 #TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$HOSTNAME|$OS_PROJECT_NAME
@@ -2276,7 +2286,7 @@ $(allstats -m)
   echo "#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$HOSTNAME|$OS_PROJECT_NAME
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
 #RUN: $RUNS|$CUMVMS|$CUMAPICALLS
-#ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS
+#ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS$CONNST
 $(allstats -m)" > Stats.$LASTDATA.$LASTTIME.$CDATE.$CTIME.psv
   TOTERR+=$(($CUMVMERRORS+$CUMAPIERRORS+$CUMAPITIMEOUTS+$CUMPINGERRORS+$CUMWAITERRORS+$CUMCONNERRORS))
   CUMVMERRORS=0
