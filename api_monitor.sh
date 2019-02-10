@@ -1747,9 +1747,9 @@ fullconntest()
 #!/bin/bash
 myping()
 {
-  if ping -i1 -w1 \$1 >/dev/null 2>&1; then echo -n "."; return 0; fi
+  if ping -c1 -w1 \$1 >/dev/null 2>&1; then echo -n "."; return 0; fi
   sleep 1
-  if ping -i1 -w2 \$1 >/dev/null 2>&1; then echo -n "o"; return 1; fi
+  if ping -c1 -w3 \$1 >/dev/null 2>&1; then echo -n "o"; return 1; fi
   echo -n "X"; return 2
 }
 RC=0
@@ -2247,7 +2247,7 @@ let RUNS+=1
 
 CDATE=$(date +%Y-%m-%d)
 CTIME=$(date +%H:%M:%S)
-if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn Errors\n"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
+if test -n "$FULLCONN"; then CONNTXT=$(echo -e "$CUMCONNERRORS Conn Errors\n"); CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
 if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXITER; then
   sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $HOSTNAME testing $SHORT_DOMAIN/$OS_PROJECT_NAME:
