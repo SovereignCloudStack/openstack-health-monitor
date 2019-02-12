@@ -298,7 +298,7 @@ fi
 
 # openstackclient/XXXclient compat
 if test -n "$OPENSTACKCLIENT"; then
-  PORTFIXED="s/^.*ip_address='\([0-9a-f:.]*\)'.*$/\1/"
+  PORTFIXED="s/^.*ip_address='\([0-9a-f:.]*\)'.*$/\1/" #' "
   FLOATEXTR='s/^|[^|]*| \([0-9:.]*\).*$/\1/'
 else
   PORTFIXED='s/^.*"ip_address": "\([0-9a-f:.]*\)".*$/\1/'
@@ -520,7 +520,9 @@ math()
 # Call in a subshell, as it otherwise overrides your OS_ environment
 myopenstack()
 {
-	OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-token $TOKEN --os-url $EP "$@"
+	echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-url $EP $@" >> $LOGFILE
+	OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-project-name "" --os-token $TOKEN --os-url $EP "$@"
+	#OS_PASSWORD="" OS_USERNAME="" OS_PROJECT_DOMAIN_NAME="" OS_PROJECT_NAME="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME=""
 }
 
 # Command wrapper for openstack list commands
@@ -1868,7 +1870,7 @@ EOT
     if test -z "$OPENSTACKCLIENT"; then
       IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.id == \"$port\") | .fixed_ips[] | .ip_address" | tr -d '"')
     else
-      IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.ID == \"$port\") | .[\"Fixed IP Addresses\"]" | sed "s/^.*ip_address='\([0-9a-f:.]*\)'.*$/\1/")
+      IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.ID == \"$port\") | .[\"Fixed IP Addresses\"]" | sed "s/^.*ip_address='\([0-9a-f:.]*\)'.*$/\1/") # ' "
     fi
   done
   ERR=""
@@ -2148,8 +2150,13 @@ getToken()
   GLANCE_EP=$(echo -e "$GLANCE_EP" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
   NEUTRON_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "neutron") | .Endpoints')
   NEUTRON_EP=$(echo -e "$NEUTRON_EP" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
+  #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP"
   ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
-  TOKEN=$(echo "$OSTACKRESP" | jq .id | tr -d '"')
+  TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')
+  #echo "TOKEN: {SHA1}$(echo $TOKEN | sha1sum)"
+  PROJECT=$(echo "$OSTACKRESP" | jq '.project_id' | tr -d '"')
+  USER=$(echo "$OSTACKRESP" | jq '.user_id' | tr -d '"')
+  #echo "PROJECT: $PROJECT, USER: $USER"
 }
 
 # Clean/Delete old OpenStack project
@@ -2289,8 +2296,6 @@ SNATROUTE=""
 MSTART=$(date +%s)
 # Get token
 if test -n "$OPENSTACKTOKEN"; then
-  echo "Not yet implemented: Get token, endpoints"
-  echo "export NOVA_EP, CINDER_EP, NEUTRON_EP, GLANCE_EP and TOKEN manually for now"
   getToken
 fi
 # Debugging: Start with volume step
