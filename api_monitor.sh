@@ -87,7 +87,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.45
+VERSION=1.46
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, SUCCWAIT, FROM, [JH]IMG, [JH]IMGFILT, DEFLTUSER, [JH]FLAVOR
@@ -212,6 +212,8 @@ usage()
   echo " -p N   use a new project every N iterations"
   echo " -c     noColors: don't use bold/red/... ASCII sequences"
   echo " -C     full Connectivity check: Every VM pings every other"
+  echo " -o     translate nova/cinder/neutron/glance into openstack client commands"
+  echo " -O     like -o, but use token_endpoint auth (after getting token)"
   echo " -x     assume eXclusive project, clean all floating IPs found"
   echo " -I     dIsassociate floating IPs before deleting them"
   echo "Or: api_monitor.sh [-f] CLEANUP XXX to clean up all resources with prefix XXX"
@@ -244,6 +246,8 @@ while test -n "$1"; do
     "-p") REFRESHPRJ=$2; shift;;
     "-c") NOCOL=1;;
     "-C") FULLCONN=1;;
+    "-o") OPENSTACKCLIENT=1;;
+    "-O") OPENSTACKCLIENT=1; OPENSTACKTOKEN=1;;
     "-x") CLEANALLFIPS=1;;
     "-I") DISASSOC=1;;
     "CLEANUP") break;;
@@ -255,9 +259,9 @@ done
 
 
 # Test precondition
-type -p nova >/dev/null 2>&1
+type -p openstack >/dev/null 2>&1
 if test $? != 0; then
-  echo "Need nova installed"
+  echo "Need openstack client installed"
   exit 1
 fi
 
@@ -278,8 +282,8 @@ if test -z "$OS_USERNAME"; then
   exit 1
 fi
 
-if ! neutron router-list >/dev/null; then
-  echo "neutron call failed, exit"
+if ! openstack router list >/dev/null; then
+  echo "openstack neutron call failed, exit"
   exit 2
 fi
 
@@ -290,6 +294,13 @@ if test "$NOCOL" == "1"; then
   RED="!!"
   GREEN="++"
   YELLOW=".."
+fi
+
+# openstackclient/XXXclient compat
+if test -n "$OPENSTACKCLIENT"; then
+  FLOATEXTR='s/^|[^|]*| \([0-9:.]*\).*$/\1/'
+else
+  FLOATEXTR='s/^|[^|]*|[^|]*| \([0-9:.]*\).*$/\1/'
 fi
 
 # Sanity checks
@@ -445,6 +456,51 @@ killin()
   kill -SIGKILL $1
 }
 
+NOVA_EP="${NOVA_EP:-novaURL}"
+CINDER_EP="${CINDER_EP:-cinderURL}"
+NEUTRON_EP="${NEUTRON_EP:-neutronURL}"
+GLANCE_EP="${GLANCE_EP:-glanceURL}"
+OSTACKCMD=""; EP=""
+# Translate nova/cinder/neutron ... to openstack commands
+translate()
+{
+  local DEFCMD=""
+  CMDS=(nova cinder neutron glance)
+  OSTDEFS=(server volume network image)
+  EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP)
+  for no in $(seq 0 $((${#CMDS[*]}-1))); do
+    if test ${CMDS[$no]} == $1; then
+      EP=${EPS[$no]}
+      DEFCMD=${OSTDEFS[$no]}
+    fi
+  done
+  OSTACKCMD=("$@")
+  if test -z "$OPENSTACKCLIENT" -o "$1" == "openstack"; then return 0; fi
+  if test -n "$LOGFILE"; then echo "#DEBUG: $@" >> $LOGFILE; fi
+  #echo "#DEBUG: $@" 1>&2
+  if test -z "$DEFCMD"; then echo "ERROR: Unknown cmd $@" 1>&2; return 1; fi
+  local OPST
+  if test -n "$OPENSTACKTOKEN"; then OPST=myopenstack; else OPST=openstack; fi
+  shift
+  CMD=${1##*-}
+  if test "$CMD" == "$1"; then
+    if test "$CMD" == "boot"; then CMD="create"; fi
+    shift
+    OSTACKCMD=($OPST $DEFCMD $CMD "$@")
+    #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
+  else
+    C1=${1%-*}
+    if test "$C1" == "net"; then C1="network"; fi
+    if test "$C1" == "floatingip"; then C1="floating ip"; fi
+    C1=${C1//-/ }
+    shift
+    OSTACKCMD=($OPST $C1 $CMD "$@")
+    #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
+  fi
+  if test -n "$LOGFILE"; then echo "# => : ${OSTACKCMD[@]}" >> $LOGFILE; fi
+  return 0
+}
+
 # Do some math (python syntax)
 # $1 => formatting
 # $2 => math expr
@@ -455,6 +511,14 @@ math()
   else
     python -c "print \"$1\" % ($2)"
   fi
+}
+
+# Wrapper for calling openstack
+# Allows to inject OS_TOKEN and OS_URL to enforce token_endpoint auth
+# Call in a subshell, as it otherwise overrides your OS_ environment
+myopenstack()
+{
+	OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-token $TOKEN --os-url $EP "$@"
 }
 
 # Command wrapper for openstack list commands
@@ -468,22 +532,23 @@ ostackcmd_search()
   local SEARCH=$1; shift
   local TIMEOUT=$1; shift
   local LSTART=$(date +%s.%3N)
+  translate "$@"
   if test "$TIMEOUT" = "0"; then
-    RESP=$($@ 2>&1)
+    RESP=$(${OSTACKCMD[@]} 2>&1)
   else
-    RESP=$($@ 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
+    RESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
   fi
   local RC=$?
   local LEND=$(date +%s.%3N)
   ID=$(echo "$RESP" | grep "$SEARCH" | head -n1 | sed -e 's/^| *\([^ ]*\) *|.*$/\1/')
-  echo "$LSTART/$LEND/$SEARCH: $@ => $RC $RESP $ID" >> $LOGFILE
+  echo "$LSTART/$LEND/$SEARCH: ${OSTACKCMD[@]} => $RC $RESP $ID" >> $LOGFILE
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
     sendalarm $RC "$*" "$RESP" $TIMEOUT
     errwait $ERRWAIT
   fi
   local TIM=$(math "%.2f" "$LEND-$LSTART")
-  if test "$RC" != "0"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: $@ => $RC $RESP$NORM" 1>&2; return $RC; fi
-  if test -z "$ID"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: $@ => $RC $RESP => $SEARCH not found$NORM" 1>&2; return $RC; fi
+  if test "$RC" != "0"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; return $RC; fi
+  if test -z "$ID"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP => $SEARCH not found$NORM" 1>&2; return $RC; fi
   echo "$TIM $ID"
   return $RC
 }
@@ -500,10 +565,11 @@ ostackcmd_id()
   local IDNM=$1; shift
   local TIMEOUT=$1; shift
   local LSTART=$(date +%s.%3N)
+  translate "$@"
   if test "$TIMEOUT" = "0"; then
-    RESP=$($@ 2>&1)
+    RESP=$(${OSTACKCMD[@]} 2>&1)
   else
-    RESP=$($@ 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
+    RESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
   fi
   local RC=$?
   local LEND=$(date +%s.%3N)
@@ -522,11 +588,11 @@ ostackcmd_id()
   fi
   if test "$IDNM" = "DELETE"; then
     ID=$(echo "$RESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
-    echo "$LSTART/$LEND/$ID: $@ => $RC $RESP" >> $LOGFILE
+    echo "$LSTART/$LEND/$ID: ${OSTACKCMD[@]} => $RC $RESP" >> $LOGFILE
   else
     ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed -e "s/^| *$IDNM *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
-    echo "$LSTART/$LEND/$ID: $@ => $RC $RESP" >> $LOGFILE
-    if test "$RC" != "0"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: $@ => $RC $RESP$NORM" 1>&2; return $RC; fi
+    echo "$LSTART/$LEND/$ID: ${OSTACKCMD[@]} => $RC $RESP" >> $LOGFILE
+    if test "$RC" != "0"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; return $RC; fi
   fi
   echo "$TIM $ID"
   return $RC
@@ -548,10 +614,11 @@ ostackcmd_tm()
   local LSTART=$(date +%s.%3N)
   # We can count here, as we are not in a subprocess
   let APICALLS+=1
+  translate "$@"
   if test "$TIMEOUT" = "0"; then
-    OSTACKRESP=$($@ 2>&1)
+    OSTACKRESP=$(${OSTACKCMD[@]} 2>&1)
   else
-    OSTACKRESP=$($@ 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
+    OSTACKRESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
   fi
   local RC=$?
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
@@ -570,7 +637,7 @@ ostackcmd_tm()
     curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)" >> grafana.log
   fi
   eval "${STATNM}+=( $TIM )"
-  echo "$LSTART/$LEND/: $@ => $OSTACKRESP" >> $LOGFILE
+  echo "$LSTART/$LEND/: ${OSTACKCMD[@]} => $OSTACKRESP" >> $LOGFILE
   return $RC
 }
 
@@ -1254,7 +1321,7 @@ createFIPs()
   FLOAT=""
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 1
   for PORT in ${FIPS[*]}; do
-    FLOAT+=" $(echo "$OSTACKRESP" | grep $PORT | sed 's/^|[^|]*|[^|]*| \([0-9:.]*\).*$/\1/')"
+    FLOAT+=" $(echo "$OSTACKRESP" | grep $PORT | sed "$FLOATEXTR")"
   done
   echo "Floating IPs: $FLOAT"
   FLOATS=( $FLOAT )
@@ -1373,7 +1440,7 @@ collectPorts()
     if test -z "$vmid"; then sendalarm 1 "nova list" "VM $vm not found" $NOVATIMEOUT; continue; fi
     #port=$(echo "$OSTACKRESP" | jq -r '.[]' | grep -C4 "$vmid")
     #echo -e "#DEBUG: $port"
-    port=$(echo -e "$OSTACKRESP" | jq -r ".[] | select(.device_id == \"$vmid\") | .id" | tr -d '"')
+    port=$(echo -e "$OSTACKRESP" | tr 'A-Z' 'a-z' | jq -r ".[] | select(.device_id == \"$vmid\") | .id" | tr -d '"')
     PORTS[$vm]=$port
   done
   echo "VM Ports: ${PORTS[*]}"
@@ -1900,22 +1967,25 @@ findres()
 {
   local FILT=${1:-$RPRE}
   shift
+  translate "$@"
   # FIXME: Add timeout handling
-  $@ 2>/dev/null | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
+  ${OSTACKCMD[@]} 2>/dev/null | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
 }
 
 collectres()
 {
   VMS=( $(findres ${RPRE}VM_VM nova list) )
   NOVMS=${#VMS[*]}
+  echo "... $NOVMS VMs found ..."
   ROUTERS=( $(findres "" neutron router-list) )
   SNATROUTE=1
-  FIPS=( $(neutron floatingip-list | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 1
+  FIPS=( $(echo "$OSTACKRESP" | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   for PORT in ${FIPS[*]}; do
-    FLOAT+=" $(echo "$OSTACKRESP" | grep $PORT | sed 's/^|[^|]*|[^|]*| \([0-9:.]*\).*$/\1/')"
+    FLOAT+=" $(echo "$OSTACKRESP" | grep $PORT | sed "$FLOATEXTR")"
   done
   FLOATS=( $FLOAT )
+  echo "FIPS: ${FIPS[*]}, FLOATS: ${FLOATS[*]}"
   JHVMS=( $(findres ${RPRE}VM_JH nova list) )
   NOAZS=${#JHVMS[*]}
   VIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
@@ -1932,9 +2002,13 @@ collectres()
   NETS=( $(findres "" neutron net-list) )
   NONETS=${#NETS[*]}
   calcRedirs
-  # Determine batch mode
-  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${VMS[0]}
-  if echo "$OSTACKRESP" | grep -e 'metadata' | grep '"deployment": "cfbatch"' >/dev/null 2>&1; then BOOTALLATONCE=1; fi
+  if test ${#VMS[*]} -gt 0; then
+    # Determine batch mode
+    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${VMS[0]}
+    if echo "$OSTACKRESP" | grep -e 'metadata' | grep '"deployment": "cfbatch"' >/dev/null 2>&1; then BOOTALLATONCE=1; fi
+    # openstack server list output is slightly different
+    if echo "$OSTACKRESP" | grep -e 'properties' | grep "deployment='cfbatch'" >/dev/null 2>&1; then BOOTALLATONCE=1; fi
+  fi
 }
 
 cleanup_new()
@@ -2055,6 +2129,23 @@ waitnetgone()
   unset IGNORE_ERRORS
 }
 
+# Token retrieval and catalog ...
+TOKEN=""
+getToken()
+{
+  ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack catalog list -f json
+  NOVA_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "nova") | .Endpoints')
+  NOVA_EP=$(echo -e "$NOVA_EP" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
+  CINDER_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "cinder") | .Endpoints')
+  CINDER_EP=$(echo -e "$CINDER_EP" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
+  GLANCE_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "glance") | .Endpoints')
+  GLANCE_EP=$(echo -e "$GLANCE_EP" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
+  NEUTRON_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "neutron") | .Endpoints')
+  NEUTRON_EP=$(echo -e "$NEUTRON_EP" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
+  ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
+  TOKEN=$(echo "$OSTACKRESP" | jq .id | tr -d '"')
+}
+
 # Clean/Delete old OpenStack project
 cleanprj()
 {
@@ -2124,6 +2215,7 @@ declare -a NETSTATS
 declare -a FIPSTATS
 declare -a VOLSTATS
 declare -a NOVASTATS
+declare -a KEYSTONESTATS
 declare -a NOVABSTATS
 # Resource creation stats (creation/deletion)
 declare -a VOLCSTATS
@@ -2189,6 +2281,12 @@ SNATROUTE=""
 
 # Main
 MSTART=$(date +%s)
+# Get token
+if test -n "$OPENSTACKTOKEN"; then
+  echo "Not yet implemented: Get token, endpoints"
+  echo "export NOVA_EP, CINDER_EP, NEUTRON_EP, GLANCE_EP and TOKEN manually for now"
+  getToken
+fi
 # Debugging: Start with volume step
 if test "$1" = "CLEANUP"; then
   if test -n "$2"; then RPRE=$2; fi
@@ -2201,11 +2299,12 @@ elif test "$1" = "CONNTEST"; then
   if test -n "$2"; then RPRE=$2; fi
   echo -e "$BOLD *** Start connectivity test for $RPRE *** $NORM"
   collectres
+  if test -z "${VMS[*]}"; then echo "No VMs found"; exit 1; fi
   #echo "FLOATs: ${FLOATS[*]} JHVMS: ${JHVMS[*]}"
   testjhinet
   if test $? != 0; then
     sendalarm 2 "JH unreachable" "$ERR" 20
-    exit 1
+    exit 2
   fi
   #echo "REDIRS: ${REDIRS[*]}"
   wait222
