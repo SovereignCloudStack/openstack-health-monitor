@@ -298,8 +298,10 @@ fi
 
 # openstackclient/XXXclient compat
 if test -n "$OPENSTACKCLIENT"; then
+  PORTFIXED="s/^.*ip_address='\([0-9a-f:.]*\)'.*$/\1/"
   FLOATEXTR='s/^|[^|]*| \([0-9:.]*\).*$/\1/'
 else
+  PORTFIXED='s/^.*"ip_address": "\([0-9a-f:.]*\)".*$/\1/'
   FLOATEXTR='s/^|[^|]*|[^|]*| \([0-9:.]*\).*$/\1/'
 fi
 
@@ -497,7 +499,7 @@ translate()
     OSTACKCMD=($OPST $C1 $CMD "$@")
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
   fi
-  if test -n "$LOGFILE"; then echo "# => : ${OSTACKCMD[@]}" >> $LOGFILE; fi
+  if test -n "$LOGFILE"; then echo "#=> : ${OSTACKCMD[@]}" >> $LOGFILE; fi
   return 0
 }
 
@@ -1275,7 +1277,7 @@ deleteKeypairs()
 # Extract IP address from neutron port-show output
 extract_ip()
 {
-  echo "$1" | grep '| fixed_ips ' | sed 's/^.*"ip_address": "\([0-9a-f:.]*\)".*$/\1/'
+  echo "$1" | grep '| fixed_ips ' | sed "$PORTFIXED"
 }
 
 # Create Floating IPs, and set route via Virtual IP
@@ -1863,7 +1865,11 @@ EOT
   IPS=()
   for pno in $(seq 0 $((${#PORTS[*]}-1))); do
     port=${PORTS[$pno]}
-    IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.id == \"$port\") | .fixed_ips[] | .ip_address" | tr -d '"')
+    if test -z "$OPENSTACKCLIENT"; then
+      IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.id == \"$port\") | .fixed_ips[] | .ip_address" | tr -d '"')
+    else
+      IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.ID == \"$port\") | .[\"Fixed IP Addresses\"]" | sed "s/^.*ip_address='\([0-9a-f:.]*\)'.*$/\1/")
+    fi
   done
   ERR=""
   FPRETRY=0
@@ -1985,7 +1991,7 @@ collectres()
     FLOAT+=" $(echo "$OSTACKRESP" | grep $PORT | sed "$FLOATEXTR")"
   done
   FLOATS=( $FLOAT )
-  echo "FIPS: ${FIPS[*]}, FLOATS: ${FLOATS[*]}"
+  #echo "FIPS: ${FIPS[*]}, FLOATS: ${FLOATS[*]}"
   JHVMS=( $(findres ${RPRE}VM_JH nova list) )
   NOAZS=${#JHVMS[*]}
   VIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
