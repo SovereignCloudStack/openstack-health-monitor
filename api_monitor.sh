@@ -485,8 +485,8 @@ translate()
   if test -n "$OPENSTACKTOKEN"; then OPST=myopenstack; else OPST=openstack; fi
   shift
   CMD=${1##*-}
-  # No '-'
   if test "$CMD" == "$1"; then
+    # No '-'
     if test "$CMD" == "boot"; then CMD="create"; fi
     shift
     OSTACKCMD=($OPST $DEFCMD $CMD "$@")
@@ -503,13 +503,15 @@ translate()
       ARGS=$(echo "$@" | sed 's@\-\-name \([^ ]*\) *\([^ ]*\) *\([^ ]*\)@--network \2 --subnet-range \3 \1@')
       OSTACKCMD=($OPST $C1 $CMD ${ARGS})
     fi
-    if test "$C1" == "router" -a "$CMD" == "interface" -a "$1" == "add"; then
-      shift
-      OSTACKCMD=($OPST $C1 add subnet "$@")
+    if test "$C1" == "router interface" -a "$CMD" == "add"; then
+      OSTACKCMD=($OPST router add subnet "$@")
     fi
-    if test "$C1" == "router" -a "$CMD" == "interface" -a "$1" == "delete"; then
-      shift
-      OSTACKCMD=($OPST $C1 remove subnet "$@")
+    if test "$C1" == "router interface" -a "$CMD" == "delete"; then
+      OSTACKCMD=($OPST router remove subnet "$@")
+    fi
+    if test "$C1" == "security group rule" -a "$CMD" == "create"; then
+      ARGS=$(echo "$@" | sed -e 's/\-\-direction ingress/--ingress/' -e 's/\-\-direction egress/--egress/' -e 's/\-\-remote\-ip\-prefix/--remote-ip/' -e 's/\-\-remote\-group\-id/--remote-group/')
+      OSTACKCMD=($OPST $C1 $CMD $ARGS)
     fi
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
   fi
