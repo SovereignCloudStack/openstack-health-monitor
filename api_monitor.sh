@@ -485,6 +485,7 @@ translate()
   if test -n "$OPENSTACKTOKEN"; then OPST=myopenstack; else OPST=openstack; fi
   shift
   CMD=${1##*-}
+  # No '-'
   if test "$CMD" == "$1"; then
     if test "$CMD" == "boot"; then CMD="create"; fi
     shift
@@ -496,7 +497,20 @@ translate()
     if test "$C1" == "floatingip"; then C1="floating ip"; fi
     C1=${C1//-/ }
     shift
-    OSTACKCMD=($OPST $C1 $CMD "$@")
+    #OSTACKCMD=($OPST $C1 $CMD "$@")
+    OSTACKCMD=($OPST $C1 $CMD "${@//--property-filter/--property}")
+    if test "$C1" == "subnet" -a "$CMD" == "create"; then
+      ARGS=$(echo "$@" | sed 's@\-\-name \([^ ]*\) *\([^ ]*\) *\([^ ]*\)@--network \2 --subnet-range \3 \1@')
+      OSTACKCMD=($OPST $C1 $CMD ${ARGS})
+    fi
+    if test "$C1" == "router" -a "$CMD" == "interface" -a "$1" == "add"; then
+      shift
+      OSTACKCMD=($OPST $C1 add subnet "$@")
+    fi
+    if test "$C1" == "router" -a "$CMD" == "interface" -a "$1" == "delete"; then
+      shift
+      OSTACKCMD=($OPST $C1 remove subnet "$@")
+    fi
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
   fi
   if test -n "$LOGFILE"; then echo "#=> : ${OSTACKCMD[@]}" >> $LOGFILE; fi
