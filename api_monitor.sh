@@ -87,7 +87,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.44
+VERSION=1.45
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, SUCCWAIT, FROM, [JH]IMG, [JH]IMGFILT, DEFLTUSER, [JH]FLAVOR
@@ -144,7 +144,7 @@ DOMAIN=$(grep '^search' /etc/resolv.conf | awk '{ print $2; }'; exit ${PIPESTATU
 HOSTNAME=$(hostname)
 FQDN=$(hostname -f 2>/dev/null) || FQDN=$HOSTNAME.$DOMAIN
 echo "Running api_monitor.sh v$VERSION on host $FQDN"
-if test "$1" != "CLEANUP" -a "$2" != "CLEANUP"; then
+if ! echo "$@" | grep '\(CLEANUP\|CONNTEST\)' >/dev/null 2>&1; then
   echo "Using $RPRE prefix for resrcs on $OS_USER_DOMAIN_NAME/$OS_PROJECT_NAME (${AZS[*]})"
 fi
 
@@ -215,6 +215,7 @@ usage()
   echo " -x     assume eXclusive project, clean all floating IPs found"
   echo " -I     dIsassociate floating IPs before deleting them"
   echo "Or: api_monitor.sh [-f] CLEANUP XXX to clean up all resources with prefix XXX"
+  echo "Or: api_monitor.sh CONNTEST XXX to perform full connectivity check for preexisting env XXX"
   exit 0
 }
 
@@ -246,6 +247,7 @@ while test -n "$1"; do
     "-x") CLEANALLFIPS=1;;
     "-I") DISASSOC=1;;
     "CLEANUP") break;;
+    "CONNTEST") break;;
     *) echo "Unknown argument \"$1\""; exit 1;;
   esac
   shift
@@ -459,6 +461,8 @@ math()
 # $1 = search term
 # $2 = timeout (in s)
 # $3-oo => command
+# Return value: Error from command
+# Output: "TIME ID"
 ostackcmd_search()
 {
   local SEARCH=$1; shift
@@ -489,6 +493,8 @@ ostackcmd_search()
 # $1 = id to extract
 # $2 = timeout (in s)
 # $3-oo => command
+# Return value: Error from command
+# Output: "TIME ID"
 ostackcmd_id()
 {
   local IDNM=$1; shift
@@ -530,6 +536,8 @@ ostackcmd_id()
 # Append timing to $1 array
 # $2 = timeout (in s)
 # $3-oo command
+# Return value: Error from command
+# Output: None (but sets timing array and OSTACKRESP)
 # DO NOT call this in a subshell
 # As this is not in a subshell, we can also do API error counting directly ...
 OSTACKRESP=""
@@ -1427,7 +1435,7 @@ createVMsAll()
   local netno AZ THISNOVM vmid off STMS
   local ERRS=0
   local UDTMP=./user_data_VM.$$.yaml
-  echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.$$.ALL\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP
+  echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}ALL\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP
   declare -a STMS
   echo -n "Create VMs in batches: "
   for netno in $(seq 0 $(($NONETS-1))); do
@@ -1465,7 +1473,7 @@ createVMs()
   if test -n "$BOOTALLATONCE"; then createVMsAll; return; fi
   local UDTMP=./user_data_VM.$$.yaml
   for no in $(seq 0 $NOVMS); do
-    echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.$$.$no\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP.$no
+    echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}$no\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP.$no
   done
   if test -n "$BOOTFROMIMAGE"; then
     if test -n "$MANUALPORTSETUP"; then
@@ -1525,10 +1533,11 @@ waitdelVMs()
 # Meta data setting for test purposes
 setmetaVMs()
 {
+  if test -n "$BOOTALLATONCE"; then CFTEST=cfbatch; else CFTEST=cftest; fi
   echo -n "Set VM Metadata: "
   for no in `seq 0 $(($NOVMS-1))`; do
     echo -n "${VMS[$no]} "
-    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova meta ${VMS[$no]} set deployment=cftest server=$no || return 1
+    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova meta ${VMS[$no]} set deployment=$CFTEST server=$no || return 1
   done
   echo
 }
@@ -1547,6 +1556,7 @@ wait222()
     declare -i ctr=0
     perr=0
     # First test JH
+    if test -n "$LOGFILE"; then echo "ping -c1 -w2 ${FLOATS[$JHNO]}" >> $LOGFILE; fi
     while test $ctr -le $MAXWAIT; do
       ping -c1 -w2 ${FLOATS[$JHNO]} >/dev/null 2>&1 && break
       sleep 2
@@ -1557,6 +1567,7 @@ wait222()
     # Now ssh
     echo -n " ssh "
     declare -i ctr=0
+    if test -n "$LOGFILE"; then echo "nc $NCPROXY -w 2 ${FLOATS[$JHNO]} 22" >> $LOGFILE; fi
     while [ $ctr -le $MAXWAIT ]; do
       echo "quit" | nc $NCPROXY -w 2 ${FLOATS[$JHNO]} 22 >/dev/null 2>&1 && break
       echo -n "."
@@ -1586,6 +1597,7 @@ wait222()
       pno=${pno%%,*}
       declare -i ctr=0
       echo -n " $pno "
+      if test -n "$LOGFILE"; then echo "nc $NCPROXY -w 2 ${FLOATS[$JHNO]} $pno" >> $LOGFILE; fi
       while [ $ctr -le $MAXWAIT ]; do
         echo "quit" | nc $NCPROXY -w 2 ${FLOATS[$JHNO]} $pno >/dev/null 2>&1 && break
         echo -n "."
@@ -1624,21 +1636,30 @@ testlsandping()
     ssh-keygen -R [$2]:$3 -f ~/.ssh/known_hosts >/dev/null 2>&1
   fi
   if test -z "$pport"; then
+    if test -n "$LOGFILE"; then
+      echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" ${DEFLTUSER}@$2 ls" >> $LOGFILE
+    fi
     # no user_data on JumpHosts
     ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=10" ${DEFLTUSER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 4;
     ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${DEFLTUSER}@$2 ls >/dev/null 2>&1; } || return 2
   else
+    if test -n "$LOGFILE"; then
+      echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" ${DEFLTUSER}@$2 grep api_monitor.sh.${RPRE}[$4]" >> $LOGFILE
+    fi
     # Test whether user_data file injection worked
     if test -n "$BOOTALLATONCE"; then
       # no indiv user data per VM when mass booting ...
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${DEFLTUSER}@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${DEFLTUSER}@$2 grep api_monitor.sh.$$ /tmp/testfile >/dev/null 2>&1; } || return 2
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${DEFLTUSER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${DEFLTUSER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || return 2
     else
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${DEFLTUSER}@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${DEFLTUSER}@$2 grep api_monitor.sh.$$.$4 /tmp/testfile >/dev/null 2>&1; } || return 2
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${DEFLTUSER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${DEFLTUSER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || return 2
     fi
   fi
   # TODO: Add test for accessing 100.125.0.1 (Provider net)
+  if test -n "$LOGFILE"; then
+    echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=6\" ${DEFLTUSER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
+  fi
   PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" ${DEFLTUSER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   if test $? = 0; then echo $PING; return 0; fi
   sleep 1
@@ -1777,6 +1798,7 @@ EOT
     port=${PORTS[$pno]}
     IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.id == \"$port\") | .fixed_ips[] | .ip_address" | tr -d '"')
   done
+  ERR=""
   FPRETRY=0
   FPERR=0
   echo "VM2VM Connectivity Check ... (${IPS[*]})"
@@ -1788,10 +1810,15 @@ EOT
       pno=${pno%%,*}
       scp -i ${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
       #echo "ssh -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}"
+      if test -n "$LOGFILE"; then echo "ssh -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]})" >> $LOGFILE; fi
       PINGRES="$(ssh -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]})"
       R=$?
       if test $R -gt $RC; then RC=$R; fi
       echo "$PINGRES"
+      if test "$R" = "255"; then let CONNERRORS+=$((2*$NOVMS)); let FPERR+=$NOVMS; ERR="$ERR
+UNREACHABLE 0 $NOVMS"; continue; fi
+      ERR="$ERR
+$PINGRES"
       let CONNERRORS+=$R
       PINGRES="${PINGRES#* }"
       let FPRETRY+=${PINGRES% *}
@@ -1865,7 +1892,10 @@ allstats()
  stats $1 TOTTIME    0 "Total setup Stats "
 }
 
+# TODO: Create wrapper that collects stats, handles timeouts ...
 # Helper to find a resource ...
+# $1 => Filter (grepped)
+# $2--oo => command
 findres()
 {
   local FILT=${1:-$RPRE}
@@ -1874,14 +1904,69 @@ findres()
   $@ 2>/dev/null | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
 }
 
+collectres()
+{
+  VMS=( $(findres ${RPRE}VM_VM nova list) )
+  NOVMS=${#VMS[*]}
+  ROUTERS=( $(findres "" neutron router-list) )
+  SNATROUTE=1
+  FIPS=( $(neutron floatingip-list | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 1
+  for PORT in ${FIPS[*]}; do
+    FLOAT+=" $(echo "$OSTACKRESP" | grep $PORT | sed 's/^|[^|]*|[^|]*| \([0-9:.]*\).*$/\1/')"
+  done
+  FLOATS=( $FLOAT )
+  JHVMS=( $(findres ${RPRE}VM_JH nova list) )
+  NOAZS=${#JHVMS[*]}
+  VIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
+  VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
+  # Volume names if we boot from image
+  VOLUMES2=( $(findres ${RPRE}VM_VM cinder list) )
+  JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) )
+  KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  #PORTS=( $(findres ${RPRE}Port_VM neutron port-list) )
+  collectPorts
+  JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
+  SGROUPS=( $(findres "" neutron security-group-list) )
+  SUBNETS=( $(findres "" neutron subnet-list) )
+  NETS=( $(findres "" neutron net-list) )
+  NONETS=${#NETS[*]}
+  calcRedirs
+  # Determine batch mode
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${VMS[0]}
+  if echo "$OSTACKRESP" | grep -e 'metadata' | grep '"deployment": "cfbatch"' >/dev/null 2>&1; then BOOTALLATONCE=1; fi
+}
+
+cleanup_new()
+{
+  collectres
+  deleteVMs
+  deleteFIPs
+  deleteJHVMs
+  deleteVIPs
+  waitdelVMs; deleteVols
+  VOLUMES=("${VOLUMES2[@]}"); deleteVols
+  waitdelJHVMs; deleteJHVols
+  deleteKeypairs
+  deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
+  deleteSGroups
+  deleteRIfaces
+  deleteSubNets
+  deleteNets
+  deleteRouters
+}
+
 cleanup()
 {
+  # Could also call collectres here first and then clean up ...
+  # Might result in a few extra port deletions but otherwise work
+  # See cleanup_new (will switch after some extra testing)
   VMS=( $(findres ${RPRE}VM_VM nova list) )
   deleteVMs
   ROUTERS=( $(findres "" neutron router-list) )
   SNATROUTE=1
   #FIPS=( $(findres "" neutron floatingip-list) )
-  FIPS=( $(neutron floatingip-list | grep '10\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  FIPS=( $(neutron floatingip-list | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   deleteFIPs
   JHVMS=( $(findres ${RPRE}VM_JH nova list) )
   deleteJHVMs
@@ -2112,6 +2197,34 @@ if test "$1" = "CLEANUP"; then
   echo -e "$BOLD *** Cleanup complete *** $NORM"
   # We always return 0 here, as we don't want to stop the testing on failed cleanups.
   exit 0
+elif test "$1" = "CONNTEST"; then
+  if test -n "$2"; then RPRE=$2; fi
+  echo -e "$BOLD *** Start connectivity test for $RPRE *** $NORM"
+  collectres
+  #echo "FLOATs: ${FLOATS[*]} JHVMS: ${JHVMS[*]}"
+  testjhinet
+  if test $? != 0; then
+    sendalarm 2 "JH unreachable" "$ERR" 20
+    exit 1
+  fi
+  #echo "REDIRS: ${REDIRS[*]}"
+  wait222
+  # Defer alarms
+  #if test $? != 0; then exit 2; fi
+  testsnat
+  if test $? != 0; then
+    sendalarm 2 "VMs unreachable/can not ping outside" "$ERR" 16
+    exit 3
+  fi
+  fullconntest
+  #if test $? != 0; then exit 4; fi
+  if test $FPERR -gt 0; then
+    sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
+    exit 4
+    #errwait $ERRWAIT
+  fi
+  echo -e "$BOLD *** Connectivity test complete *** $NORM"
+  exit 0 #$RC
 else # test "$1" = "DEPLOY"; then
  if test "$REFRESHPRJ" != 0 && test $(($RUNS%$REFRESHPRJ)) == 0; then createnewprj; fi
  # Complete setup
@@ -2201,7 +2314,7 @@ else # test "$1" = "DEPLOY"; then
                 fullconntest
                 # Test for FPERR instead?
                 if test $FPERR -gt 0; then
-                  sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY" 5
+                  sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
                   errwait $ERRWAIT
                 fi
               fi
