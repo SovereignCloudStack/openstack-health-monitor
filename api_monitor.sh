@@ -13,11 +13,11 @@
 # - Errors not yet handled everywhere
 # - Live Volume and NIC attachment not yet implemented
 # - Log too verbose for permament operation ...
-# - Script allows to create multiple nets/subnets independent from no of AZs, but the
-#   assumption at some places probably still wrongly is that NONETS == NOAZS.
+# - Script allows to create multiple nets/subnets independent from no of AZs,
+#   which may need more testing.
+# - Done: Convert from neutron/cinder/nova/... to openstack (-o / -O)
 #
 # TODO:
-# - Convert from neutron/cinder/nova/... to openstack
 # - Align sendalarm with Grafana database entries
 #
 # (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017-7/2017
@@ -72,12 +72,14 @@
 # (including the round trip to keystone for the token).
 #
 # Optimization possibilities:
-# - Cache token and reuse when creating a large number of resources in a loop
+# - DONE: Cache token and reuse when creating a large number of resources in a loop
+#   Use option -O (not used for volume create)
 #
 # Prerequisites:
-# - Working python-XXXclient tools (glance, neutron, nova, cinder)
+# - Working python-XXXclient tools (openstack, glance, neutron, nova, cinder)
 # - otc.sh from otc-tools (only if using optional SMN -m and project creation -p)
 # - sendmail (only if email notification is requested)
+# - jq (for JSON processing)
 # - python2 or 3 for math used to calc statistics
 # - SUSE image with the SNAT/port-fwd (SuSEfirewall2-snat) for the JumpHosts
 # - Any image for the VMs that allows login as user DEFLTUSER (linux) with injected key
@@ -90,7 +92,7 @@
 VERSION=1.46
 
 # TODO: Document settings that can be ovverriden by environment variables
-# such as PINGTARGET, ALARMPRE, SUCCWAIT, FROM, [JH]IMG, [JH]IMGFILT, DEFLTUSER, [JH]FLAVOR
+# such as PINGTARGET, ALARMPRE, SUCCWAIT, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -158,6 +160,7 @@ IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
 JHFLAVOR=${JHFLAVOR:-s2.medium.1}
 FLAVOR=${FLAVOR:-s2.medium.1}
 DEFLTUSER=${DEFLTUSER:-linux}
+JHDEFLTUSER=${JHDEFLTUSER:-$DEFLTUSER}
 
 if [[ "$JHIMG" != *openSUSE* ]]; then
 	echo "WARN: Need openSUSE as JumpHost for port forwarding via user_data" 1>&2
@@ -262,6 +265,12 @@ done
 type -p openstack >/dev/null 2>&1
 if test $? != 0; then
   echo "Need openstack client installed"
+  exit 1
+fi
+
+type -p jq >/dev/null 2>&1
+if test $? != 0; then
+  echo "Need jq installed"
   exit 1
 fi
 
@@ -491,16 +500,20 @@ translate()
     OSTACKCMD=($OPST $DEFCMD $CMD "$@")
     if test "$DEFCMD" == "volume" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed -e 's/\-\-image\-id/--image/' -e 's/\-\-name \([^ ]*\) *\([0-9]*\) *$/--size \2 \1/')
-      OSTACKCMD=($OPST $DEFCMD $CMD $ARGS)
+      #OSTACKCMD=($OPST $DEFCMD $CMD $ARGS)
+      # No token_endpoint auth for volume creation (need to talk to image service as well?)
+      OSTACKCMD=(openstack $DEFCMD $CMD $ARGS)
     # Optimization: Avoid image and flavor name lookups in server list when polling
-    elif test "$DEFCMD" == "server" -a "$CMD" == "list"; then OSTACKCMD=("${OSTACLCMD[@]}" -n)
+    elif test "$DEFCMD" == "server" -a "$CMD" == "list"; then OSTACKCMD=("${OSTACKCMD[@]}" -n)
     # Optimization: Avoid Attachment name lookup in volume list when polling
-    elif test "$DEFCMD" == "volume" -a "$CMD" == "list"; then OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status)
+    elif test "$DEFCMD" == "volume" -a "$CMD" == "list"; then OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
     elif test "$DEFCMD" == "server" -a "$CMD" == "boot"; then
       # Only handles one SG
-      ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@')
-      OSTACKCMD=($OPST $DEFCMD create $ARGS)
+      ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@')
+      #OSTACKCMD=($OPST $DEFCMD create $ARGS)
+      # No token_endpoint auth for server creation (need to talk to neutron/cinder/glance as well)
+      OSTACKCMD=(openstack $DEFCMD create $ARGS)
     elif test "$DEFCMD" == "server" -a "$CMD" == "meta"; then
       # nova meta ${VMS[$no]} set deployment=$CFTEST server=$no
       ARGS=$(echo "$@" | sed 's@\([a-zA-Z_0-9]*=[^ ]*\)@--property \1@g')
@@ -518,6 +531,11 @@ translate()
     if test "$C1" == "subnet" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed 's@\-\-name \([^ ]*\) *\([^ ]*\) *\([^ ]*\)@--network \2 --subnet-range \3 \1@')
       OSTACKCMD=($OPST $C1 $CMD ${ARGS})
+    elif test "$C1" == "floating ip" -a "$CMD" == "create"; then
+      ARGS=$(echo "$@" | sed 's@\-\-port\-id@--port@')
+      OSTACKCMD=($OPST $C1 $CMD ${ARGS})
+    elif test "$C1" == "net external"; then
+      OSTACKCMD=($OPST network $CMD --external "$@")
     elif test "$C1" == "port" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed 's@\-\-name \([^ ]*\) *\([^ ]*\)@--network \2 \1@')
       OSTACKCMD=($OPST $C1 $CMD ${ARGS})
@@ -533,6 +551,10 @@ translate()
       OSTACKCMD=($OPST router add subnet "$@")
     elif test "$C1" == "router interface" -a "$CMD" == "delete"; then
       OSTACKCMD=($OPST router remove subnet "$@")
+    elif test "$C1" == "router gateway" -a "$CMD" == "set"; then
+      #neutron router-gateway-set ${ROUTERS[0]} $EXTNET
+      ARGS=$(echo "$@" | sed 's/\([^-][^ ]*\) *\([^ ]*\)/--external-gateway \2 \1/')
+      OSTACKCMD=($OPST router set "${ARGS[@]}")
     elif test "$C1" == "security group rule" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed -e 's/\-\-direction ingress/--ingress/' -e 's/\-\-direction egress/--egress/' -e 's/\-\-remote\-ip\-prefix/--remote-ip/' -e 's/\-\-remote\-group\-id/--remote-group/' -e 's/\-\-protocol tcp *\-\-port\-range\-min \([0-9]*\) *\-\-port\-range\-max \([0-9]*\)/--protocol tcp --dst-port \1:\2/' -e 's/\-\-protocol icmp *\-\-port\-range\-min \([0-9]*\) *\-\-port\-range\-max \([0-9]*\)/--protocol icmp --icmp-type \1 --icmp-code \2/')
       OSTACKCMD=($OPST $C1 $CMD $ARGS)
@@ -1514,8 +1536,8 @@ setPortForward()
 sed -i 's@^FW_FORWARD_MASQ=.*\$@FW_FORWARD_MASQ=\"$FWDMASQ\"@' /etc/sysconfig/SuSEfirewall2
 systemctl restart SuSEfirewall2
 ")
-    echo "$SCRIPT" | ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" ${DEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_sfw2"
-    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" ${DEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_sfw2"
+    echo "$SCRIPT" | ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_sfw2"
+    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_sfw2"
   done
 }
 
@@ -1744,39 +1766,41 @@ testlsandping()
   if test -z "$3" -o "$3" = "22"; then
     unset pport
     ssh-keygen -R $2 -f ~/.ssh/known_hosts >/dev/null 2>&1
+    USER="$JHDEFLTUSER"
   else
     pport="-p $3"
     ssh-keygen -R [$2]:$3 -f ~/.ssh/known_hosts >/dev/null 2>&1
+    USER="$DEFLTUSER"
   fi
   if test -z "$pport"; then
     if test -n "$LOGFILE"; then
-      echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" ${DEFLTUSER}@$2 ls" >> $LOGFILE
+      echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" ${USER}@$2 ls" >> $LOGFILE
     fi
     # no user_data on JumpHosts
-    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=10" ${DEFLTUSER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 4;
-    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${DEFLTUSER}@$2 ls >/dev/null 2>&1; } || return 2
+    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=10" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 4;
+    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${USER}@$2 ls >/dev/null 2>&1; } || return 2
   else
     if test -n "$LOGFILE"; then
-      echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" ${DEFLTUSER}@$2 grep api_monitor.sh.${RPRE}[$4]" >> $LOGFILE
+      echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" ${USER}@$2 grep api_monitor.sh.${RPRE}[$4]" >> $LOGFILE
     fi
     # Test whether user_data file injection worked
     if test -n "$BOOTALLATONCE"; then
       # no indiv user data per VM when mass booting ...
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${DEFLTUSER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${DEFLTUSER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || return 2
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || return 2
     else
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${DEFLTUSER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${DEFLTUSER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || return 2
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || return 2
     fi
   fi
-  # TODO: Add test for accessing 100.125.0.1 (Provider net)
+  #
   if test -n "$LOGFILE"; then
-    echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=6\" ${DEFLTUSER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
+    echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=6\" ${USER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
   fi
-  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" ${DEFLTUSER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
+  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   if test $? = 0; then echo $PING; return 0; fi
   sleep 1
-  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" ${DEFLTUSER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
+  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" ${USER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
   echo "$PING"
   if test $RC != 0; then return 1; else return 0; fi
@@ -2190,7 +2214,8 @@ getToken()
   ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack catalog list -f json
   NOVA_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "nova") | .Endpoints')
   NOVA_EP=$(echo -e "$NOVA_EP" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
-  CINDER_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "cinder") | .Endpoints')
+  CINDER_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "cinderv3") | .Endpoints')
+  if test "$CINDER_EP" == "null"; then CINDER_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "cinderv2") | .Endpoints'); fi
   CINDER_EP=$(echo -e "$CINDER_EP" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
   GLANCE_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "glance") | .Endpoints')
   GLANCE_EP=$(echo -e "$GLANCE_EP" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
