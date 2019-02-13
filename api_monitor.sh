@@ -1778,7 +1778,7 @@ testlsandping()
       echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" ${USER}@$2 ls" >> $LOGFILE
     fi
     # no user_data on JumpHosts
-    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=10" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 4;
+    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 4;
     ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${USER}@$2 ls >/dev/null 2>&1; } || return 2
   else
     if test -n "$LOGFILE"; then
@@ -1796,12 +1796,12 @@ testlsandping()
   fi
   #
   if test -n "$LOGFILE"; then
-    echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=6\" ${USER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
+    echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" ${USER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
   fi
-  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
+  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   if test $? = 0; then echo $PING; return 0; fi
-  sleep 1
-  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=6" ${USER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
+  sleep 2
+  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" ${USER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
   echo "$PING"
   if test $RC != 0; then return 1; else return 0; fi
