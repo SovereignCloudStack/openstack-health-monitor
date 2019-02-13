@@ -2046,9 +2046,9 @@ findres()
   ${OSTACKCMD[@]} 2>/dev/null | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
 }
 
-collectres()
+collectRes()
 {
-  echo -n "${BOLD}Collecting resources:${NORM} "
+  echo -en "${BOLD}Collecting resources:${NORM} "
   VMS=( $(findres ${RPRE}VM_VM nova list) )
   NOVMS=${#VMS[*]}
   echo -n "$NOVMS VMs "
@@ -2091,7 +2091,7 @@ collectres()
 
 cleanup_new()
 {
-  collectres
+  collectRes
   deleteVMs
   deleteFIPs
   deleteJHVMs
@@ -2381,7 +2381,7 @@ if test "$1" = "CLEANUP"; then
 elif test "$1" = "CONNTEST"; then
   if test -n "$2"; then RPRE=$2; fi
   echo -e "$BOLD *** Start connectivity test for $RPRE *** $NORM"
-  collectres
+  collectRes
   if test -z "${VMS[*]}"; then echo "No VMs found"; exit 1; fi
   #echo "FLOATs: ${FLOATS[*]} JHVMS: ${JHVMS[*]}"
   testjhinet
