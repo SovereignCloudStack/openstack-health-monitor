@@ -516,7 +516,7 @@ translate()
       OSTACKCMD=(openstack $DEFCMD create $ARGS)
     elif test "$DEFCMD" == "server" -a "$CMD" == "meta"; then
       # nova meta ${VMS[$no]} set deployment=$CFTEST server=$no
-      ARGS=$(echo "$@" | sed -e 's@set @@' -e 's@\([a-zA-Z_0-9]*=[^ ]*\)@--property \1@g')
+      ARGS=$(echo "$@" | sed -e 's@set@@' -e 's@\([a-zA-Z_0-9]*=[^ ]*\)@--property \1@g')
       OSTACKCMD=($OPST $DEFCMD set $ARGS)
     fi
   else
@@ -545,7 +545,7 @@ translate()
       OSTACKCMD=($OPST $C1 set ${ARGS})
     elif test "$C1" == "router" -a "$CMD" == "update"; then
       # --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP
-      ARGS=$(echo "$@" | sed -e 's@\-\-router type=dict list=true@@' -e 's@destination=\([^ ,]*\),nexthop=\([^ ,]*\)@--route destination=\1,gateway=\2@g' -e 's/\-\-no\-routes/--no-route/')
+      ARGS=$(echo "$@" | sed -e 's@\-\-routes type=dict list=true@@' -e 's@destination=\([^ ,]*\),nexthop=\([^ ,]*\)@--route destination=\1,gateway=\2@g' -e 's/\-\-no\-routes/--no-route/')
       OSTACKCMD=($OPST $C1 set ${ARGS})
     elif test "$C1" == "router interface" -a "$CMD" == "add"; then
       OSTACKCMD=($OPST router add subnet "$@")
