@@ -1937,7 +1937,7 @@ EOT
     if test -z "$OPENSTACKCLIENT"; then
       IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.id == \"$port\") | .fixed_ips[] | .ip_address" | tr -d '"')
     else
-      IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.ID == \"$port\") | .[\"Fixed IP Addresses\"]" | sed "s/^.*ip_address='\([0-9a-f:.]*\)'.*$/\1/") # ' "
+      IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.ID == \"$port\") | .[\"Fixed IP Addresses\"]" | sed "s/^.*ip_address='\([0-9a-f:.]*\)'.*$/\1/") # '"
     fi
   done
   ERR=""
@@ -2369,6 +2369,11 @@ MSTART=$(date +%s)
 # Get token
 if test -n "$OPENSTACKTOKEN"; then
   getToken
+  if test -z "$CINDER_EP" -o -z "$NOVA_EP" -o -z "$GLANCE_EP" -o -z "$NEUTRON_EP" -o -z "$TOKEN"; then
+    echo "Trouble getting token/catalog, retry ..."
+    sleep 2
+    getToken
+  fi
 fi
 # Debugging: Start with volume step
 if test "$1" = "CLEANUP"; then
@@ -2377,7 +2382,7 @@ if test "$1" = "CLEANUP"; then
   echo -e "$BOLD *** Start cleanup $RPRE *** $NORM"
   cleanup
   echo -e "$BOLD *** Cleanup complete *** $NORM"
-  # We always return 0 here, as we don't want to stop the testing on failed cleanups.
+  # We always return 0 here, as we dont want to stop the testing on failed cleanups.
   exit 0
 elif test "$1" = "CONNTEST"; then
   if test -n "$2"; then RPRE=$2; fi
