@@ -46,4 +46,5 @@ done
 #  (add -S if you have a telegraf running to collect the data)
 #  (use -i IT -w -1 if you want to run interactively until first error)
 #exec ./api_monitor.sh -d -P -N 2 -n 8 -s -e garloff@suse.de -l APIMon_$$.log "$@"
-exec ./api_monitor.sh -D -N 2 -n 14 -s -e garloff@suse.de -l APIMon_$$.log "$@"
+#exec ./api_monitor.sh -D -N 3 -n 15 -s -e garloff@suse.de -l APIMon_$$.log "$@"
+exec ./api_monitor.sh -O -C -D -N 3 -n 15 -s -e garloff@suse.de -l APIMon_$$.log "$@"
