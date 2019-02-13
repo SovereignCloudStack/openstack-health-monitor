@@ -1787,23 +1787,32 @@ testlsandping()
     # Test whether user_data file injection worked
     if test -n "$BOOTALLATONCE"; then
       # no indiv user data per VM when mass booting ...
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "o"; sleep 2;
       ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || return 2
     else
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "."; sleep 2;
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "O"; sleep 2;
       ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || return 2
     fi
   fi
   #
   if test -n "$LOGFILE"; then
-    echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" ${USER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
+    echo "ssh -i $1.pem $pport -o \"ConnectTimeout=8\" ${USER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
   fi
-  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
+  #nslookup $PINGTARGET >/dev/null 2>&1
+  PING=$(ssh -i $1.pem $pport -o "ConnectTimeout=8" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   if test $? = 0; then echo $PING; return 0; fi
+  #nslookup $PINGTARGET2 >/dev/null 2>&1
+  echo -n "x"
   sleep 2
-  PING=$(ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" ${USER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
+  PING=$(ssh -i $1.pem $pport -o "ConnectTimeout=8" ${USER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
+  echo -n "x"
+  if test $RC == 0; then return 0; fi
   echo "$PING"
+  ERR=$PING
+  #sleep 1
+  #PING=$(ssh -i $1.pem $pport -o "ConnectTimeout=8" ${USER}@$2 ping -c1 9.9.9.9 >/dev/null 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
+  #RC=$?
   if test $RC != 0; then return 1; else return 0; fi
 }
 
@@ -2476,6 +2485,7 @@ else # test "$1" = "DEPLOY"; then
 	      # NOTE: Alarms and Grafana error logging are not fully aligned here
               testjhinet
               RC=$?
+	      if test $RC != 0; then echo "$ERR"; sleep 5; testjhinet; RC=$?; fi
               if test $RC != 0; then
                 let VMERRORS+=$RC
                 sendalarm $RC "$ERR" "" 70
