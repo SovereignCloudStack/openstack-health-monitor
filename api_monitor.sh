@@ -300,9 +300,11 @@ fi
 if test -n "$OPENSTACKCLIENT"; then
   PORTFIXED="s/^.*ip_address='\([0-9a-f:.]*\)'.*$/\1/" #' "
   FLOATEXTR='s/^|[^|]*| \([0-9:.]*\).*$/\1/'
+  VOLSTATCOL=2
 else
   PORTFIXED='s/^.*"ip_address": "\([0-9a-f:.]*\)".*$/\1/'
   FLOATEXTR='s/^|[^|]*|[^|]*| \([0-9:.]*\).*$/\1/'
+  VOLSTATCOL=1
 fi
 
 # Sanity checks
@@ -441,8 +443,6 @@ errwait()
 }
 
 
-trap exithandler SIGINT
-
 # Timeout killer
 # $1 => PID to kill
 # $2 => timeout
@@ -487,14 +487,30 @@ translate()
   CMD=${1##*-}
   if test "$CMD" == "$1"; then
     # No '-'
-    if test "$CMD" == "boot"; then CMD="create"; fi
     shift
     OSTACKCMD=($OPST $DEFCMD $CMD "$@")
+    if test "$DEFCMD" == "volume" -a "$CMD" == "create"; then
+      ARGS=$(echo "$@" | sed -e 's/\-\-image\-id/--image/' -e 's/\-\-name \([^ ]*\) *\([0-9]*\) *$/--size \2 \1/')
+      OSTACKCMD=($OPST $DEFCMD $CMD $ARGS)
+    # Optimization: Avoid image and flavor name lookups in server list when polling
+    elif test "$DEFCMD" == "server" -a "$CMD" == "list"; then OSTACKCMD=("${OSTACLCMD[@]}" -n)
+    # Optimization: Avoid Attachment name lookup in volume list when polling
+    elif test "$DEFCMD" == "volume" -a "$CMD" == "list"; then OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status)
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
+    elif test "$DEFCMD" == "server" -a "$CMD" == "boot"; then
+      # Only handles one SG
+      ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@')
+      OSTACKCMD=($OPST $DEFCMD create $ARGS)
+    elif test "$DEFCMD" == "server" -a "$CMD" == "meta"; then
+      # nova meta ${VMS[$no]} set deployment=$CFTEST server=$no
+      ARGS=$(echo "$@" | sed 's@\([a-zA-Z_0-9]*=[^ ]*\)@--property \1@g')
+      OSTACKCMD=($OPST $DEFCMD $ARGS)
+    fi
   else
     C1=${1%-*}
     if test "$C1" == "net"; then C1="network"; fi
     if test "$C1" == "floatingip"; then C1="floating ip"; fi
+    if test "$C1" == "keypair" -a "$CMD" == "add"; then CMD="create"; fi
     C1=${C1//-/ }
     shift
     #OSTACKCMD=($OPST $C1 $CMD "$@")
@@ -502,15 +518,23 @@ translate()
     if test "$C1" == "subnet" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed 's@\-\-name \([^ ]*\) *\([^ ]*\) *\([^ ]*\)@--network \2 --subnet-range \3 \1@')
       OSTACKCMD=($OPST $C1 $CMD ${ARGS})
-    fi
-    if test "$C1" == "router interface" -a "$CMD" == "add"; then
+    elif test "$C1" == "port" -a "$CMD" == "create"; then
+      ARGS=$(echo "$@" | sed 's@\-\-name \([^ ]*\) *\([^ ]*\)@--network \2 \1@')
+      OSTACKCMD=($OPST $C1 $CMD ${ARGS})
+    elif test "$C1" == "port" -a "$CMD" == "update"; then
+      # --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1)
+      ARGS=$(echo "$@" | sed -e 's@\-\-allowed-address-pairs type=dict list=true@@' -e 's@ip_address=\([^ ]*\)@--allowed-address ip-address=\1@g')
+      OSTACKCMD=($OPST $C1 set ${ARGS})
+    elif test "$C1" == "router" -a "$CMD" == "update"; then
+      # --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP
+      ARGS=$(echo "$@" | sed -e 's@\-\-router type=dict list=true@@' -e 's@destination=\([^ ,]*\),nexthop=\([^ ,]*\)@--route destination=\1,gateway=\2@g' -e 's/\-\-no\-routes/--no-route/')
+      OSTACKCMD=($OPST $C1 set ${ARGS})
+    elif test "$C1" == "router interface" -a "$CMD" == "add"; then
       OSTACKCMD=($OPST router add subnet "$@")
-    fi
-    if test "$C1" == "router interface" -a "$CMD" == "delete"; then
+    elif test "$C1" == "router interface" -a "$CMD" == "delete"; then
       OSTACKCMD=($OPST router remove subnet "$@")
-    fi
-    if test "$C1" == "security group rule" -a "$CMD" == "create"; then
-      ARGS=$(echo "$@" | sed -e 's/\-\-direction ingress/--ingress/' -e 's/\-\-direction egress/--egress/' -e 's/\-\-remote\-ip\-prefix/--remote-ip/' -e 's/\-\-remote\-group\-id/--remote-group/')
+    elif test "$C1" == "security group rule" -a "$CMD" == "create"; then
+      ARGS=$(echo "$@" | sed -e 's/\-\-direction ingress/--ingress/' -e 's/\-\-direction egress/--egress/' -e 's/\-\-remote\-ip\-prefix/--remote-ip/' -e 's/\-\-remote\-group\-id/--remote-group/' -e 's/\-\-protocol tcp *\-\-port\-range\-min \([0-9]*\) *\-\-port\-range\-max \([0-9]*\)/--protocol tcp --dst-port \1:\2/' -e 's/\-\-protocol icmp *\-\-port\-range\-min \([0-9]*\) *\-\-port\-range\-max \([0-9]*\)/--protocol icmp --icmp-type \1 --icmp-code \2/')
       OSTACKCMD=($OPST $C1 $CMD $ARGS)
     fi
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
@@ -1192,7 +1216,7 @@ deleteSGroups()
 
 createVIPs()
 {
-  createResources 1 NETSTATS VIP NONE NONE "" id $NETTIMEOUT neutron port-create --name ${RPRE}VirtualIP --security-group ${SGROUPS[0]} ${JHNETS[0]}
+  createResources 1 NETSTATS VIP NONE NONE "" id $NETTIMEOUT neutron port-create --security-group ${SGROUPS[0]} --name ${RPRE}VirtualIP ${JHNETS[0]}
   # FIXME: We should not need --allowed-adress-pairs here ...
 }
 
@@ -1204,7 +1228,7 @@ deleteVIPs()
 createJHPorts()
 {
   local RESP RC TM ID
-  createResources $NOAZS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} ${JHNETS[0]} || return
+  createResources $NOAZS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --security-group ${SGROUPS[0]} --name "${RPRE}Port_JH\${no}" ${JHNETS[0]} || return
   for i in `seq 0 $((NOAZS-1))`; do
     let APICALLS+=1
     RESP=$(ostackcmd_id id $NETTIMEOUT neutron port-update ${JHPORTS[$i]} --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1)
@@ -1219,7 +1243,7 @@ createJHPorts()
 createPorts()
 {
   if test -n "$MANUALPORTSETUP"; then
-    createResources $NOVMS NETSTATS PORT NONE NONE "" id $NETTIMEOUT neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
+    createResources $NOVMS NETSTATS PORT NONE NONE "" id $NETTIMEOUT neutron port-create --security-group ${SGROUPS[1]} --name "${RPRE}Port_VM\${no}" "\${NETS[\$((\$no%$NONETS))]}"
   fi
 }
 
@@ -1236,14 +1260,14 @@ deletePorts()
 createJHVols()
 {
   JVOLSTIME=()
-  createResources $NOAZS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id $CINDERTIMEOUT cinder create --image-id $JHIMGID --name ${RPRE}RootVol_JH\$no --availability-zone \${AZS[\$AZN]} $JHVOLSIZE
+  createResources $NOAZS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id $CINDERTIMEOUT cinder create --image-id $JHIMGID --availability-zone \${AZS[\$AZN]} --name ${RPRE}RootVol_JH\$no $JHVOLSIZE
 }
 
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
 waitJHVols()
 {
   #waitResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" "status" cinder show
-  waitlistResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" 1 $CINDERTIMEOUT cinder list
+  waitlistResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" $VOLSTATCOL $CINDERTIMEOUT cinder list
 }
 
 deleteJHVols()
@@ -1255,7 +1279,7 @@ createVols()
 {
   if test -n "$BOOTFROMIMAGE"; then return 0; fi
   VOLSTIME=()
-  createResources $NOVMS VOLSTATS VOLUME NONE NONE VOLSTIME id $CINDERTIMEOUT cinder create --image-id $IMGID --name ${RPRE}RootVol_VM\$no --availability-zone \${AZS[\$AZN]} $VOLSIZE
+  createResources $NOVMS VOLSTATS VOLUME NONE NONE VOLSTIME id $CINDERTIMEOUT cinder create --image-id $IMGID --availability-zone \${AZS[\$AZN]} --name ${RPRE}RootVol_VM\$no $VOLSIZE
 }
 
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
@@ -1263,7 +1287,7 @@ waitVols()
 {
   if test -n "$BOOTFROMIMAGE"; then return 0; fi
   #waitResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" "status" cinder show
-  waitlistResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" 1 $CINDERTIMEOUT cinder list
+  waitlistResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" $VOLSTATCOL $CINDERTIMEOUT cinder list
 }
 
 deleteVols()
@@ -1303,7 +1327,7 @@ SNATROUTE=""
 createFIPs()
 {
   local VIP FLOAT RESP
-  #createResources $NOAZS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --name "${RPRE}Port_JH\${no}" --security-group ${SGROUPS[0]} ${JHNETS[0]} || return
+  #createResources $NOAZS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --security-group ${SGROUPS[0]} --name "${RPRE}Port_JH\${no}" ${JHNETS[0]} || return
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list || return 1
   EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| [0-9a-f-]* | \([^ ]*\).*$/\1/')
   # Not needed on OTC, but for most other OpenStack clouds:
@@ -1328,6 +1352,8 @@ createFIPs()
   SNAT=$(echo $EXTGW | sed 's/^[^,]*, "enable_snat": \([^ }]*\).*$/\1/')
   if test "$SNAT" = "false"; then
     ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP
+  else
+    echo "SNAT enabled already, no need to use SNAT instance via VIP"
   fi
   if test $? != 0; then
     echo -e "$BOLD We lack the ability to set VPC route via SNAT gateways by API, will be fixed soon"
@@ -1998,9 +2024,10 @@ findres()
 
 collectres()
 {
+  echo -n "${BOLD}Collecting resources:${NORM} "
   VMS=( $(findres ${RPRE}VM_VM nova list) )
   NOVMS=${#VMS[*]}
-  echo "... $NOVMS VMs found ..."
+  echo -n "$NOVMS VMs "
   ROUTERS=( $(findres "" neutron router-list) )
   SNATROUTE=1
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 1
@@ -2010,6 +2037,7 @@ collectres()
   done
   FLOATS=( $FLOAT )
   #echo "FIPS: ${FIPS[*]}, FLOATS: ${FLOATS[*]}"
+  echo -n "${#FLOATS[*]} Floats (${FLOATS[*]}) "
   JHVMS=( $(findres ${RPRE}VM_JH nova list) )
   NOAZS=${#JHVMS[*]}
   VIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
@@ -2017,6 +2045,7 @@ collectres()
   # Volume names if we boot from image
   VOLUMES2=( $(findres ${RPRE}VM_VM cinder list) )
   JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) )
+  echo -en "$NOAZS JHVMs $((${#VOLUMES[*]}+${#VOLUMES2[*]}+${#JHVOLUMES[*]})) Vols\n "
   KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   #PORTS=( $(findres ${RPRE}Port_VM neutron port-list) )
   collectPorts
@@ -2025,6 +2054,7 @@ collectres()
   SUBNETS=( $(findres "" neutron subnet-list) )
   NETS=( $(findres "" neutron net-list) )
   NONETS=${#NETS[*]}
+  echo " on $NONETS networks"
   calcRedirs
   if test ${#VMS[*]} -gt 0; then
     # Determine batch mode
@@ -2316,6 +2346,7 @@ if test -n "$OPENSTACKTOKEN"; then
 fi
 # Debugging: Start with volume step
 if test "$1" = "CLEANUP"; then
+  trap exithandler SIGINT
   if test -n "$2"; then RPRE=$2; fi
   echo -e "$BOLD *** Start cleanup $RPRE *** $NORM"
   cleanup
@@ -2356,6 +2387,7 @@ else # test "$1" = "DEPLOY"; then
  # Complete setup
  echo -e "$BOLD *** Start deployment $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM"
  date
+ trap exithandler SIGINT
  # Image IDs
  JHIMGID=$(ostackcmd_search $JHIMG $GLANCETIMEOUT glance image-list $JHIMGFILT | awk '{ print $2; }')
  if test -z "$JHIMGID"; then sendalarm 1 "No JH image $JHIMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
