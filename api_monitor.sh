@@ -557,6 +557,7 @@ translate()
       OSTACKCMD=($OPST router set "${ARGS[@]}")
     elif test "$C1" == "security group rule" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed -e 's/\-\-direction ingress/--ingress/' -e 's/\-\-direction egress/--egress/' -e 's/\-\-remote\-ip\-prefix/--remote-ip/' -e 's/\-\-remote\-group\-id/--remote-group/' -e 's/\-\-protocol tcp *\-\-port\-range\-min \([0-9]*\) *\-\-port\-range\-max \([0-9]*\)/--protocol tcp --dst-port \1:\2/' -e 's/\-\-protocol icmp *\-\-port\-range\-min \([0-9]*\) *\-\-port\-range\-max \([0-9]*\)/--protocol icmp --icmp-type \1 --icmp-code \2/')
+      if ! echo "$ARGS" | grep '\-\-protocol' >/dev/null 2>&1; then ARGS="$ARGS --protocol any"; fi
       OSTACKCMD=($OPST $C1 $CMD $ARGS)
     fi
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
