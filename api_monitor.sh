@@ -92,7 +92,7 @@
 VERSION=1.47
 
 # TODO: Document settings that can be ovverriden by environment variables
-# such as PINGTARGET, ALARMPRE, SUCCWAIT, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
+# such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
 
 # User settings
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
@@ -212,6 +212,7 @@ usage()
   echo " -G N   increase JH volume size by N GB"
   echo " -w N   sets error wait (API, VM): 0-inf seconds or neg value for interactive wait"
   echo " -W N   sets error wait (VM only): 0-inf seconds or neg value for interactive wait"
+  echo " -V N   set success wait: Stop for N seconds (neg val: interactive) before tearing down"
   echo " -p N   use a new project every N iterations"
   echo " -c     noColors: don't use bold/red/... ASCII sequences"
   echo " -C     full Connectivity check: Every VM pings every other"
@@ -247,6 +248,7 @@ while test -n "$1"; do
     "-G") ADDJHVOLSIZE=$2; shift;;
     "-w") ERRWAIT=$2; shift;;
     "-W") VMERRWAIT=$2; shift;;
+    "-V") SUCCWAIT=$2; shift;;
     "-f") FORCEDEL=XDELX;;
     "-p") REFRESHPRJ=$2; shift;;
     "-c") NOCOL=1;;
@@ -533,7 +535,7 @@ translate()
     #OSTACKCMD=($OPST $C1 $CMD "$@")
     OSTACKCMD=($OPST $C1 $CMD "${@//--property-filter/--property}")
     if test "$C1" == "subnet" -a "$CMD" == "create"; then
-      ARGS=$(echo "$@" | sed -s '@\-\-disable-dhcp@\-\-no\-dhcp@' -e 's@\-\-name \([^ ]*\) *\([^ ]*\) *\([^ ]*\)@--network \2 --subnet-range \3 \1@')
+      ARGS=$(echo "$@" | sed -e 's@\-\-disable-dhcp@--no-dhcp@' -e 's@\-\-name \([^ ]*\) *\([^ ]*\) *\([^ ]*\)@--network \2 --subnet-range \3 \1@')
       OSTACKCMD=($OPST $C1 $CMD ${ARGS})
     elif test "$C1" == "floating ip" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed 's@\-\-port\-id@--port@')
@@ -1131,7 +1133,8 @@ createSubNets()
     createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22"
   fi
   if test -n "$SECONDNET"; then
-	  createResources $NONETS NETSTATS SECONDSUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --disable-dhcp --name "${RPRE}SUBNET2_\$no" "\$VAL" "10.251.\$((no+4)).0/22"
+    #createResources $NONETS NETSTATS SECONDSUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --disable-dhcp --name "${RPRE}SUBNET2_\$no" "\$VAL" "10.251.\$((no+4)).0/22"
+    createResources $NONETS NETSTATS SECONDSUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET2_\$no" "\$VAL" "10.251.\$((no*4)).0/22"
   fi
 }
 
@@ -2185,7 +2188,8 @@ cleanup()
   ROUTERS=( $(findres "" neutron router-list) )
   SNATROUTE=1
   #FIPS=( $(findres "" neutron floatingip-list) )
-  FIPS=( $(neutron floatingip-list | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  translate neutron floatingip-list
+  FIPS=( $(${OSTACKCMD[@]} | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   deleteFIPs
   JHVMS=( $(findres ${RPRE}VM_JH nova list) )
   deleteJHVMs
