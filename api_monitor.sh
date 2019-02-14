@@ -2202,7 +2202,8 @@ cleanup()
   deleteVols
   JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) )
   waitdelJHVMs; deleteJHVols
-  KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  translate nova keypair-list
+  KEYPAIRS=( $(${OSTACKCMD[@]} | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   deleteKeypairs
   PORTS=( $(findres ${RPRE}Port_VM neutron port-list) )
   JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
@@ -2227,13 +2228,14 @@ waitnetgone()
   deleteVMs
   ROUTERS=( $(findres "" neutron router-list) )
   # Floating IPs don't have a name and are thus hard to associate with us
+  ostackcmd_tm NETSTATS $FIPTIMEOUT neutron floatingip-list
   if test -n "$CLEANALLFIPS"; then
-    FIPS=( $(neutron floatingip-list | grep '[0-9]\{1,3\}\.[0-9]\{1,3\}\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+    FIPS=( $(echo "$OSTACKRESP" | grep '[0-9]\{1,3\}\.[0-9]\{1,3\}\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   elif test -n "${OLDFIPS[*]}"; then
     OFFILT=$(echo "\\(${OLDFIPS[*]}\\)" | sed 's@ @\\|@g')
-    FIPS=( $(neutron floatingip-list | grep "$OFFILT" | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+    FIPS=( $(echo "$OSTACKRESP" | grep "$OFFILT" | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   else
-    FIPS=( $(neutron floatingip-list | grep '10\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+    FIPS=( $(echo "$OSTACKRESP" | grep '10\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   fi
   DFIPS=(${FIPS[*]})
   deleteFIPs
@@ -2243,7 +2245,8 @@ waitnetgone()
   waitdelVMs; deleteVols
   JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) ); DJHVOLS=(${JHVOLUMES[*]})
   waitdelJHVMs; deleteJHVols
-  KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') ); DKPS=(${KEYPAIRS[*]})
+  ostackcmd_tm NOVASTATS $DEFTIMEOUT nova keypair-list
+  KEYPAIRS=( $(echo "$OSTACKCMD" | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') ); DKPS=(${KEYPAIRS[*]})
   deleteKeypairs
   if test -n "$DVMS$DFIPS$DJHVMS$DKPS$DVOL$DJHVOLS"; then
     echo -e "${YELLOW}ERROR: Found VMs $DVMS FIPs $DFIPS JHVMs $DJHVMS Keypairs $DKPS Volumes $DVOLS JHVols $DJHVOLS\n VMs $REMVMS FIPS $REMFIPS JHVMs $REMHJVMS Keypairs $REMKPS Volumes $REMVOLS JHVols $REMJHVOLS$NORM" 1>&2
@@ -2597,9 +2600,10 @@ else # test "$1" = "DEPLOY"; then
          fi; waitdelVMs; deleteVols
         fi; waitdelJHVMs
         #echo -e "${BOLD}Ignore port del errors; VM cleanup took care already.${NORM}"
-        #IGNORE_ERRORS=1
+        IGNORE_ERRORS=1
+	if test -n "$SECONDNET" -o -n "$MANUALPORTSETUP"; then deletePorts; fi
         #deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
-        #unset IGNORE_ERRORS
+        unset IGNORE_ERRORS
        fi; deleteJHVols
       fi; deleteVIPs
      # There is a chance that some VMs were not created, but ports were allocated, so clean ...
