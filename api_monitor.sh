@@ -1768,7 +1768,7 @@ config2ndNIC()
       fi
       # Using rttbl2 (cloud-multiroute), calculating GW here is unneeded. We assume eth1 is the second vNIC here
       GW=${IP%.*}; LAST=${GW##*.}; GW=${GW%.*}.$((LAST-LAST%4)).1
-      ssh -o "ConnectTimeout=6" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "sudo ip addr add $IP/22 dev eth1; sudo /usr/sbin/rttbl2.sh"
+      ssh -o "ConnectTimeout=6" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "sudo ip addr add $IP/22 dev eth1; sudo /usr/sbin/rttbl2.sh -g"
       # ip route add default via $GW"
       RC=$?
       echo -n "+"
