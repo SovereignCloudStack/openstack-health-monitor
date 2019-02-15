@@ -90,7 +90,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.47
+VERSION=1.48
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
@@ -518,7 +518,9 @@ translate()
       # No token_endpoint auth for volume creation (need to talk to image service as well?)
       OSTACKCMD=(openstack $DEFCMD $CMD $ARGS)
     # Optimization: Avoid image and flavor name lookups in server list when polling
-    elif test "$DEFCMD" == "server" -a "$CMD" == "list"; then OSTACKCMD=("${OSTACKCMD[@]}" -n)
+    elif test "$DEFCMD" == "server" -a "$CMD" == "list"; then
+      ARGS=$(echo "$@" | sed -e 's@\-\-sort display_name:asc@--sort-column Name@')
+      OSTACKCMD=($OPST $DEFCMD $CMD $ARGS -n)
     # Optimization: Avoid Attachment name lookup in volume list when polling
     elif test "$DEFCMD" == "volume" -a "$CMD" == "list"; then OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
@@ -1484,13 +1486,25 @@ calcRedirs()
   local port ptn pi IP STR off
   REDIRS=()
   #echo "#DEBUG: cR Ports ${PORTS[*]}"
+  # This is the mapping:
+  # 222,JH0 -> VM0; 222,JH1 -> VM1, 222,JHa -> VMa, 223,JH0 -> VM(a+1) ...
+  # Note: We need (a) a reproducible VM sorting order for CONNTEST with
+  #  secondary port reshuffling and (b) PORTS needs to match VMS ordering
+  # This is why we use orderVMs
+  # ptimization: Do neutron port-list once and parse multiple times ...
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
   if test ${#PORTS[*]} -gt 0; then
     declare -i ptn=222
     declare -i pi=0
     for port in ${PORTS[*]}; do
-      ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show $port
-      #echo "##DEBUG: $OSTACKRESP"
-      IP=$(extract_ip "$OSTACKRESP")
+      #ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show $port
+      ##echo "##DEBUG: $OSTACKRESP"
+      #IP=$(extract_ip "$OSTACKRESP")
+      if test -z "$OPENSTACKCLIENT"; then
+        IP=$(echo "$OSTACKRESP" | jq -r ".[] | select(.id == \"$port\") | .fixed_ips[].ip_address" | tr -d '"')
+      else
+        IP=$(echo "$OSTACKRESP" | jq -r ".[] | select(.ID == \"$port\") | .[\"Fixed IP Addresses\"]" | tr -d '"'); IP=$(echo -e "$IP" | sed "$PORTFIXED2")
+      fi
       STR="0/0,$IP,tcp,$ptn,22"
       off=$(($pi%$NOAZS))
       REDIRS[$off]="${REDIRS[$off]}$STR
@@ -1628,6 +1642,25 @@ waitdelJHVMs()
   waitlistResources NOVASTATS JHVM VMDSTATS JVMSTIME "XDELX" "$FORCEDEL" 2 $NOVATIMEOUT nova list
 }
 
+# Bring VMs in $OSTACKRESP (from nova list/openstack server list) into order
+# NET0-1 => 0, NET1-1 => 1, Nn-1 => n, NET0-2 => n+1, ...
+orderVMs()
+{
+  for netno in $(seq 0 $(($NONETS-1))); do
+    declare -i off=$netno
+    OLDIFS="$IFS"; IFS="|"
+    #nova list | grep ${RPRE}VM_VM_NET$netno
+    while read sep vmid sep; do
+      #echo -n " VM$off=$vmid"
+      IFS=" " VMS[$off]=$(echo $vmid)
+      IFS=" " VMSTIME[$off]=${STMS[$netno]}
+      let off+=$NONETS
+    done  < <(echo "$OSTACKRESP" | grep "${RPRE}VM_VM_NET$netno")
+    IFS="$OLDIFS"
+    #echo
+  done
+}
+
 # Create many VMs with one API call (option -D)
 createVMsAll()
 {
@@ -1649,20 +1682,8 @@ createVMsAll()
   done
   sleep 1
   # Collect VMIDs
-  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova list
-  for netno in $(seq 0 $(($NONETS-1))); do
-    declare -i off=$netno
-    OLDIFS="$IFS"; IFS="|"
-    #nova list | grep ${RPRE}VM_VM_NET$netno
-    while read sep vmid sep; do
-      #echo -n " VM$off=$vmid"
-      IFS=" " VMS[$off]=$(echo $vmid)
-      IFS=" " VMSTIME[$off]=${STMS[$netno]}
-      let off+=$NONETS
-    done  < <(echo "$OSTACKRESP" | grep "${RPRE}VM_VM_NET$netno")
-    IFS="$OLDIFS"
-    #echo
-  done
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc
+  orderVMs
   echo "${VMS[*]}"
   #collectPorts
   return $ERRS
@@ -1755,12 +1776,12 @@ config2ndNIC()
   done
   # Configure VMs
   for JHNO in $(seq 0 $(($NOAZS-1))); do
-    echo -n "${FLOATS[$JHNO]} "
+    #echo -n "${FLOATS[$JHNO]} "
     st=$JHNO
     for red in ${REDIRS[$JHNO]}; do
       pno=${red#*tcp,}
       pno=${pno%%,*}
-      echo -n " $pno "
+      #echo -n " $pno "
       ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${SECONDPORTS[$st]}
       if test -n "$OPENSTACKCLIENT"; then
         IP=$(echo "$OSTACKRESP" | grep 'fixed_ips' | sed "s@^.*ip_address=$SQ\([^$SQ]*\)$SQ.*\$@\1@")
@@ -1769,7 +1790,8 @@ config2ndNIC()
       fi
       # Using rttbl2 (cloud-multiroute), calculating GW here is unneeded. We assume eth1 is the second vNIC here
       GW=${IP%.*}; LAST=${GW##*.}; GW=${GW%.*}.$((LAST-LAST%4)).1
-      ssh -o "ConnectTimeout=6" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "sudo ip addr add $IP/22 dev eth1 >/dev/null 2>&1; sudo /usr/sbin/rttbl2.sh -g >/dev/null"
+      echo "ssh -o \"ConnectTimeout=6\" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} \"ADR=\$(ip addr show eth1 | grep ' inet ' | grep -v \$IP/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"\$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null" >> $LOGFILE
+      ssh -o "ConnectTimeout=6" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "ADR=$(ip addr show eth1 2>/dev/null | grep ' inet ' | grep -v $IP\/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null"
       # ip route add default via $GW"
       RC=$?
       echo -n "+"
@@ -1796,6 +1818,7 @@ reShuffle()
     SECONDPORTS[$i]=$p
     let i+=1
   done < <(echo "$NEWORDER")
+  echo "VM Ports2: ${SECONDPORTS[@]}"
   config2ndNIC
 }
 
@@ -2191,9 +2214,6 @@ findres()
 collectRes()
 {
   echo -en "${BOLD}Collecting resources:${NORM} "
-  VMS=( $(findres ${RPRE}VM_VM nova list) )
-  NOVMS=${#VMS[*]}
-  echo -n "$NOVMS VMs "
   ROUTERS=( $(findres "" neutron router-list) )
   SNATROUTE=1
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 1
@@ -2204,22 +2224,16 @@ collectRes()
   FLOATS=( $FLOAT )
   #echo "FIPS: ${FIPS[*]}, FLOATS: ${FLOATS[*]}"
   echo -n "${#FLOATS[*]} Floats (${FLOATS[*]}) "
-  JHVMS=( $(findres ${RPRE}VM_JH nova list) )
+  JHVMS=( $(findres ${RPRE}VM_JH nova list --sort display_name:asc) )
   NOAZS=${#JHVMS[*]}
   VIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
   VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
   # Volume names if we boot from image
   VOLUMES2=( $(findres ${RPRE}VM_VM cinder list) )
   JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) )
-  echo -en "$NOAZS JHVMs $((${#VOLUMES[*]}+${#VOLUMES2[*]}+${#JHVOLUMES[*]})) Vols\n "
+  echo -en "$NOAZS JHVMs $((${#VOLUMES[*]}+${#VOLUMES2[*]}+${#JHVOLUMES[*]})) Vols"
   KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   # Detect secondary ports, delete again, but set flag
-  SECONDPORTS=( $(findres ${RPRE}Port2_VM neutron port-list) )
-  if test -n "$SECONDPORTS"; then SECONDNET=1; SECONDPORTS=(); fi
-  collectPorts
-  JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
-  SGROUPS=( $(findres "" neutron security-group-list) )
-  # FIXME: Detect second subnets and nets
   JHSUBNETS=( $(findres ${RPRE}SUBNET_JH neutron subnet-list) )
   SUBNETS=( $(findres ${RPRE}SUBNET_VM neutron subnet-list) )
   SECONDSUBNETS=( $(findres ${RPRE}SUBNET2_VM neutron subnet-list) )
@@ -2227,7 +2241,18 @@ collectRes()
   NETS=( $(findres ${RPRE}NET_VM neutron net-list) )
   SECONDNETS=( $(findres ${RPRE}NET2_VM neutron net-list) )
   NONETS=${#NETS[*]}
-  echo " on $NONETS networks"
+  echo -n " $NONETS networks"
+  if test -n "$SECONDNETS"; then SECONDNET=1; fi
+  #SECONDPORTS=( $(findres ${RPRE}Port2_VM neutron port-list) )
+  #if test -n "$SECONDPORTS"; then SECONDNET=1; SECONDPORTS=(); fi
+  #VMS=( $(findres ${RPRE}VM_VM nova list --sort display_name:asc) )
+  #NOVMS=${#VMS[*]}
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc
+  orderVMs
+  echo " $NOVMS VMs "
+  collectPorts
+  JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
+  SGROUPS=( $(findres "" neutron security-group-list) )
   calcRedirs
   if test ${#VMS[*]} -gt 0; then
     # Determine batch mode
@@ -2678,7 +2703,7 @@ else # test "$1" = "DEPLOY"; then
                   sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
                   errwait $ERRWAIT
                 fi
-		if test -n "$SECONDPORT" -a "$RESHUFFLE"; then
+		if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
 		  reShuffle
                   fullconntest
                   if test $FPERR -gt 0; then
