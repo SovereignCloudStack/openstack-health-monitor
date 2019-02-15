@@ -2559,7 +2559,7 @@ elif test "$1" = "CONNTEST"; then
      sendalarm 2 "VMs unreachable/can not ping outside" "$ERR" 16
      exit 3
    fi
-   if test -n "$RESHUFFLE"; then; reShuffle; fi
+   if test -n "$RESHUFFLE"; then reShuffle; fi
    fullconntest
    #if test $? != 0; then exit 4; fi
    if test $FPERR -gt 0; then
