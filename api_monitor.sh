@@ -538,8 +538,9 @@ translate()
     if test "$C1" == "net"; then C1="network"; fi
     if test "$C1" == "floatingip"; then C1="floating ip"; fi
     if test "$C1" == "keypair" -a "$CMD" == "add"; then CMD="create"; fi
-    # No token_endpoint auth for vNIC attachment
+    # No token_endpoint auth for vNIC at/detachment
     if test "$C1" == "interface" -a "$CMD" == "attach"; then C1="server"; CMD="add port"; OPST="openstack"; fi
+    if test "$C1" == "interface" -a "$CMD" == "detach"; then C1="server"; CMD="remove port"; OPST="openstack"; fi
     C1=${C1//-/ }
     shift
     #OSTACKCMD=($OPST $C1 $CMD "$@")
@@ -1121,7 +1122,7 @@ deleteRouters()
 createNets()
 {
   createResources 1 NETSTATS JHNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_JH\$no"
-  createResources $NONETS NETSTATS NET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_\$no"
+  createResources $NONETS NETSTATS NET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_VM_\$no"
 }
 
 deleteNets()
@@ -1143,19 +1144,17 @@ createSubNets()
     createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 9.9.9.9 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22"
   else
     createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
-    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22"
+    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_VM_\$no" "\$VAL" "10.250.\$((no*4)).0/22"
   fi
 }
 
 create2ndSubNets()
 {
   if test -n "$SECONDNET"; then
-    createResources $NONETS NETSTATS SECONDNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET2_\$no"
+    createResources $NONETS NETSTATS SECONDNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET2_VM_\$no"
     #createResources $NONETS NETSTATS SECONDSUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --disable-dhcp --name "${RPRE}SUBNET2_\$no" "\$VAL" "10.251.\$((no+4)).0/22"
-    createResources $NONETS NETSTATS SECONDSUBNET SECONDNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET2_\$no" "\$VAL" "10.251.\$((no*4)).0/22"
+    createResources $NONETS NETSTATS SECONDSUBNET SECONDNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET2_VM_\$no" "\$VAL" "10.251.\$((no*4)).0/22"
     createResources $NONETS NETSTATS NONE SECONDSUBNET NONE "" id $FIPTIMEOUT neutron router-interface-add ${ROUTERS[0]} "\$VAL"
-    #waitlistResources NETSTATS SECONDSUBNET NONE NONE "active" 3 $NETTIMEOUT neutron subnet-list
-    #sleep 1
   fi
 }
 
@@ -1747,7 +1746,7 @@ setmetaVMs()
 config2ndNIC()
 {
   if test -z "$SECONDNET"; then return 0; fi
-  # Attach (if still needed)
+  # Attach
   for no in `seq 0 $(($NOVMS-1))`; do
     ostackcmd_tm NOVASTATS $NOVATIMEOUT nova interface-attach ${VMS[$no]} ${SECONDPORTS[$no]}
   done
@@ -1763,7 +1762,7 @@ config2ndNIC()
       IP=$(echo "$OSTACKRESP" | grep fixed_ips | sed 's@^.*"ip_address": "\([^"]*\)".*$@\1@')
       # Using rttbl2 (cloud-multiroute), calculating GW here is unneeded. We assume eth1 is the second vNIC here
       GW=${IP%.*}; LAST=${GW##*.}; GW=${GW%.*}.$((LAST-LAST%4)).1
-      ssh -o "ConnectTimeout=6" -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "sudo ip addr add $IP/22 dev eth1; sudo /usr/sbin/rttbl2.sh" 
+      ssh -o "ConnectTimeout=6" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "sudo ip addr add $IP/22 dev eth1; sudo /usr/sbin/rttbl2.sh" 
       # ip route add default via $GW"
       RC=$?
       let st+=$NOAZS
@@ -1771,6 +1770,22 @@ config2ndNIC()
   done
 }
 
+
+# Reorder 2nd ports, detach and reattach in new order
+reShuffle()
+{ 
+  # Attach
+  for no in `seq 0 $(($NOVMS-1))`; do
+    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova interface-detach ${VMS[$no]} ${SECONDPORTS[$no]}
+  done
+  declare -i i=0
+  NEWORDER=$(for p in ${SECONDPORTS[@]}; do echo $p; done | shuf)
+  while read p; do
+    SECONDPORTS[$i]=$p
+    let i+=1
+  done < <(echo "$NEWORDER")
+  config2ndNIC
+}
 
 # Wait for VMs being accessible behind fwdmasq (ports 222+)
 wait222()
@@ -2186,14 +2201,19 @@ collectRes()
   JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) )
   echo -en "$NOAZS JHVMs $((${#VOLUMES[*]}+${#VOLUMES2[*]}+${#JHVOLUMES[*]})) Vols\n "
   KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
-  #PORTS=( $(findres ${RPRE}Port_VM neutron port-list) )
+  # Detect secondary ports, delete again, but set flag
+  SECONDPORTS=( $(findres ${RPRE}Port2_VM neutron port-list) )
+  if test -n "$SECONDPORTS"; then SECONDNET=1; SECONDPORTS=(); fi
   collectPorts
-  if test -n "$SECONDPORTS"; then SECONDNET=1; fi
   JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
   SGROUPS=( $(findres "" neutron security-group-list) )
-  # FIXME: Detect second subnet
-  SUBNETS=( $(findres "" neutron subnet-list) )
-  NETS=( $(findres "" neutron net-list) )
+  # FIXME: Detect second subnets and nets
+  JHSUBNETS=( $(findres ${RPRE}SUBNET_JH neutron subnet-list) )
+  SUBNETS=( $(findres ${RPRE}SUBNET_VM neutron subnet-list) )
+  SECONDSUBNETS=( $(findres ${RPRE}SUBNET2_VM neutron subnet-list) )
+  JHNETS=( $(findres ${RPRE}NET_JH neutron net-list) )
+  NETS=( $(findres ${RPRE}NET_VM neutron net-list) )
+  SECONDNETS=( $(findres ${RPRE}NET2_VM neutron net-list) )
   NONETS=${#NETS[*]}
   echo " on $NONETS networks"
   calcRedirs
@@ -2217,11 +2237,11 @@ cleanup_new()
   VOLUMES=("${VOLUMES2[@]}"); deleteVols
   waitdelJHVMs; deleteJHVols
   deleteKeypairs
-  deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
+  delete2ndPorts; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
   deleteSGroups
   deleteRIfaces
-  deleteSubNets
-  deleteNets
+  deleteSubNets; deleteJHSubNets
+  deleteNets; deleteJHNets
   deleteRouters
 }
 
@@ -2256,7 +2276,7 @@ cleanup()
   SECONDPORTS=( $(findres ${RPRE}Port2_VM neutron port-list) )
   if test -n "$SECONDPORTS"; then SECONDNET=1; fi
   JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
-  deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
+  delete2ndPorts; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
   SGROUPS=( $(findres "" neutron security-group-list) )
   deleteSGroups
   SUBNETS=( $(findres "" neutron subnet-list) )
@@ -2510,7 +2530,8 @@ elif test "$1" = "CONNTEST"; then
   if test -n "$2"; then RPRE=$2; fi
   while test $loop != $MAXITER; do
    echo -e "$BOLD *** Start connectivity test for $RPRE *** $NORM"
-   collectRes
+   # Only collect resource on e. 10th iteration
+   if test "$(($loop%10))" == 0; then collectRes; else echo " ...wait..."; sleep 10; fi
    if test -z "${VMS[*]}"; then echo "No VMs found"; exit 1; fi
    #echo "FLOATs: ${FLOATS[*]} JHVMS: ${JHVMS[*]}"
    testjhinet
@@ -2535,7 +2556,7 @@ elif test "$1" = "CONNTEST"; then
      #errwait $ERRWAIT
    fi
    if test -n "$RESHUFFLE"; then
-     #reShuffle
+     reShuffle
      fullconntest
      if test $FPERR -gt 0; then
        sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
@@ -2643,6 +2664,14 @@ else # test "$1" = "DEPLOY"; then
                 if test $FPERR -gt 0; then
                   sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
                   errwait $ERRWAIT
+                fi
+		if test -n "$SECONDPORT" -a "$RESHUFFLE"; then
+		  reShuffle
+                  fullconntest
+                  if test $FPERR -gt 0; then
+                    sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
+                    errwait $ERRWAIT
+                  fi
                 fi
               fi
               # TODO: Create disk ... and attach to JH VMs ... and test access
