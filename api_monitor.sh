@@ -1747,8 +1747,10 @@ config2ndNIC()
 {
   if test -z "$SECONDNET"; then return 0; fi
   # Attach
+  echo -n "Attaching 2ndary Ports to VMs ... "
   for no in `seq 0 $(($NOVMS-1))`; do
     ostackcmd_tm NOVASTATS $NOVATIMEOUT nova interface-attach ${VMS[$no]} ${SECONDPORTS[$no]}
+    echo -n "."
   done
   # Configure VMs
   for JHNO in $(seq 0 $(($NOAZS-1))); do
@@ -1769,9 +1771,11 @@ config2ndNIC()
       ssh -o "ConnectTimeout=6" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "sudo ip addr add $IP/22 dev eth1; sudo /usr/sbin/rttbl2.sh"
       # ip route add default via $GW"
       RC=$?
+      echo -n "+"
       let st+=$NOAZS
     done
   done
+  echo " done"
 }
 
 
@@ -1779,9 +1783,12 @@ config2ndNIC()
 reShuffle()
 {
   # Attach
+  echo -n "Detaching 2ndary ports ... "
   for no in `seq 0 $(($NOVMS-1))`; do
     ostackcmd_tm NOVASTATS $NOVATIMEOUT nova interface-detach ${VMS[$no]} ${SECONDPORTS[$no]}
+    echo -n "."
   done
+  echo " done. Now reshuffle ..."
   declare -i i=0
   NEWORDER=$(for p in ${SECONDPORTS[@]}; do echo $p; done | shuf)
   while read p; do
