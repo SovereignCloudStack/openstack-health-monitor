@@ -1768,7 +1768,7 @@ config2ndNIC()
       fi
       # Using rttbl2 (cloud-multiroute), calculating GW here is unneeded. We assume eth1 is the second vNIC here
       GW=${IP%.*}; LAST=${GW##*.}; GW=${GW%.*}.$((LAST-LAST%4)).1
-      ssh -o "ConnectTimeout=6" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "sudo ip addr add $IP/22 dev eth1; sudo /usr/sbin/rttbl2.sh -g"
+      ssh -o "ConnectTimeout=6" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "sudo ip addr add $IP/22 dev eth1 >/dev/null 2>&1; sudo /usr/sbin/rttbl2.sh -g >/dev/null"
       # ip route add default via $GW"
       RC=$?
       echo -n "+"
@@ -2559,6 +2559,7 @@ elif test "$1" = "CONNTEST"; then
      sendalarm 2 "VMs unreachable/can not ping outside" "$ERR" 16
      exit 3
    fi
+   if test -n "$RESHUFFLE"; then; reShuffle; fi
    fullconntest
    #if test $? != 0; then exit 4; fi
    if test $FPERR -gt 0; then
