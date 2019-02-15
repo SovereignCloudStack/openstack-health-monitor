@@ -81,8 +81,9 @@
 # - sendmail (only if email notification is requested)
 # - jq (for JSON processing)
 # - python2 or 3 for math used to calc statistics
-# - SUSE image with the SNAT/port-fwd (SuSEfirewall2-snat) for the JumpHosts
+# - SUSE image with SNAT/port-fwd (SuSEfirewall2-snat pkg) for the JumpHosts
 # - Any image for the VMs that allows login as user DEFLTUSER (linux) with injected key
+#   (If we use -2/-4, we also need a SUSE image to have the cloud-multiroute pkg in there.)
 #
 # Example:
 # Run 100 loops deploying (and deleting) 2+8 VMs (including nets, volumes etc.),
@@ -123,7 +124,7 @@ if [[ $OS_AUTH_URL == *otc*t-systems.com* ]]; then
   NAMESERVER=${NAMESERVER:-100.125.4.25}
 fi
 
-MAXITER=-1
+MAXITER=-9999
 
 ERRWAIT=1
 VMERRWAIT=2
@@ -187,6 +188,7 @@ RED="\e[0;31m"
 GREEN="\e[0;32m"
 YELLOW="\e[0;33m"
 
+
 # python3?
 if test -n "$(type -p python3)"; then PYTHON3=$(type -p python3); else unset PYTHON3; fi
 
@@ -220,8 +222,8 @@ usage()
   echo " -O     like -o, but use token_endpoint auth (after getting token)"
   echo " -x     assume eXclusive project, clean all floating IPs found"
   echo " -I     dIsassociate floating IPs before deleting them"
-  echo " -2     Create 2ndary subnets (in same net) and attach 2ndary NICs to VMs"
-  echo " -3     Create 2ndary subnets (in same net) and attach 2ndary NICs to VMs (delayed)"
+  echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs"
+  echo " -4     Create 2ndary subnets, test, reshuffle and retest"
   echo "Or: api_monitor.sh [-f] CLEANUP XXX to clean up all resources with prefix XXX"
   echo "Or: api_monitor.sh CONNTEST XXX to perform full connectivity check for preexisting env XXX"
   exit 0
@@ -258,14 +260,17 @@ while test -n "$1"; do
     "-x") CLEANALLFIPS=1;;
     "-I") DISASSOC=1;;
     "-2") SECONDNET=1;;
-    "-3") SECONDNET=1; DELAYEDATTACH=1;;
+    "-4") SECONDNET=1; RESHUFFLE=1;;
     "CLEANUP") break;;
-    "CONNTEST") break;;
+    "CONNTEST") if test "$MAXITER" == "-9999"; then MAXITER=1; fi; break;;
     *) echo "Unknown argument \"$1\""; exit 1;;
   esac
   shift
 done
 
+if test "$1" != "CONNTEST"; then
+  trap exithandler SIGINT
+fi
 
 # Test precondition
 type -p openstack >/dev/null 2>&1
@@ -311,9 +316,12 @@ if test "$NOCOL" == "1"; then
   YELLOW=".."
 fi
 
+# For sed expressions without confusing vim
+SQ="'"
 # openstackclient/XXXclient compat
 if test -n "$OPENSTACKCLIENT"; then
-  PORTFIXED="s/^.*ip_address='\([0-9a-f:.]*\)'.*$/\1/" #' "
+  PORTFIXED="s/^.*ip_address=$SQ\([0-9a-f:.]*\)$SQ.*$/\1/"
+  PORTFIXED2="s/ip_address=$SQ\([0-9a-f:.]*\)$SQ.*$/\1/"
   FLOATEXTR='s/^|[^|]*| \([0-9:.]*\).*$/\1/'
   VOLSTATCOL=2
 else
@@ -530,6 +538,8 @@ translate()
     if test "$C1" == "net"; then C1="network"; fi
     if test "$C1" == "floatingip"; then C1="floating ip"; fi
     if test "$C1" == "keypair" -a "$CMD" == "add"; then CMD="create"; fi
+    # No token_endpoint auth for vNIC attachment
+    if test "$C1" == "interface" -a "$CMD" == "attach"; then C1="server"; CMD="add port"; OPST="openstack"; fi
     C1=${C1//-/ }
     shift
     #OSTACKCMD=($OPST $C1 $CMD "$@")
@@ -1116,8 +1126,11 @@ createNets()
 
 deleteNets()
 {
-  deleteResources NETSTATS NET "" 12 neutron net-delete
-  deleteResources NETSTATS JHNET "" 12 neutron net-delete
+  if test -n "$SECONDNET"; then
+    deleteResources NETSTATS SECONDNET "" $NETTIMEOUT neutron net-delete
+  fi
+  deleteResources NETSTATS NET "" $NETTIMEOUT neutron net-delete
+  deleteResources NETSTATS JHNET "" $NETTIMEOUT neutron net-delete
 }
 
 # We allocate 10.250.$((no*4)/22 for the VMs and 10.250.255.0/24 for all JumpHosts (one per AZ)
@@ -1132,9 +1145,17 @@ createSubNets()
     createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
     createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22"
   fi
+}
+
+create2ndSubNets()
+{
   if test -n "$SECONDNET"; then
+    createResources $NONETS NETSTATS SECONDNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET2_\$no"
     #createResources $NONETS NETSTATS SECONDSUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --disable-dhcp --name "${RPRE}SUBNET2_\$no" "\$VAL" "10.251.\$((no+4)).0/22"
-    createResources $NONETS NETSTATS SECONDSUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET2_\$no" "\$VAL" "10.251.\$((no*4)).0/22"
+    createResources $NONETS NETSTATS SECONDSUBNET SECONDNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET2_\$no" "\$VAL" "10.251.\$((no*4)).0/22"
+    createResources $NONETS NETSTATS NONE SECONDSUBNET NONE "" id $FIPTIMEOUT neutron router-interface-add ${ROUTERS[0]} "\$VAL"
+    #waitlistResources NETSTATS SECONDSUBNET NONE NONE "active" 3 $NETTIMEOUT neutron subnet-list
+    #sleep 1
   fi
 }
 
@@ -1159,6 +1180,10 @@ deleteRIfaces()
 {
   if test -z "${ROUTERS[0]}"; then return 0; fi
   echo -en "Delete Router Interfaces ...\n "
+  if test -n "$SECONDNET"; then
+    deleteResources NETSTATS SECONDSUBNET "" $FIPTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
+    echo -n " "
+  fi
   deleteResources NETSTATS SUBNET "" $FIPTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
   echo -n " "
   deleteResources NETSTATS JHSUBNET "" $FIPTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
@@ -1280,8 +1305,12 @@ createPorts()
   if test -n "$MANUALPORTSETUP"; then
     createResources $NOVMS NETSTATS PORT NONE NONE "" id $NETTIMEOUT neutron port-create --security-group ${SGROUPS[1]} --name "${RPRE}Port_VM\${no}" "\${NETS[\$((\$no%$NONETS))]}"
   fi
+}
+
+create2ndPorts()
+{
   if test -n "$SECONDNET"; then
-    createResources $NOVMS NETSTATS SECONDPORT NONE NONE "" id $NETTIMEOUT neutron port-create --security-group ${SGROUPS[1]} --fixed-ip subnet_id="\${SECONDSUBNETS[\$((\$no%$NONETS))]}" --name "${RPRE}Port2_VM\${no}" "\${NETS[\$((\$no%$NONETS))]}"
+    createResources $NOVMS NETSTATS SECONDPORT NONE NONE "" id $NETTIMEOUT neutron port-create --security-group ${SGROUPS[1]} --fixed-ip subnet_id="\${SECONDSUBNETS[\$((\$no%$NONETS))]}" --name "${RPRE}Port2_VM\${no}" "\${SECONDNETS[\$((\$no%$NONETS))]}"
   fi
 }
 
@@ -1292,10 +1321,14 @@ deleteJHPorts()
 
 deletePorts()
 {
+  deleteResources NETSTATS PORT "" $NETTIMEOUT neutron port-delete
+}
+
+delete2ndPorts()
+{
   if test -n "$SECONDNET"; then
     deleteResources NETSTATS SECONDPORT "" $NETTIMEOUT neutron port-delete
   fi
-  deleteResources NETSTATS PORT "" $NETTIMEOUT neutron port-delete
 }
 
 createJHVols()
@@ -1522,20 +1555,27 @@ collectPorts()
   OSTACKRESP=$(echo "$OSTACKRESP" | sed 's@neutron CLI is deprecated and will be removed in the future. Use openstack CLI instead.@@g')
   #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'"
   #echo "#DEBUG: cP VMs ${VMS[*]}"
+  if test -n "$SECONDNET" -a -z "$SECONDPORTS"; then COLLSECOND=1; else unset COLLSECOND; fi
   for vm in $(seq 0 $(($NOVMS-1))); do
     vmid=${VMS[$vm]}
     if test -z "$vmid"; then sendalarm 1 "nova list" "VM $vm not found" $NOVATIMEOUT; continue; fi
     #port=$(echo "$OSTACKRESP" | jq -r '.[]' | grep -C4 "$vmid")
     #echo -e "#DEBUG: $port"
-    port=$(echo -e "$OSTACKRESP" | tr 'A-Z' 'a-z' | jq -r ".[] | select(.device_id == \"$vmid\") | .id" | head -n1 | tr -d '"')
+    if test -z "$OPENSTACKCLIENT"; then
+      ports=$(echo "$OSTACKRESP" | jq -r ".[] | select(.device_id == \"$vmid\") | .id+\" \"+.fixed_ips[].ip_address" | tr -d '"')
+    else
+      ports=$(echo "$OSTACKRESP" | jq -r ".[] | select(.device_id == \"$vmid\") | .ID+\" \"+.[\"Fixed IP Addresses\"]" | tr -d '"'); ports=$(echo -e "$ports" | sed "$PORTFIXED2")
+    fi
+    port=$(echo -e "$ports" | grep 10.250 | sed 's/^\([^ ]*\) .*$/\1/')
     PORTS[$vm]=$port
-    # FIXME: We can not depend on the ordering here
-    if test -n "$SECONDNET"; then
-      port2=$(echo -e "$OSTACKRESP" | tr 'A-Z' 'a-z' | jq -r ".[] | select(.device_id == \"$vmid\") | .id" | tail -n1 | tr -d '"')
+    if test -n "$COLLSECOND"; then
+      port2=$(echo -e "$ports" | grep 10.251 | sed 's/^\([^ ]*\) .*$/\1/')
       SECONDPORTS[$vm]=$port2
     fi
   done
   echo "VM Ports: ${PORTS[*]}"
+  if test -n "$SECONDPORTS"; then echo "VM Ports2: ${SECONDPORTS[*]}"; fi
+
 }
 
 # When NOT creating ports before JHVM starts, we cannot pass the port fwd information
@@ -1636,24 +1676,19 @@ createVMs()
   for no in $(seq 0 $NOVMS); do
     echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}$no\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP.$no
   done
-  if test -n "$SECONDNET" -a -z "$DELAYEDATTACH"; then
-    NIC2="--nic port-id=\${SECONDPORTS[\$no]}"
-  else
-    unset NIC2
-  fi
   if test -n "$BOOTFROMIMAGE"; then
     if test -n "$MANUALPORTSETUP"; then
-      createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL $NIC2 --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
+      createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
     else
       # SAVE: createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
-      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" $NIC2 --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
+      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
     fi
   else
     if test -n "$MANUALPORTSETUP"; then
-      createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL $NIC2 --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
+      createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
     else
       # SAVE: createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
-      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" $NIC2 --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
+      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
     fi
   fi
   local RC=$?
@@ -1713,11 +1748,9 @@ config2ndNIC()
 {
   if test -z "$SECONDNET"; then return 0; fi
   # Attach (if still needed)
-  if test -n "$DELAYATTACH"; then
-    for no in `seq 0 $(($NOVMS-1))`; do
-      openstackcmd_tm NOVASTATS $NOVATIMEOUT nova interface-attach ${VMS[$no]} ${SECONDPORTS[$no]}
-    done
-  fi
+  for no in `seq 0 $(($NOVMS-1))`; do
+    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova interface-attach ${VMS[$no]} ${SECONDPORTS[$no]}
+  done
   # Configure VMs
   for JHNO in $(seq 0 $(($NOAZS-1))); do
     echo -n "${FLOATS[$JHNO]} "
@@ -1728,8 +1761,9 @@ config2ndNIC()
       echo -n " $pno "
       ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${SECONDPORTS[$st]}
       IP=$(echo "$OSTACKRESP" | grep fixed_ips | sed 's@^.*"ip_address": "\([^"]*\)".*$@\1@')
+      # Using rttbl2 (cloud-multiroute), calculating GW here is unneeded. We assume eth1 is the second vNIC here
       GW=${IP%.*}; LAST=${GW##*.}; GW=${GW%.*}.$((LAST-LAST%4)).1
-      ssh -o "ConnectTimeout=6" -i ${KEYPAIRS[1]} $DEFLTUSER@${FLOATS[$JHNO]} "ip addr add $IP/22; /usr/sbin/rttbl2.sh -g" 
+      ssh -o "ConnectTimeout=6" -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "sudo ip addr add $IP/22 dev eth1; sudo /usr/sbin/rttbl2.sh" 
       # ip route add default via $GW"
       RC=$?
       let st+=$NOAZS
@@ -2001,14 +2035,25 @@ EOT
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
   OSTACKRESP=$(echo "$OSTACKRESP" | sed 's@neutron CLI is deprecated and will be removed in the future. Use openstack CLI instead.@@g')
   IPS=()
-  for pno in $(seq 0 $((${#PORTS[*]}-1))); do
+  NP=${#PORTS[*]}
+  for pno in $(seq 0 $(($NP-1))); do
     port=${PORTS[$pno]}
     if test -z "$OPENSTACKCLIENT"; then
       IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.id == \"$port\") | .fixed_ips[] | .ip_address" | tr -d '"')
     else
-      IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.ID == \"$port\") | .[\"Fixed IP Addresses\"]" | sed "s/^.*ip_address='\([0-9a-f:.]*\)'.*$/\1/") # '"
+      IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.ID == \"$port\") | .[\"Fixed IP Addresses\"]" | tr -d '"' | sed "$PORTFIXED")
     fi
   done
+  if test -n "$SECONDNET"; then
+    for pno in $(seq 0 $((${#SECONDPORTS[*]}-1))); do
+      port=${SECONDPORTS[$pno]}
+      if test -z "$OPENSTACKCLIENT"; then
+        IPS[$((pno+NP))]=$(echo "$OSTACKRESP" | jq ".[] | select(.id == \"$port\") | .fixed_ips[] | .ip_address" | tr -d '"')
+      else
+        IPS[$((pno+NP))]=$(echo "$OSTACKRESP" | jq ".[] | select(.ID == \"$port\") | .[\"Fixed IP Addresses\"]" | tr -d '"' | sed "$PORTFIXED")
+      fi
+    done
+  fi
   ERR=""
   FPRETRY=0
   FPERR=0
@@ -2143,8 +2188,10 @@ collectRes()
   KEYPAIRS=( $(nova keypair-list | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   #PORTS=( $(findres ${RPRE}Port_VM neutron port-list) )
   collectPorts
+  if test -n "$SECONDPORTS"; then SECONDNET=1; fi
   JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
   SGROUPS=( $(findres "" neutron security-group-list) )
+  # FIXME: Detect second subnet
   SUBNETS=( $(findres "" neutron subnet-list) )
   NETS=( $(findres "" neutron net-list) )
   NONETS=${#NETS[*]}
@@ -2206,6 +2253,8 @@ cleanup()
   KEYPAIRS=( $(${OSTACKCMD[@]} | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   deleteKeypairs
   PORTS=( $(findres ${RPRE}Port_VM neutron port-list) )
+  SECONDPORTS=( $(findres ${RPRE}Port2_VM neutron port-list) )
+  if test -n "$SECONDPORTS"; then SECONDNET=1; fi
   JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
   deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
   SGROUPS=( $(findres "" neutron security-group-list) )
@@ -2450,48 +2499,59 @@ if test -n "$OPENSTACKTOKEN"; then
 fi
 # Debugging: Start with volume step
 if test "$1" = "CLEANUP"; then
-  trap exithandler SIGINT
   if test -n "$2"; then RPRE=$2; fi
   echo -e "$BOLD *** Start cleanup $RPRE *** $NORM"
+  #SECONDNET=1
   cleanup
   echo -e "$BOLD *** Cleanup complete *** $NORM"
   # We always return 0 here, as we dont want to stop the testing on failed cleanups.
   exit 0
 elif test "$1" = "CONNTEST"; then
   if test -n "$2"; then RPRE=$2; fi
-  echo -e "$BOLD *** Start connectivity test for $RPRE *** $NORM"
-  collectRes
-  if test -z "${VMS[*]}"; then echo "No VMs found"; exit 1; fi
-  #echo "FLOATs: ${FLOATS[*]} JHVMS: ${JHVMS[*]}"
-  testjhinet
-  if test $? != 0; then
-    sendalarm 2 "JH unreachable" "$ERR" 20
-    exit 2
-  fi
-  #echo "REDIRS: ${REDIRS[*]}"
-  wait222
-  # Defer alarms
-  #if test $? != 0; then exit 2; fi
-  testsnat
-  if test $? != 0; then
-    sendalarm 2 "VMs unreachable/can not ping outside" "$ERR" 16
-    exit 3
-  fi
-  fullconntest
-  #if test $? != 0; then exit 4; fi
-  if test $FPERR -gt 0; then
-    sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
-    exit 4
-    #errwait $ERRWAIT
-  fi
-  echo -e "$BOLD *** Connectivity test complete *** $NORM"
+  while test $loop != $MAXITER; do
+   echo -e "$BOLD *** Start connectivity test for $RPRE *** $NORM"
+   collectRes
+   if test -z "${VMS[*]}"; then echo "No VMs found"; exit 1; fi
+   #echo "FLOATs: ${FLOATS[*]} JHVMS: ${JHVMS[*]}"
+   testjhinet
+   if test $? != 0; then
+     sendalarm 2 "JH unreachable" "$ERR" 20
+     exit 2
+   fi
+   #echo "REDIRS: ${REDIRS[*]}"
+   wait222
+   # Defer alarms
+   #if test $? != 0; then exit 2; fi
+   testsnat
+   if test $? != 0; then
+     sendalarm 2 "VMs unreachable/can not ping outside" "$ERR" 16
+     exit 3
+   fi
+   fullconntest
+   #if test $? != 0; then exit 4; fi
+   if test $FPERR -gt 0; then
+     sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
+     exit 4
+     #errwait $ERRWAIT
+   fi
+   if test -n "$RESHUFFLE"; then
+     #reShuffle
+     fullconntest
+     if test $FPERR -gt 0; then
+       sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
+       exit 4
+       #errwait $ERRWAIT
+     fi
+   fi
+   echo -e "$BOLD *** Connectivity test complete *** $NORM"
+   let loop+=1
+  done
   exit 0 #$RC
 else # test "$1" = "DEPLOY"; then
  if test "$REFRESHPRJ" != 0 && test $(($RUNS%$REFRESHPRJ)) == 0; then createnewprj; fi
  # Complete setup
  echo -e "$BOLD *** Start deployment $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM"
  date
- trap exithandler SIGINT
  # Image IDs
  JHIMGID=$(ostackcmd_search $JHIMG $GLANCETIMEOUT glance image-list $JHIMGFILT | awk '{ print $2; }')
  if test -z "$JHIMGID"; then sendalarm 1 "No JH image $JHIMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
@@ -2545,6 +2605,8 @@ else # test "$1" = "DEPLOY"; then
                 sendalarm $RC "Timeout waiting for VM " "${RRLIST[*]}" $((4*$MAXWAIT))
               fi
               setmetaVMs
+	      create2ndSubNets
+	      create2ndPorts
               # Test JumpHosts
 	      # NOTE: Alarms and Grafana error logging are not fully aligned here
               testjhinet
@@ -2601,7 +2663,8 @@ else # test "$1" = "DEPLOY"; then
         fi; waitdelJHVMs
         #echo -e "${BOLD}Ignore port del errors; VM cleanup took care already.${NORM}"
         IGNORE_ERRORS=1
-	if test -n "$SECONDNET" -o -n "$MANUALPORTSETUP"; then deletePorts; fi
+	delete2ndPorts
+	#if test -n "$SECONDNET" -o -n "$MANUALPORTSETUP"; then deletePorts; fi
         #deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
         unset IGNORE_ERRORS
        fi; deleteJHVols
