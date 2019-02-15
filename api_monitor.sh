@@ -1759,7 +1759,11 @@ config2ndNIC()
       pno=${pno%%,*}
       echo -n " $pno "
       ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${SECONDPORTS[$st]}
-      IP=$(echo "$OSTACKRESP" | grep fixed_ips | sed 's@^.*"ip_address": "\([^"]*\)".*$@\1@')
+      if test -n "$OPENSTACKCLIENT"; then
+        IP=$(echo "$OSTACKRESP" | grep 'fixed_ips' | sed "s@^.*ip_address=$SQ\([^$SQ]*\)$SQ.*\$@\1@")
+      else
+        IP=$(echo "$OSTACKRESP" | grep 'fixed_ips' | sed 's@^.*"ip_address": "\([^"]*\)".*$@\1@')
+      fi
       # Using rttbl2 (cloud-multiroute), calculating GW here is unneeded. We assume eth1 is the second vNIC here
       GW=${IP%.*}; LAST=${GW##*.}; GW=${GW%.*}.$((LAST-LAST%4)).1
       ssh -o "ConnectTimeout=6" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "sudo ip addr add $IP/22 dev eth1; sudo /usr/sbin/rttbl2.sh"
