@@ -1762,7 +1762,7 @@ config2ndNIC()
       IP=$(echo "$OSTACKRESP" | grep fixed_ips | sed 's@^.*"ip_address": "\([^"]*\)".*$@\1@')
       # Using rttbl2 (cloud-multiroute), calculating GW here is unneeded. We assume eth1 is the second vNIC here
       GW=${IP%.*}; LAST=${GW##*.}; GW=${GW%.*}.$((LAST-LAST%4)).1
-      ssh -o "ConnectTimeout=6" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "sudo ip addr add $IP/22 dev eth1; sudo /usr/sbin/rttbl2.sh" 
+      ssh -o "ConnectTimeout=6" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "sudo ip addr add $IP/22 dev eth1; sudo /usr/sbin/rttbl2.sh"
       # ip route add default via $GW"
       RC=$?
       let st+=$NOAZS
@@ -1773,7 +1773,7 @@ config2ndNIC()
 
 # Reorder 2nd ports, detach and reattach in new order
 reShuffle()
-{ 
+{
   # Attach
   for no in `seq 0 $(($NOVMS-1))`; do
     ostackcmd_tm NOVASTATS $NOVATIMEOUT nova interface-detach ${VMS[$no]} ${SECONDPORTS[$no]}
