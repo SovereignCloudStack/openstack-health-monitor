@@ -1491,14 +1491,15 @@ calcRedirs()
   # Note: We need (a) a reproducible VM sorting order for CONNTEST with
   #  secondary port reshuffling and (b) PORTS needs to match VMS ordering
   # This is why we use orderVMs
-  # ptimization: Do neutron port-list once and parse multiple times ...
+  # Optimization: Do neutron port-list once and parse multiple times ...
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
+  OSTACKRESP=$(echo "$OSTACKRESP" | sed 's@neutron CLI is deprecated and will be removed in the future. Use openstack CLI instead.@@g')
   if test ${#PORTS[*]} -gt 0; then
     declare -i ptn=222
     declare -i pi=0
     for port in ${PORTS[*]}; do
       #ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show $port
-      ##echo "##DEBUG: $OSTACKRESP"
+      #echo -n "##DEBUG: $port: "
       #IP=$(extract_ip "$OSTACKRESP")
       if test -z "$OPENSTACKCLIENT"; then
         IP=$(echo "$OSTACKRESP" | jq -r ".[] | select(.id == \"$port\") | .fixed_ips[].ip_address" | tr -d '"')
@@ -1507,6 +1508,7 @@ calcRedirs()
       fi
       STR="0/0,$IP,tcp,$ptn,22"
       off=$(($pi%$NOAZS))
+      #echo "$STR => REDIRS[$off]"
       REDIRS[$off]="${REDIRS[$off]}$STR
 "
       if test $(($off+1)) == $NOAZS; then let ptn+=1; fi
@@ -1790,6 +1792,7 @@ config2ndNIC()
       fi
       # Using rttbl2 (cloud-multiroute), calculating GW here is unneeded. We assume eth1 is the second vNIC here
       GW=${IP%.*}; LAST=${GW##*.}; GW=${GW%.*}.$((LAST-LAST%4)).1
+      # There probably is an easier way to handle a secondary interface that needs a gateway ...
       echo "ssh -o \"ConnectTimeout=6\" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} \"ADR=\$(ip addr show eth1 | grep ' inet ' | grep -v \$IP/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"\$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null" >> $LOGFILE
       ssh -o "ConnectTimeout=6" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "ADR=$(ip addr show eth1 2>/dev/null | grep ' inet ' | grep -v $IP\/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null"
       # ip route add default via $GW"
