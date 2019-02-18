@@ -589,7 +589,7 @@ translate()
     # No token_endpoint auth for vNIC at/detachment
     elif test "$C1" == "interface" -a "$CMD" == "attach"; then
       C1="server"; CMD="add port"; OPST="openstack"
-      ARGS=$(echo "$@" | sed -e 's@--port-id \([^ ]\) *\([^ ]*\)$@\2 \1@')
+      ARGS=$(echo "$@" | sed -e 's@\-\-port\-id \([^ ]*\) *\([^ ]*\)$@\2 \1@')
       OSTACKCMD=($OPST $C1 $CMD $ARGS)
     elif test "$C1" == "interface" -a "$CMD" == "detach"; then
       C1="server"; CMD="remove port"; OPST="openstack"
