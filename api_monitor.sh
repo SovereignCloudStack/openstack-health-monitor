@@ -157,7 +157,7 @@ fi
 JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
 # Pass " " to filter if you don't need the optimization of image filtering
 JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
-# For 2nd interface (-2/3/4), use also SUSE image with cloud-multiroute 
+# For 2nd interface (-2/3/4), use also SUSE image with cloud-multiroute
 IMG="${IMG:-Standard_CentOS_7_latest}"
 IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
 # ssh login names with injected key
@@ -1659,14 +1659,16 @@ waitdelJHVMs()
 # NET0-1 => 0, NET1-1 => 1, Nn-1 => n, NET0-2 => n+1, ...
 orderVMs()
 {
+  VMS=()
   for netno in $(seq 0 $(($NONETS-1))); do
     declare -i off=$netno
     OLDIFS="$IFS"; IFS="|"
     #nova list | grep ${RPRE}VM_VM_NET$netno
-    while read sep vmid sep; do
+    while read sep vmid sep name sep; do
       #echo -n " VM$off=$vmid"
       IFS=" " VMS[$off]=$(echo $vmid)
       IFS=" " VMSTIME[$off]=${STMS[$netno]}
+      #echo "DEBUG: VMS[$off]=$name $vmid (net $netno)"
       let off+=$NONETS
     done  < <(echo "$OSTACKRESP" | grep "${RPRE}VM_VM_NET$netno")
     IFS="$OLDIFS"
@@ -2260,10 +2262,11 @@ collectRes()
   #SECONDPORTS=( $(findres ${RPRE}Port2_VM neutron port-list) )
   #if test -n "$SECONDPORTS"; then SECONDNET=1; SECONDPORTS=(); fi
   #VMS=( $(findres ${RPRE}VM_VM nova list --sort display_name:asc) )
-  #NOVMS=${#VMS[*]}
   ostackcmd_tm NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc
   orderVMs
+  NOVMS=${#VMS[*]}
   echo " $NOVMS VMs "
+  #echo "VMS: ${VMS[*]}"
   collectPorts
   JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
   SGROUPS=( $(findres "" neutron security-group-list) )
