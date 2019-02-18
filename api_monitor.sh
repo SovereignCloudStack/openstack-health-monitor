@@ -103,6 +103,7 @@ if test -z "$PINGTARGET2"; then PINGTARGET2=google-public-dns-b.google.com; fi
 # Prefix for test resources
 FORCEDEL=NONONO
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
+if test "$RPRE" == "${RPRE%_}"; then echo "Need trailing _ for prefix RPRE"; exit 1; fi
 SHORT_DOMAIN="${OS_USER_DOMAIN_NAME##*OTC*00000000001000}"
 ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_PROJECT_NAME#*_}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
@@ -152,16 +153,20 @@ if ! echo "$@" | grep '\(CLEANUP\|CONNTEST\)' >/dev/null 2>&1; then
 fi
 
 # Images, flavors, disk sizes
-# TODO: Move on to Standard_openSUSE_15_latest
+# Need SUSE image with SuSEfirewall2-snat for JumpHosts
 JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
+# Pass " " to filter if you don't need the optimization of image filtering
 JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
+# For 2nd interface (-2/3/4), use also SUSE image with cloud-multiroute 
 IMG="${IMG:-Standard_CentOS_7_latest}"
 IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
+# ssh login names with injected key
+DEFLTUSER=${DEFLTUSER:-linux}
+JHDEFLTUSER=${JHDEFLTUSER:-$DEFLTUSER}
+# OTC flavor names as defaults
 #JHFLAVOR=${JHFLAVOR:-computev1-1}
 JHFLAVOR=${JHFLAVOR:-s2.medium.1}
 FLAVOR=${FLAVOR:-s2.medium.1}
-DEFLTUSER=${DEFLTUSER:-linux}
-JHDEFLTUSER=${JHDEFLTUSER:-$DEFLTUSER}
 
 if [[ "$JHIMG" != *openSUSE* ]]; then
 	echo "WARN: Need openSUSE as JumpHost for port forwarding via user_data" 1>&2
