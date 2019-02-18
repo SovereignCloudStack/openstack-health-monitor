@@ -201,6 +201,7 @@ usage()
   echo " -l LOGFILE record all command in LOGFILE"
   echo " -e ADR sets eMail address for notes/alarms (assumes working MTA)"
   echo "         second -e splits eMails; notes go to first, alarms to second eMail"
+  echo " -E     exit on error (for CONNTEST)"
   echo " -m URN sets notes/alarms by SMN (pass URN of queue)"
   echo "         second -m splits notifications; notes to first, alarms to second URN"
   echo " -s     sends stats as well once per day, not just alarms"
@@ -222,10 +223,13 @@ usage()
   echo " -O     like -o, but use token_endpoint auth (after getting token)"
   echo " -x     assume eXclusive project, clean all floating IPs found"
   echo " -I     dIsassociate floating IPs before deleting them"
-  echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs"
-  echo " -4     Create 2ndary subnets, test, reshuffle and retest"
+  echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test"
+  echo " -3     Create 2ndary subnets, attach, test, reshuffle and retest"
+  echo " -4     Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest"
   echo "Or: api_monitor.sh [-f] CLEANUP XXX to clean up all resources with prefix XXX"
-  echo "Or: api_monitor.sh CONNTEST XXX to perform full connectivity check for preexisting env XXX"
+  echo "        Option -f forces the deletion"
+  echo "Or: api_monitor.sh [Options] CONNTEST XXX for full conn test for existing env XXX"
+  echo "        Options: [-2/3/4] [-o/O] [-i N] [-e ADR] [-E] [-w/W/V N] [-l LOGFILE]"
   exit 0
 }
 
@@ -260,7 +264,9 @@ while test -n "$1"; do
     "-x") CLEANALLFIPS=1;;
     "-I") DISASSOC=1;;
     "-2") SECONDNET=1;;
-    "-4") SECONDNET=1; RESHUFFLE=1;;
+    "-3") SECONDNET=1; RESHUFFLE=1;;
+    "-4") SECONDNET=1; RESHUFFLE=1; STARTRESHUFFLE=1;;
+    "-E") EXITERR=1;;
     "CLEANUP") break;;
     "CONNTEST") if test "$MAXITER" == "-9999"; then MAXITER=1; fi; break;;
     *) echo "Unknown argument \"$1\""; exit 1;;
@@ -2559,7 +2565,7 @@ if test -n "$OPENSTACKTOKEN"; then
 fi
 # Debugging: Start with volume step
 if test "$1" = "CLEANUP"; then
-  if test -n "$2"; then RPRE=$2; fi
+  if test -n "$2"; then RPRE=$2; if test ${RPRE%_} == ${RPRE}; then RPRE=${RPRE}_; fi; fi
   echo -e "$BOLD *** Start cleanup $RPRE *** $NORM"
   #SECONDNET=1
   cleanup
@@ -2567,46 +2573,58 @@ if test "$1" = "CLEANUP"; then
   # We always return 0 here, as we dont want to stop the testing on failed cleanups.
   exit 0
 elif test "$1" = "CONNTEST"; then
-  if test -n "$2"; then RPRE=$2; fi
+  if test -n "$2"; then RPRE=$2; if test ${RPRE%_} == ${RPRE}; then RPRE=${RPRE}_; fi; fi
   while test $loop != $MAXITER; do
    echo -e "$BOLD *** Start connectivity test for $RPRE *** $NORM"
    # Only collect resource on e. 10th iteration
-   if test "$(($loop%10))" == 0; then collectRes; else echo " ...wait..."; sleep 10; fi
+   if test "$(($loop%10))" == 0; then collectRes; else echo " Reuse known resources ..."; sleep 2; fi
    if test -z "${VMS[*]}"; then echo "No VMs found"; exit 1; fi
    #echo "FLOATs: ${FLOATS[*]} JHVMS: ${JHVMS[*]}"
    testjhinet
-   if test $? != 0; then
+   RC=$?
+   if test $RC != 0; then
      sendalarm 2 "JH unreachable" "$ERR" 20
-     exit 2
+     if test -n "$EXITERR"; then exit 2; fi
+     let VMERRORS+=$RC
+     errwait $ERRWAIT
    fi
    #echo "REDIRS: ${REDIRS[*]}"
    wait222
    # Defer alarms
    #if test $? != 0; then exit 2; fi
    testsnat
-   if test $? != 0; then
+   RC=$?
+   if test $RC != 0; then
      sendalarm 2 "VMs unreachable/can not ping outside" "$ERR" 16
-     exit 3
+     if test -n "$EXITERR"; then exit 3; fi
+     let VMERRORS+=$RC
+     errwait $ERRWAIT
    fi
-   if test -n "$RESHUFFLE"; then reShuffle; fi
+   if test -n "$RESHUFFLE" -a -n "$STARTRESHUFFLE"; then reShuffle; fi
    fullconntest
    #if test $? != 0; then exit 4; fi
    if test $FPERR -gt 0; then
      sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
-     exit 4
-     #errwait $ERRWAIT
+     if test -n "$EXITERR"; then exit 4; fi
+     # Error counting done by fullconntest already
+     errwait $ERRWAIT
    fi
    if test -n "$RESHUFFLE"; then
      reShuffle
      fullconntest
      if test $FPERR -gt 0; then
        sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
-       exit 4
-       #errwait $ERRWAIT
-     fi
+       if test -n "$EXITERR"; then exit 4; fi
+       # Error counting done by fullconntest already
+       errwait $ERRWAIT
+       fi
+     let SUCCRUNS+=1
    fi
    echo -e "$BOLD *** Connectivity test complete *** $NORM"
+   let SUCCRUNS+=1
+   if test $SUCCWAIT -ge 0; then sleep $SUCCWAIT; else echo -n "Hit enter to continue ..."; read ANS; fi
    let loop+=1
+   # TODO: We don't do anything with the collected statistics in CONNTEST yet ... fix!
   done
   exit 0 #$RC
 else # test "$1" = "DEPLOY"; then
