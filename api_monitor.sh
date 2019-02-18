@@ -551,9 +551,6 @@ translate()
     if test "$C1" == "net"; then C1="network"; fi
     if test "$C1" == "floatingip"; then C1="floating ip"; fi
     if test "$C1" == "keypair" -a "$CMD" == "add"; then CMD="create"; fi
-    # No token_endpoint auth for vNIC at/detachment
-    if test "$C1" == "interface" -a "$CMD" == "attach"; then C1="server"; CMD="add port"; OPST="openstack"; fi
-    if test "$C1" == "interface" -a "$CMD" == "detach"; then C1="server"; CMD="remove port"; OPST="openstack"; fi
     C1=${C1//-/ }
     shift
     #OSTACKCMD=($OPST $C1 $CMD "$@")
@@ -589,6 +586,17 @@ translate()
       ARGS=$(echo "$@" | sed -e 's/\-\-direction ingress/--ingress/' -e 's/\-\-direction egress/--egress/' -e 's/\-\-remote\-ip\-prefix/--remote-ip/' -e 's/\-\-remote\-group\-id/--remote-group/' -e 's/\-\-protocol tcp *\-\-port\-range\-min \([0-9]*\) *\-\-port\-range\-max \([0-9]*\)/--protocol tcp --dst-port \1:\2/' -e 's/\-\-protocol icmp *\-\-port\-range\-min \([0-9]*\) *\-\-port\-range\-max \([0-9]*\)/--protocol icmp --icmp-type \1 --icmp-code \2/')
       if ! echo "$ARGS" | grep '\-\-protocol' >/dev/null 2>&1; then ARGS="$ARGS --protocol any"; fi
       OSTACKCMD=($OPST $C1 $CMD $ARGS)
+    # No token_endpoint auth for vNIC at/detachment
+    elif test "$C1" == "interface" -a "$CMD" == "attach"; then
+      C1="server"; CMD="add port"; OPST="openstack"
+      ARGS=$(echo "$@" | sed -e 's@--port-id \([^ ]\) *\([^ ]*\)$@\2 \1@')
+      OSTACKCMD=($OPST $C1 $CMD $ARGS)
+    elif test "$C1" == "interface" -a "$CMD" == "detach"; then
+      C1="server"; CMD="remove port"; OPST="openstack"
+      # The interface-detach syntax is not symmetric to interface-attach, ouch!
+      #ARGS=$(echo "$@" | sed -e 's@--port-id \([^ ]\) *\([^ ]*\)$@\2 \1@')
+      #OSTACKCMD=($OPST $C1 $CMD $ARGS)
+      OSTACKCMD=($OPST $C1 $CMD $@)
     fi
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
   fi
@@ -1786,7 +1794,7 @@ config2ndNIC()
   # Attach
   echo -n "Attaching 2ndary Ports to VMs ... "
   for no in `seq 0 $(($NOVMS-1))`; do
-    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova interface-attach ${VMS[$no]} ${SECONDPORTS[$no]}
+    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova interface-attach --port-id ${SECONDPORTS[$no]} ${VMS[$no]}
     echo -n "."
   done
   # Configure VMs
