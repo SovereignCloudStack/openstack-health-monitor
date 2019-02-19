@@ -2578,6 +2578,7 @@ if test -n "$OPENSTACKTOKEN"; then
     sleep 2
     getToken
   fi
+  TOKENSTAMP=$(date +%s)
 fi
 # Debugging: Start with volume step
 if test "$1" = "CLEANUP"; then
@@ -2640,6 +2641,11 @@ elif test "$1" = "CONNTEST"; then
    let SUCCRUNS+=1
    if test $SUCCWAIT -ge 0; then sleep $SUCCWAIT; else echo -n "Hit enter to continue ..."; read ANS; fi
    let loop+=1
+   # Refresh token after 10hrs
+   if test -n "$TOKENSTAMP" -a $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then
+     getToken
+     TOKENSTAMP=$(date +%s)
+   fi
    # TODO: We don't do anything with the collected statistics in CONNTEST yet ... fix!
   done
   exit 0 #$RC
@@ -2756,6 +2762,11 @@ else # test "$1" = "DEPLOY"; then
               echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
               let SUCCRUNS+=1
               if test $SUCCWAIT -ge 0; then sleep $SUCCWAIT; else echo -n "Hit enter to continue ..."; read ANS; fi
+	      # Refresh token if needed
+              if test -n "$TOKENSTAMP" -a $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then
+                getToken
+                TOKENSTAMP=$(date +%s)
+              fi
               # Subtract waiting time (5s here)
               MSTART=$(($MSTART+$(date +%s)-$MSTOP))
               # TODO: Detach and delete disks again
