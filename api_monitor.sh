@@ -511,7 +511,8 @@ translate()
     fi
   done
   OSTACKCMD=("$@")
-  if test -z "$OPENSTACKCLIENT" -o "$1" == "openstack"; then return 0; fi
+  if test "$1" == "myopenstack" -a -z "$OPENSTACKTOKEN" -o -z "$EP"; then shift; OSTACKCMD=("openstack" "$@"); return 0; fi
+  if test -z "$OPENSTACKCLIENT" -o "$1" == "openstack" -o "$1" == "myopenstack"; then return 0; fi
   if test -n "$LOGFILE"; then echo "#DEBUG: $@" >> $LOGFILE; fi
   #echo "#DEBUG: $@" 1>&2
   if test -z "$DEFCMD"; then echo "ERROR: Unknown cmd $@" 1>&2; return 1; fi
@@ -679,7 +680,7 @@ ostackcmd_id()
   local LEND=$(date +%s.%3N)
   local TIM=$(math "%.2f" "$LEND-$LSTART")
 
-  test "$1" = "openstack" && shift
+  test "$1" = "openstack" -o "$1" = "myopenstack" && shift
   if test -n "$GRAFANA"; then
       # log time / rc to grafana
       rc2grafana $RC
@@ -734,7 +735,7 @@ ostackcmd_tm()
   #OSTACKRESP=$(echo "$OSTACKRESP" | grep -v 'is deprecated')
   local LEND=$(date +%s.%3N)
   local TIM=$(math "%.2f" "$LEND-$LSTART")
-  test "$1" = "openstack" && shift
+  test "$1" = "openstack" -o "$1" = "myopenstack" && shift
   if test -n "$GRAFANA"; then
     # log time / rc to grafana telegraph
     rc2grafana $RC
@@ -1172,6 +1173,7 @@ createSubNets()
 create2ndSubNets()
 {
   if test -n "$SECONDNET"; then
+    SECONDNETS=(); SECONDSUBNETS=()
     createResources $NONETS NETSTATS SECONDNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET2_VM_\$no"
     #createResources $NONETS NETSTATS SECONDSUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --disable-dhcp --name "${RPRE}SUBNET2_\$no" "\$VAL" "10.251.\$((no+4)).0/22"
     createResources $NONETS NETSTATS SECONDSUBNET SECONDNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET2_VM_\$no" "\$VAL" "10.251.\$((no*4)).0/22"
@@ -1330,6 +1332,7 @@ createPorts()
 create2ndPorts()
 {
   if test -n "$SECONDNET"; then
+    SECONDPORTS=()
     createResources $NOVMS NETSTATS SECONDPORT NONE NONE "" id $NETTIMEOUT neutron port-create --security-group ${SGROUPS[1]} --fixed-ip subnet_id="\${SECONDSUBNETS[\$((\$no%$NONETS))]}" --name "${RPRE}Port2_VM\${no}" "\${SECONDNETS[\$((\$no%$NONETS))]}"
   fi
 }
@@ -2222,6 +2225,28 @@ allstats()
  stats $1 TOTTIME    0 "Total setup Stats "
 }
 
+# Identify which FIPs really belong to us
+findFIPs()
+{
+  FIPRESP="$OSTACKRESP"
+  EP="$NEUTRON_EP"
+  ostackcmd_tm NETSTATS $NETTIMEOUT myopenstack port list --network ${JHNETS[0]}
+  OSTACKRESP=$(echo "$OSTACKRESP" | sed 's@neutron CLI is deprecated and will be removed in the future. Use openstack CLI instead.@@g' | grep "${RPRE}Port_JH")
+  local SRCH="\("
+  while read ln; do
+    PORT=$(echo "$ln" | sed 's/^| \([0-9a-f-]*\) .*$/\1/')
+    SRCH="$SRCH$PORT\|"
+  done < <(echo "$OSTACKRESP")
+  SRCH="${SRCH%|})"
+  echo -n " JHPorts: $SRCH"
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list
+  FIPS=( $(echo "$OSTACKRESP" | grep '10\.250\.255' | grep -e "$SRCH" | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  for PORT in ${FIPS[*]}; do
+    FLOAT+=" $(echo "$OSTACKRESP" | grep $PORT | sed "$FLOATEXTR")"
+  done
+  FLOATS=( $FLOAT )
+}
+
 # TODO: Create wrapper that collects stats, handles timeouts ...
 # Helper to find a resource ...
 # $1 => Filter (grepped)
@@ -2233,6 +2258,7 @@ findres()
   translate "$@"
   # FIXME: Add timeout handling
   ${OSTACKCMD[@]} 2>/dev/null | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
+  
 }
 
 collectRes()
@@ -2240,16 +2266,9 @@ collectRes()
   echo -en "${BOLD}Collecting resources:${NORM} "
   ROUTERS=( $(findres "" neutron router-list) )
   SNATROUTE=1
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 1
-  FIPS=( $(echo "$OSTACKRESP" | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
-  for PORT in ${FIPS[*]}; do
-    FLOAT+=" $(echo "$OSTACKRESP" | grep $PORT | sed "$FLOATEXTR")"
-  done
-  FLOATS=( $FLOAT )
-  #echo "FIPS: ${FIPS[*]}, FLOATS: ${FLOATS[*]}"
-  echo -n "${#FLOATS[*]} Floats (${FLOATS[*]}) "
   JHVMS=( $(findres ${RPRE}VM_JH nova list --sort display_name:asc) )
   NOAZS=${#JHVMS[*]}
+  if test "$NOAZS" == 0; then echo "No JH"; return 1; fi
   VIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
   VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
   # Volume names if we boot from image
@@ -2269,6 +2288,12 @@ collectRes()
   if test -n "$SECONDNETS"; then SECONDNET=1; fi
   #SECONDPORTS=( $(findres ${RPRE}Port2_VM neutron port-list) )
   #if test -n "$SECONDPORTS"; then SECONDNET=1; SECONDPORTS=(); fi
+  #ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 1
+  #FIPS=( $(echo "$OSTACKRESP" | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  #if test "${#FIPS[*]} != ${NOAZS[*]}"; then filterFIPs; fi
+  findFIPs
+  #echo "FIPS: ${FIPS[*]}, FLOATS: ${FLOATS[*]}"
+  echo -n " ${#FLOATS[*]} Floats (${FLOATS[*]}) "
   #VMS=( $(findres ${RPRE}VM_VM nova list --sort display_name:asc) )
   ostackcmd_tm NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc
   orderVMs
@@ -2317,6 +2342,8 @@ cleanup()
   ROUTERS=( $(findres "" neutron router-list) )
   SNATROUTE=1
   #FIPS=( $(findres "" neutron floatingip-list) )
+  # NOTE: This will find FIPs from other APIMon jobs in the same tenant also
+  #  maybe we should use findFIPs
   translate neutron floatingip-list
   FIPS=( $(${OSTACKCMD[@]} | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   deleteFIPs
