@@ -2238,7 +2238,7 @@ findFIPs()
     SRCH="$SRCH$PORT\|"
   done < <(echo "$OSTACKRESP")
   SRCH="${SRCH%|})"
-  echo -n " JHPorts: $SRCH"
+  #echo -n " JHPorts: $SRCH"
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list
   FIPS=( $(echo "$OSTACKRESP" | grep '10\.250\.255' | grep -e "$SRCH" | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   for PORT in ${FIPS[*]}; do
