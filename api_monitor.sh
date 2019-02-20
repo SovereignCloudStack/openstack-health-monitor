@@ -2656,14 +2656,17 @@ else # test "$1" = "DEPLOY"; then
  date
  # Image IDs
  JHIMGID=$(ostackcmd_search $JHIMG $GLANCETIMEOUT glance image-list $JHIMGFILT | awk '{ print $2; }')
- if test -z "$JHIMGID"; then sendalarm 1 "No JH image $JHIMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
+ if test -z "$JHIMGID" -o "$JHIMGID" == "0"; then sendalarm 1 "No JH image $JHIMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
  IMGID=$(ostackcmd_search $IMG $GLANCETIMEOUT glance image-list $IMGFILT | awk '{ print $2; }')
- if test -z "$IMGID"; then sendalarm 1 "No image $IMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
+ if test -z "$IMGID" -o "$IMG" == "0"; then sendalarm 1 "No image $IMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
  let APICALLS+=2
  # Retrieve root volume size
  OR=$(ostackcmd_id min_disk $GLANCETIMEOUT glance image-show $JHIMGID)
  if test $? != 0; then
   let APIERRORS+=1; sendalarm 1 "glance image-show failed" "" $GLANCETIMEOUT
+  errwait $ERRWAIT
+  let loop+=1
+  continue
  else
   read TM SZ <<<"$OR"
   JHVOLSIZE=$(($SZ+$ADDJHVOLSIZE))
