@@ -2240,13 +2240,14 @@ findFIPs()
     PORT=$(echo "$ln" | sed 's/^| \([0-9a-f-]*\) .*$/\1/')
     JHPORTS+=$PORT
   done < <(echo "$OSTACKRESP")
-  #echo -n " JHPorts: ${JHPORTS[*]}"
+  #echo -n " JHPorts(${#JHPORTS[*]}): ${JHPORTS[*]}"
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list
-  FIPLIST=$(echo "$OSTACKRESP" | grep '10\.250\.255')
   FIPS=(); FLOATS=()
   for fno in $(seq 0 $((${#JHPORTS[*]}-1))); do
-    FIPS[$fno]=$(echo "$FIPLIST" | grep -e "${JHPORTS[$fno]}" | sed 's/^| *\([^ ]*\) *|.*$/\1/')
-    FLOAT[$fno]=$(echo "$FIPLIST" | grep -e "${FIPS[$fno]}" | sed "$FLOATEXTR")
+    #echo -en "\nneutron floatingip-list | grep -e \"${JHPORTS[$fno]}\": "
+    #echo "$OSTACKRESP" | grep -e "${JHPORTS[$fno]}" | sed 's/^| *\([^ ]*\) *|.*$/\1/'
+    FIPS[$fno]=$(echo "$OSTACKRESP" | grep -e "${JHPORTS[$fno]}" | sed 's/^| *\([^ ]*\) *|.*$/\1/')
+    FLOATS[$fno]=$(echo "$OSTACKRESP" | grep -e "${FIPS[$fno]}" | sed "$FLOATEXTR")
   done
 }
 
