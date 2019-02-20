@@ -2230,21 +2230,21 @@ findFIPs()
 {
   FIPRESP="$OSTACKRESP"
   EP="$NEUTRON_EP"
-  ostackcmd_tm NETSTATS $NETTIMEOUT myopenstack port list --network ${JHNETS[0]}
+  ostackcmd_tm NETSTATS $NETTIMEOUT myopenstack port list --network ${JHNETS[0]} --sort-column Name
   OSTACKRESP=$(echo "$OSTACKRESP" | sed 's@neutron CLI is deprecated and will be removed in the future. Use openstack CLI instead.@@g' | grep "${RPRE}Port_JH")
-  local SRCH="\("
+  local JHPORTS=()
   while read ln; do
     PORT=$(echo "$ln" | sed 's/^| \([0-9a-f-]*\) .*$/\1/')
-    SRCH="$SRCH$PORT\|"
+    JHPORTS+=$PORT
   done < <(echo "$OSTACKRESP")
-  SRCH="${SRCH%|})"
-  #echo -n " JHPorts: $SRCH"
+  #echo -n " JHPorts: ${JHPORTS[*]}"
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list
-  FIPS=( $(echo "$OSTACKRESP" | grep '10\.250\.255' | grep -e "$SRCH" | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
-  for PORT in ${FIPS[*]}; do
-    FLOAT+=" $(echo "$OSTACKRESP" | grep $PORT | sed "$FLOATEXTR")"
+  FIPLIST=$(echo "$OSTACKRESP" | grep '10\.250\.255')
+  FIPS=(); FLOATS=()
+  for fno in $(seq 0 $((${#JHPORTS[*]}-1))); do
+    FIPS[$fno]=$(echo "$FIPLIST" | grep -e "${JHPORTS[$fno]}" | sed 's/^| *\([^ ]*\) *|.*$/\1/')
+    FLOAT[$fno]=$(echo "$FIPLIST" | grep -e "${FIPS[$fno]}" | sed "$FLOATEXTR")
   done
-  FLOATS=( $FLOAT )
 }
 
 # TODO: Create wrapper that collects stats, handles timeouts ...
