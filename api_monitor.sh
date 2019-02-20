@@ -169,8 +169,8 @@ JHFLAVOR=${JHFLAVOR:-s2.medium.1}
 FLAVOR=${FLAVOR:-s2.medium.1}
 
 if [[ "$JHIMG" != *openSUSE* ]]; then
-	echo "WARN: Need openSUSE as JumpHost for port forwarding via user_data" 1>&2
-	exit 1
+  echo "WARN: Need openSUSE as JumpHost for port forwarding via user_data" 1>&2
+  exit 1
 fi
 
 # Optionally increase JH and VM volume sizes beyond image size
@@ -247,7 +247,7 @@ while test -n "$1"; do
     "help"|"-h"|"--help") usage;;
     "-s") SENDSTATS=1;;
     "-S") GRAFANA=1;
-	if test -n "$2" -a "$2" != "CLEANUP" -a "$2" != "DEPLOY" -a "${2:0:1}" != "-"; then GRAFANANM="$2"; shift; fi;;
+          if test -n "$2" -a "$2" != "CLEANUP" -a "$2" != "DEPLOY" -a "${2:0:1}" != "-"; then GRAFANANM="$2"; shift; fi;;
     "-P") unset MANUALPORTSETUP;;
     "-d") BOOTFROMIMAGE=1;;
     "-D") BOOTALLATONCE=1; BOOTFROMIMAGE=1; unset MANUALPORTSETUP;;
@@ -488,7 +488,7 @@ killin()
   kill -SIGQUIT $1
   sleep 1
   kill -SIGHUP $1
-  sleep 1	
+  sleep 1
   kill -SIGKILL $1
 }
 
@@ -621,9 +621,9 @@ math()
 # Allows to inject OS_TOKEN and OS_URL to enforce token_endpoint auth
 myopenstack()
 {
-	echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-url $EP $@" >> $LOGFILE
-	OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-project-name "" --os-token $TOKEN --os-url $EP "$@"
-	#OS_PASSWORD="" OS_USERNAME="" OS_PROJECT_DOMAIN_NAME="" OS_PROJECT_NAME="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME=""
+  echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-url $EP $@" >> $LOGFILE
+  OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-project-name "" --os-token $TOKEN --os-url $EP "$@"
+  #OS_PASSWORD="" OS_USERNAME="" OS_PROJECT_DOMAIN_NAME="" OS_PROJECT_NAME="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME=""
 }
 
 # Command wrapper for openstack list commands
@@ -867,15 +867,15 @@ deleteResources()
 colstat()
 {
   if test "$2" == "NONNULL" -a -n "$1" -a "$1" != "null"; then
-	echo -e "${GREEN}*${NORM}"; return 2
+    echo -e "${GREEN}*${NORM}"; return 2
   elif test "$2" == "$1" || test -n "$3" -a "$3" == "$1"; then
-	echo -e "${GREEN}${1:0:1}${NORM}"; return 2
+    echo -e "${GREEN}${1:0:1}${NORM}"; return 2
   elif test "${1:0:5}" == "error" -o "${1:0:5}" == "ERROR"; then
-	echo -e "${RED}${1:0:1}${NORM}"; return 1
+    echo -e "${RED}${1:0:1}${NORM}"; return 1
   elif test -n "$1"; then
-	echo "${1:0:1}"
+    echo "${1:0:1}"
   else
-	echo "?"
+    echo "?"
   fi
   return 0
 }
@@ -926,19 +926,19 @@ waitResources()
       STE=$?
       echo -en "Wait $RNM: $STATSTR\r"
       if test $STE != 0; then
-	if test $STE = 1; then
+        if test $STE = 1; then
           echo -e "\n${YELLOW}ERROR: $NM $rsrc status $STAT$NORM" 1>&2 #; return 1
           let WERR+=1
         fi
         TM=$(date +%s)
-	TM=$(math "%i" "$TM-${SLIST[$i]}")
-	eval ${CSTAT}+="($TM)"
-	if test -n "$GRAFANA"; then
-	  # log time / rc to grafana
-	  if test $STE -ge 2; then RC=0; else RC=$STE; fi
-	  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)" >> grafana.log
-	fi
-	unset SLIST[$i]
+        TM=$(math "%i" "$TM-${SLIST[$i]}")
+        eval ${CSTAT}+="($TM)"
+        if test -n "$GRAFANA"; then
+          # log time / rc to grafana
+          if test $STE -ge 2; then RC=0; else RC=$STE; fi
+          curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC $(date +%s%N)" >> grafana.log
+        fi
+        unset SLIST[$i]
       fi
     done
     echo -en "Wait $RNM: $STATSTR\r"
@@ -1023,7 +1023,7 @@ waitlistResources()
         TM=$(math "%i" "$TM-${SLIST[$i]}")
         unset RRLIST[$i]
         unset SLIST[$i]
-	if test -n "$CSTAT"; then
+        if test -n "$CSTAT"; then
           eval ${CSTAT}+="($TM)"
           if test -n "$GRAFANA"; then
             # log time / rc to grafana
@@ -1082,17 +1082,17 @@ waitdelResources()
       eval ${STATNM}+="( $TM )"
       if test $RC != 0; then
         TM=$(date +%s)
-	TM=$(math "%i" "$TM-${DLIST[$i]}")
-	eval ${DSTAT}+="($TM)"
-	unset DLIST[$i]
+        TM=$(math "%i" "$TM-${DLIST[$i]}")
+        eval ${DSTAT}+="($TM)"
+        unset DLIST[$i]
         STAT="XDELX"
       fi
       STATI[$i]=$STAT
       STARTSTR+=$(colstat "$STAT" "XDELX" "")
       if test -n "$GRAFANA"; then
-	# log time / rc to grafana
+        # log time / rc to grafana
         rc2grafana $RC
-	curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=DEL duration=$TM,return_code=$GRC $(date +%s%N)" >> grafana.log
+        curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=DEL duration=$TM,return_code=$GRC $(date +%s%N)" >> grafana.log
       fi
       #echo -en "WaitDel $RNM: $STATSTR\r"
     done
@@ -2258,7 +2258,6 @@ findres()
   translate "$@"
   # FIXME: Add timeout handling
   ${OSTACKCMD[@]} 2>/dev/null | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
-  
 }
 
 collectRes()
@@ -2737,13 +2736,13 @@ else # test "$1" = "DEPLOY"; then
                 sendalarm $RC "Timeout waiting for VM " "${RRLIST[*]}" $((4*$MAXWAIT))
               fi
               setmetaVMs
-	      create2ndSubNets
-	      create2ndPorts
+              create2ndSubNets
+              create2ndPorts
               # Test JumpHosts
-	      # NOTE: Alarms and Grafana error logging are not fully aligned here
+              # NOTE: Alarms and Grafana error logging are not fully aligned here
               testjhinet
               RC=$?
-	      if test $RC != 0; then echo "$ERR"; sleep 5; testjhinet; RC=$?; fi
+              if test $RC != 0; then echo "$ERR"; sleep 5; testjhinet; RC=$?; fi
               if test $RC != 0; then
                 let VMERRORS+=$RC
                 sendalarm $RC "$ERR" "" 70
@@ -2766,8 +2765,8 @@ else # test "$1" = "DEPLOY"; then
                 sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
                 errwait $VMERRWAIT
               fi
-	      # Attach and config 2ndary NICs
-	      config2ndNIC
+              # Attach and config 2ndary NICs
+              config2ndNIC
               # Full connection test
               if test -n "$FULLCONN"; then
                 fullconntest
@@ -2776,8 +2775,8 @@ else # test "$1" = "DEPLOY"; then
                   sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
                   errwait $ERRWAIT
                 fi
-		if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
-		  reShuffle
+        	if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
+        	  reShuffle
                   fullconntest
                   if test $FPERR -gt 0; then
                     sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
@@ -2792,7 +2791,7 @@ else # test "$1" = "DEPLOY"; then
               echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
               let SUCCRUNS+=1
               if test $SUCCWAIT -ge 0; then sleep $SUCCWAIT; else echo -n "Hit enter to continue ..."; read ANS; fi
-	      # Refresh token if needed
+              # Refresh token if needed
               if test -n "$TOKENSTAMP" -a $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then
                 getToken
                 TOKENSTAMP=$(date +%s)
@@ -2808,8 +2807,8 @@ else # test "$1" = "DEPLOY"; then
         fi; waitdelJHVMs
         #echo -e "${BOLD}Ignore port del errors; VM cleanup took care already.${NORM}"
         IGNORE_ERRORS=1
-	delete2ndPorts
-	#if test -n "$SECONDNET" -o -n "$MANUALPORTSETUP"; then deletePorts; fi
+        delete2ndPorts
+        #if test -n "$SECONDNET" -o -n "$MANUALPORTSETUP"; then deletePorts; fi
         #deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
         unset IGNORE_ERRORS
        fi; deleteJHVols
