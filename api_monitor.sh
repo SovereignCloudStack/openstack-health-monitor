@@ -90,7 +90,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.48
+VERSION=1.49
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
@@ -2824,8 +2824,14 @@ else # test "$1" = "DEPLOY"; then
  THISRUNTIME=$(($(date +%s)-$MSTART))
  TOTTIME+=($THISRUNTIME)
  # Raise an alarm if we have not yet sent one and we're very slow despite this
- if test -n "$BOOTALLATONCE"; then CON=512; FACT=24; else CON=496; FACT=36; fi
- MAXCYC=$(($CON+8*$NOAZS+$FACT*$NOVMS))
+ if test -n "$OPENSTACKTOKEN"; then
+   if test -n "$BOOTALLATONCE"; then CON=400; NFACT=12; FACT=24; else CON=384; NFACT=12; FACT=36; fi
+ else
+   if test -n "$BOOTALLATONCE"; then CON=416; NFACT=16; FACT=24; else CON=400; NFACT=16; FACT=36; fi
+ fi
+ MAXCYC=$(($CON+($FACT+$NFACT/2)*$NOAZS+$NFACT*$NONETS+$FACT*$NOVMS))
+ if test $SECONDNET; then let MAXCYC+=$(($NFACT*$NONETS+$NFACT*$NOVMS)); fi
+ if test $RESHUFFLE; then let MAXCYC+=$((2*$NFACT*$NOVMS)); fi
  if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $MAXCYC; then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME (max $MAXCYC)" $MAXCYC
     #waiterr $WAITERR
