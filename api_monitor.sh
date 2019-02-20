@@ -2834,8 +2834,9 @@ else # test "$1" = "DEPLOY"; then
    if test -n "$BOOTALLATONCE"; then CON=416; NFACT=16; FACT=24; else CON=400; NFACT=16; FACT=36; fi
  fi
  MAXCYC=$(($CON+($FACT+$NFACT/2)*$NOAZS+$NFACT*$NONETS+$FACT*$NOVMS))
- if test $SECONDNET; then let MAXCYC+=$(($NFACT*$NONETS+$NFACT*$NOVMS)); fi
- if test $RESHUFFLE; then let MAXCYC+=$((2*$NFACT*$NOVMS)); fi
+ if test -n "$SECONDNET"; then let MAXCYC+=$(($NFACT*$NONETS+$NFACT*$NOVMS)); fi
+ if test -n "$RESHUFFLE"; then let MAXCYC+=$((2*$NFACT*$NOVMS)); fi
+ if test -n "$FULLCONN"; then let MAXCYC+=$(($NOVMS*$NOVMS/10)); fi
  if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $MAXCYC; then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME (max $MAXCYC)" $MAXCYC
     #waiterr $WAITERR
