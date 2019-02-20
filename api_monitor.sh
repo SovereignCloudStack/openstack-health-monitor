@@ -281,6 +281,9 @@ done
 
 if test "$1" != "CONNTEST"; then
   trap exithandler SIGINT
+  if test -n "$SECONDNET" -a -z "$FULLCONN"; then
+    echo "Warning: 2ndary interfaces (-2/3/4) without full conn test (-C)?"
+  fi
 fi
 
 # Test precondition
