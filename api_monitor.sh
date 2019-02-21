@@ -735,13 +735,19 @@ ostackcmd_tm()
     sendalarm $RC "$*" "$OSTACKRESP" $TIMEOUT
     errwait $ERRWAIT
   fi
-  #OSTACKRESP=$(echo "$OSTACKRESP" | grep -v 'is deprecated')
+  # We capture stderr in the response, need to remove neutron deprecation warning
+  # TODO: Would be better to capture stderr elsewhere and just use in case of errors
+  if test "${OSTACKCMD[0]}" == "neutron"; then
+    OSTACKRESP=$(echo "$OSTACKRESP" | sed 's@neutron CLI is deprecated and will be removed in the future\. Use openstack CLI instead\.@@g')
+  fi
   local LEND=$(date +%s.%3N)
   local TIM=$(math "%.2f" "$LEND-$LSTART")
   test "$1" = "openstack" -o "$1" = "myopenstack" && shift
   if test -n "$GRAFANA"; then
     # log time / rc to grafana telegraph
     rc2grafana $RC
+    # Note: We log untranslated commands to grafana here, for continuity reasons
+    # (This is why we do translation in the first place ...)
     curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)" >> grafana.log
   fi
   eval "${STATNM}+=( $TIM )"
@@ -1518,7 +1524,6 @@ calcRedirs()
   # This is why we use orderVMs
   # Optimization: Do neutron port-list once and parse multiple times ...
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
-  OSTACKRESP=$(echo "$OSTACKRESP" | sed 's@neutron CLI is deprecated and will be removed in the future. Use openstack CLI instead.@@g')
   if test ${#PORTS[*]} -gt 0; then
     declare -i ptn=222
     declare -i pi=0
@@ -1593,7 +1598,6 @@ collectPorts()
 {
   local vm vmid
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
-  OSTACKRESP=$(echo "$OSTACKRESP" | sed 's@neutron CLI is deprecated and will be removed in the future. Use openstack CLI instead.@@g')
   #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'"
   #echo "#DEBUG: cP VMs ${VMS[*]}"
   if test -n "$SECONDNET" -a -z "$SECONDPORTS"; then COLLSECOND=1; else unset COLLSECOND; fi
@@ -2113,7 +2117,6 @@ EOT
   chmod +x ${RPRE}ping
   # collect all IPs
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
-  OSTACKRESP=$(echo "$OSTACKRESP" | sed 's@neutron CLI is deprecated and will be removed in the future. Use openstack CLI instead.@@g')
   IPS=()
   NP=${#PORTS[*]}
   for pno in $(seq 0 $(($NP-1))); do
@@ -2235,7 +2238,6 @@ findFIPs()
   FIPRESP="$OSTACKRESP"
   EP="$NEUTRON_EP"
   ostackcmd_tm NETSTATS $NETTIMEOUT myopenstack port list --network ${JHNETS[0]} --sort-column Name
-  OSTACKRESP=$(echo "$OSTACKRESP" | sed 's@neutron CLI is deprecated and will be removed in the future. Use openstack CLI instead.@@g' | grep "${RPRE}Port_JH")
   JHPORTS=()
   while read ln; do
     PORT=$(echo "$ln" | sed 's/^| \([0-9a-f-]*\) .*$/\1/')
