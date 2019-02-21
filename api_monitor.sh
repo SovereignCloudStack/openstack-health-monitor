@@ -83,14 +83,14 @@
 # - python2 or 3 for math used to calc statistics
 # - SUSE image with SNAT/port-fwd (SuSEfirewall2-snat pkg) for the JumpHosts
 # - Any image for the VMs that allows login as user DEFLTUSER (linux) with injected key
-#   (If we use -2/-4, we also need a SUSE image to have the cloud-multiroute pkg in there.)
+#   (If we use -2/-3/-4, we also need a SUSE image to have the cloud-multiroute pkg in there.)
 #
 # Example:
 # Run 100 loops deploying (and deleting) 2+8 VMs (including nets, volumes etc.),
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.49
+VERSION=1.50
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
@@ -121,6 +121,7 @@ NOAZS=${#AZS[*]}
 NOVMS=12
 NONETS=$NOAZS
 MANUALPORTSETUP=1
+ROUTERITER=1
 if [[ $OS_AUTH_URL == *otc*t-systems.com* ]]; then
   NAMESERVER=${NAMESERVER:-100.125.4.25}
 fi
@@ -216,6 +217,7 @@ usage()
   echo " -P     do not create Port before VM creation"
   echo " -D     create all VMs with one API call (implies -d -P)"
   echo " -i N   sets max number of iterations (def = -1 = inf)"
+  echo " -r N   only recreate router after each Nth iteration"
   echo " -g N   increase VM volume size by N GB (ignored for -d/-D)"
   echo " -G N   increase JH volume size by N GB"
   echo " -w N   sets error wait (API, VM): 0-inf seconds or neg value for interactive wait"
@@ -231,6 +233,7 @@ usage()
   echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test"
   echo " -3     Create 2ndary subnets, attach, test, reshuffle and retest"
   echo " -4     Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest"
+  echo " -R     Recreate 2ndary ports after detaching (OpenStack <= Mitaka bug)"
   echo "Or: api_monitor.sh [-f] CLEANUP XXX to clean up all resources with prefix XXX"
   echo "        Option -f forces the deletion"
   echo "Or: api_monitor.sh [Options] CONNTEST XXX for full conn test for existing env XXX"
@@ -268,6 +271,8 @@ while test -n "$1"; do
     "-O") OPENSTACKCLIENT=1; OPENSTACKTOKEN=1;;
     "-x") CLEANALLFIPS=1;;
     "-I") DISASSOC=1;;
+    "-r") ROUTERITER=$2; shift;;
+    "-R") SECONDRECREATE=1;;
     "-2") SECONDNET=1;;
     "-3") SECONDNET=1; RESHUFFLE=1;;
     "-4") SECONDNET=1; RESHUFFLE=1; STARTRESHUFFLE=1;;
@@ -700,7 +705,7 @@ ostackcmd_id()
   else
     ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed -e "s/^| *$IDNM *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
     echo "$LSTART/$LEND/$ID: ${OSTACKCMD[@]} => $RC $RESP" >> $LOGFILE
-    if test "$RC" != "0"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; return $RC; fi
+    if test "$RC" != "0" -a -z "$IGNORE_ERRORS"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; return $RC; fi
   fi
   echo "$TIM $ID"
   return $RC
@@ -835,6 +840,7 @@ deleteResources()
   #for rsrc in $LIST; do
   local LN=${#LIST[@]}
   local RESP
+  local IGNERRS=0
   while test ${#LIST[*]} -gt 0; do
     local rsrc=${LIST[-1]}
     echo -n "$rsrc "
@@ -844,7 +850,12 @@ deleteResources()
     let APICALLS+=1
     RESP=$(ostackcmd_id id $TIMEOUT $@ $rsrc)
     local RC="$?"
-    updAPIerr $RC
+    if test -z "$IGNORE_ERRORS"; then
+      updAPIerr $RC
+    else
+      let IGNERRS+=$RC
+      RC=0
+    fi
     read TM ID <<<"$RESP"
     if test $RC != 0; then
       echo -e "${YELLOW}ERROR deleting $RNM $rsrc; retry and continue ...$NORM" 1>&2
@@ -859,6 +870,7 @@ deleteResources()
     fi
     unset LIST[-1]
   done
+  if test -n "$IGNORE_ERRORS" -a $IGNERRS -gt 0; then echo -n " ($IGNERRS errors ignored) "; fi
   test $LN -gt 0 && echo
   # FIXME: Should we try again immediately?
   if test -n "$FAILDEL"; then
@@ -1142,12 +1154,17 @@ showResources()
 
 createRouters()
 {
-  createResources 1 NETSTATS ROUTER NONE NONE "" id $FIPTIMEOUT neutron router-create ${RPRE}Router
+  if test -z "$ROUTERS"; then
+    createResources 1 NETSTATS ROUTER NONE NONE "" id $FIPTIMEOUT neutron router-create ${RPRE}Router
+  fi
 }
 
 deleteRouters()
 {
   deleteResources NETSTATS ROUTER "" $(($FIPTIMEOUT+8)) neutron router-delete
+  RC=$?
+  if test $RC == 0; then ROUTERS=(); fi
+  return $RC
 }
 
 createNets()
@@ -1498,10 +1515,11 @@ deleteFIPs()
   fi
   deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
   # Extra treatment: Try again to avoid leftover FIPs
+  # sleep 1
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 0
   local FIPSLEFT=""
   for FIP in ${OLDFIPS[*]}; do
-    if echo "$FIPSLEFT" | grep "^| $FIP" >/dev/null 2>&1; then FIPSLEFT="$FIPSLEFT$FIP "; fi
+    if echo "$OSTACKRESP" | grep "^| $FIP" >/dev/null 2>&1; then FIPSLEFT="$FIPSLEFT$FIP "; fi
   done
   if test -n "$FIPSLEFT"; then
     sendalarm 1 "Cleanup Floating IPs $FIPSLEFT again"
@@ -1846,6 +1864,12 @@ reShuffle()
     echo -n "."
   done
   echo " done. Now reshuffle ..."
+  if test -n "$SECONDRECREATE"; then
+    IGNORE_ERRORS=1
+    delete2ndPorts
+    unset IGNORE_ERRORS
+    create2ndPorts
+  fi
   declare -i i=0
   NEWORDER=$(for p in ${SECONDPORTS[@]}; do echo $p; done | shuf)
   while read p; do
@@ -2399,7 +2423,7 @@ waitnetgone()
     OFFILT=$(echo "\\(${OLDFIPS[*]}\\)" | sed 's@ @\\|@g')
     FIPS=( $(echo "$OSTACKRESP" | grep "$OFFILT" | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   else
-    FIPS=( $(echo "$OSTACKRESP" | grep '10\.250\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+    FIPS=( $(echo "$OSTACKRESP" | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   fi
   DFIPS=(${FIPS[*]})
   deleteFIPs
@@ -2562,6 +2586,10 @@ declare -i SUCCRUNS=0
 LASTDATE=$(date +%Y-%m-%d)
 LASTTIME=$(date +%H:%M:%S)
 
+# Declare empty router list outside of loop
+# so we can reuse (option -r N).
+declare -a ROUTERS=()
+
 # MAIN LOOP
 while test $loop != $MAXITER; do
 
@@ -2581,7 +2609,6 @@ declare -a VMSTIME=()
 declare -a JVMSTIME=()
 
 # List of resources - neutron
-declare -a ROUTERS=()
 declare -a NETS=()
 declare -a SUBNETS=()
 declare -a JHNETS=()
@@ -2825,7 +2852,9 @@ else # test "$1" = "DEPLOY"; then
     fi; deleteRIfaces
    fi; deleteSubNets
   fi; deleteNets
- fi; deleteRouters
+ fi
+ # We may recycle the router
+ if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0; then deleteRouters; fi
  #echo "${NETSTATS[*]}"
  echo -e "$BOLD *** Cleanup complete *** $NORM"
  THISRUNTIME=$(($(date +%s)-$MSTART))
@@ -2915,8 +2944,9 @@ $(allstats -m)" > Stats.$LASTDATA.$LASTTIME.$CDATE.$CTIME.psv
   WAITTIME=()
 fi
 
-# TODO: Clean up residuals, if any
-waitnetgone
+# Clean up residuals, if any
+if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0; then waitnetgone; fi
+#waitnetgone
 let loop+=1
 done
 rm -f ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem
