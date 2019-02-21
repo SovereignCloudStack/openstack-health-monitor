@@ -2229,13 +2229,14 @@ allstats()
 }
 
 # Identify which FIPs really belong to us
+# Also populates JHPORTS (in Name order)
 findFIPs()
 {
   FIPRESP="$OSTACKRESP"
   EP="$NEUTRON_EP"
   ostackcmd_tm NETSTATS $NETTIMEOUT myopenstack port list --network ${JHNETS[0]} --sort-column Name
   OSTACKRESP=$(echo "$OSTACKRESP" | sed 's@neutron CLI is deprecated and will be removed in the future. Use openstack CLI instead.@@g' | grep "${RPRE}Port_JH")
-  local JHPORTS=()
+  JHPORTS=()
   while read ln; do
     PORT=$(echo "$ln" | sed 's/^| \([0-9a-f-]*\) .*$/\1/')
     JHPORTS+=$PORT
@@ -2304,7 +2305,7 @@ collectRes()
   echo " $NOVMS VMs "
   #echo "VMS: ${VMS[*]}"
   collectPorts
-  JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
+  #JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
   SGROUPS=( $(findres "" neutron security-group-list) )
   calcRedirs
   if test ${#VMS[*]} -gt 0; then
