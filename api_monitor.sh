@@ -90,7 +90,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.50
+VERSION=1.51
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
@@ -118,6 +118,11 @@ fi
 AZS=($AZS)
 #echo "${#AZS[*]} AZs: ${AZS[*]}"; exit 0
 NOAZS=${#AZS[*]}
+if test -z "$VAZS"; then
+  VAZS=$(cinder availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
+  if test -z "$VAZS"; then VAZS=(${AZS[*]}); else VAZS=($VAZS); fi
+fi
+NOVAZS=${#VAZS[*]}
 NOVMS=12
 NONETS=$NOAZS
 MANUALPORTSETUP=1
@@ -792,7 +797,9 @@ createResources()
   # FIXME: Should we get a token once here and reuse it?
   for no in `seq 0 $(($QUANT-1))`; do
     local AZN=$(($no%$NOAZS))
+    local VAZN=$(($no%$NOVAZS))
     local AZ=$(($AZ+1))
+    local VAZ=$(($VAZ+1))
     local VAL=${LIST[$ctr]}
     local MVAL=${MLIST[$ctr]}
     local CMD=`eval echo $@ 2>&1`
@@ -1383,7 +1390,7 @@ delete2ndPorts()
 createJHVols()
 {
   JVOLSTIME=()
-  createResources $NOAZS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id $CINDERTIMEOUT cinder create --image-id $JHIMGID --availability-zone \${AZS[\$AZN]} --name ${RPRE}RootVol_JH\$no $JHVOLSIZE
+  createResources $NOAZS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id $CINDERTIMEOUT cinder create --image-id $JHIMGID --availability-zone \${VAZS[\$VAZN]} --name ${RPRE}RootVol_JH\$no $JHVOLSIZE
 }
 
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
@@ -1402,7 +1409,7 @@ createVols()
 {
   if test -n "$BOOTFROMIMAGE"; then return 0; fi
   VOLSTIME=()
-  createResources $NOVMS VOLSTATS VOLUME NONE NONE VOLSTIME id $CINDERTIMEOUT cinder create --image-id $IMGID --availability-zone \${AZS[\$AZN]} --name ${RPRE}RootVol_VM\$no $VOLSIZE
+  createResources $NOVMS VOLSTATS VOLUME NONE NONE VOLSTIME id $CINDERTIMEOUT cinder create --image-id $IMGID --availability-zone \${VAZS[\$VAZN]} --name ${RPRE}RootVol_VM\$no $VOLSIZE
 }
 
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
