@@ -90,7 +90,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.51
+VERSION=1.52
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
@@ -105,7 +105,7 @@ FORCEDEL=NONONO
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
 if test "$RPRE" == "${RPRE%_}"; then echo "Need trailing _ for prefix RPRE"; exit 1; fi
 SHORT_DOMAIN="${OS_USER_DOMAIN_NAME##*OTC*00000000001000}"
-ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_PROJECT_NAME#*_}"
+ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_REGION_NAME}/${OS_PROJECT_NAME#*_}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
 GRAFANANM=api-monitoring
 
@@ -155,7 +155,7 @@ HOSTNAME=$(hostname)
 FQDN=$(hostname -f 2>/dev/null) || FQDN=$HOSTNAME.$DOMAIN
 echo "Running api_monitor.sh v$VERSION on host $FQDN"
 if ! echo "$@" | grep '\(CLEANUP\|CONNTEST\)' >/dev/null 2>&1; then
-  echo "Using $RPRE prefix for resrcs on $OS_USER_DOMAIN_NAME/$OS_PROJECT_NAME (${AZS[*]})"
+  echo "Using $RPRE prefix for resrcs on $OS_USER_DOMAIN_NAME/$OS_PROJECT_NAME/$OS_REGION_NAME (${AZS[*]})"
 fi
 
 # Images, flavors, disk sizes
@@ -414,7 +414,7 @@ To: $RECEIVER
 Subject: $PRE on $ALARMPRE: $2
 Date: $(date -R)
 
-$PRE on $SHORT_DOMAIN/$OS_PROJECT_NAME
+$PRE on $SHORT_DOMAIN/$OS_REGION_NAME/$OS_PROJECT_NAME
 
 ${RPRE%_} on $HOSTNAME:
 $2
@@ -432,7 +432,7 @@ $TOMSG" | /usr/sbin/sendmail -t -f $FROM
   fi
   for RECEIVER in "${RECEIVER_LIST[@]}"
   do
-    echo "$PRE on $SHORT_DOMAIN/$OS_PROJECT_NAME: $DATE
+    echo "$PRE on $SHORT_DOMAIN/$OS_REGION_NAME/$OS_PROJECT_NAME: $DATE
 ${RPRE%_} on $HOSTNAME:
 $2
 $3
@@ -2482,14 +2482,14 @@ getToken()
 {
   ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack catalog list -f json
   NOVA_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "nova") | .Endpoints')
-  NOVA_EP=$(echo -e "$NOVA_EP" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
+  NOVA_EP=$(echo -e "$NOVA_EP" | tr -d '"' | grep -A1 "^$OS_REGION_NAME" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
   CINDER_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "cinderv3") | .Endpoints')
   if test "$CINDER_EP" == "null"; then CINDER_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "cinderv2") | .Endpoints'); fi
-  CINDER_EP=$(echo -e "$CINDER_EP" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
+  CINDER_EP=$(echo -e "$CINDER_EP" | tr -d '"' | grep -A1 "^$OS_REGION_NAME" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
   GLANCE_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "glance") | .Endpoints')
-  GLANCE_EP=$(echo -e "$GLANCE_EP" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
-  NEUTRON_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "neutron") | .Endpoints')
-  NEUTRON_EP=$(echo -e "$NEUTRON_EP" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
+  GLANCE_EP=$(echo -e "$GLANCE_EP" | tr -d '"' | grep -A1 "^$OS_REGION_NAME" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
+  NEUTRON_EP=$(echo "$OSTACKRESP" | jq ".[] | select(.Name == \"neutron\") $FILTER_REGION | .Endpoints")
+  NEUTRON_EP=$(echo -e "$NEUTRON_EP" | tr -d '"' | grep -A1 "^$OS_REGION_NAME" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
   #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP"
   ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
   TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')
@@ -2709,7 +2709,7 @@ elif test "$1" = "CONNTEST"; then
    if test $SUCCWAIT -ge 0; then sleep $SUCCWAIT; else echo -n "Hit enter to continue ..."; read ANS; fi
    let loop+=1
    # Refresh token after 10hrs
-   if test -n "$TOKENSTAMP" -a $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then
+   if test -n "$TOKENSTAMP" && test $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then
      getToken
      TOKENSTAMP=$(date +%s)
    fi
@@ -2833,7 +2833,7 @@ else # test "$1" = "DEPLOY"; then
               let SUCCRUNS+=1
               if test $SUCCWAIT -ge 0; then sleep $SUCCWAIT; else echo -n "Hit enter to continue ..."; read ANS; fi
               # Refresh token if needed
-              if test -n "$TOKENSTAMP" -a $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then
+              if test -n "$TOKENSTAMP" && test $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then
                 getToken
                 TOKENSTAMP=$(date +%s)
               fi
@@ -2901,7 +2901,7 @@ CTIME=$(date +%H:%M:%S)
 if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn Errors"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
 if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXITER; then
   sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
-$RPRE $VERSION on $HOSTNAME testing $SHORT_DOMAIN/$OS_PROJECT_NAME:
+$RPRE $VERSION on $HOSTNAME testing $SHORT_DOMAIN/$OS_REGION_NAME/$OS_PROJECT_NAME:
 
 $RUNS deployments ($SUCCRUNS successful, $CUMVMS/$(($RUNS*($NOAZS+$NOVMS))) VMs, $CUMAPICALLS CLI calls)
 $CUMVMERRORS VM LOGIN ERRORS
@@ -2913,13 +2913,13 @@ $CONNTXT
 
 $(allstats)
 
-#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$HOSTNAME|$OS_PROJECT_NAME
+#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$HOSTNAME|$OS_PROJECT_NAME|$OS_REGION_NAME
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
 #RUN: $RUNS|$SUCCRUNS|$CUMVMS|$((($NOAZS+$NOVMS)*$RUNS))|$CUMAPICALLS
 #ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS$CONNST
 $(allstats -m)
 " 0
-  echo "#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$HOSTNAME|$OS_PROJECT_NAME
+  echo "#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$HOSTNAME|$OS_PROJECT_NAME|$OS_REGION_NAME
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
 #RUN: $RUNS|$CUMVMS|$CUMAPICALLS
 #ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS$CONNST
