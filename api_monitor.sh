@@ -301,15 +301,15 @@ sendalarm()
   if test $1 = 0; then
     PRE="Note"
     RES=""
-    echo -e "$BOLD$PRE on $SHORT_DOMAIN/${RPRE%_} on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$BOLD$PRE on $ALARMPRE/${RPRE%_} on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   elif test $1 -gt 128; then
     PRE="TIMEOUT $4"
     RES=" => $1"
-    echo -e "$RED$PRE on $SHORT_DOMAIN/${RPRE%_} on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$RED$PRE on $ALARMPRE/${RPRE%_} on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   else
     PRE="ALARM $1"
     RES=" => $1"
-    echo -e "$RED$PRE on $SHORT_DOMAIN/${RPRE%_} on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$RED$PRE on $ALARMPRE/${RPRE%_} on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   fi
   TOMSG=""
   if test "$4" != "0" -a $1 != 0 -a $1 != 1; then
@@ -356,7 +356,7 @@ $TOMSG" | /usr/sbin/sendmail -t -f $FROM
 ${RPRE%_} on $HOSTNAME:
 $2
 $3
-$TOMSG" | otc.sh notifications publish $RECEIVER "$PRE from $HOSTNAME/$SHORT_DOMAIN"
+$TOMSG" | otc.sh notifications publish $RECEIVER "$PRE from $HOSTNAME/$ALARMPRE"
   done
 }
 
