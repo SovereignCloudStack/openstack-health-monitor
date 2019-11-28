@@ -1,18 +1,39 @@
 #!/bin/bash
 
-export OS_DOMAIN=OTC00000000001000000449
-export OS_USER_DOMAIN_NAME=OTC00000000001000000449
-export OS_TENANT_NAME=eu-de
-export OS_PROJECT_NAME=${OS_PROJECT_NAME:-"eu-de_APIMonitor2"}
-export OS_AUTH_URL=https://iam.eu-de.otc.t-systems.com:443/v3
-export OS_ENDPOINT_TYPE=publicURL
-export NOVA_ENDPOINT_TYPE=publicURL
-export CINDER_ENDPOINT_TYPE=publicURL
-export OS_IDENTITY_API_VERSION=3
-export OS_IMAGE_API_VERSION=2
-export OS_VOLUME_API_VERSION=2
+# Specify image names, JumpHost needs to have sfw2-snat
+#export JHIMG="openSUSE_15_1_CN_20191114"
+#export IMG="openSUSE_15_1_CN_20191114"
+#export JHIMGFILT=" "
+#export IMGFILT=" "
+##export JHIMGFILT="--property-filter os_version=openSUSE-15.0"
+##export IMGFILT="--property-filter os_version=openSUSE-15.0"
+# ECP flavors
+#if test $OS_REGION_NAME == Kna1; then
+#export JHFLAVOR=1C-1GB
+#export FLAVOR=1C-1GB
+#else
+#export JHFLAVOR=1C-1GB-10GB
+#export FLAVOR=1C-1GB-10GB
+#fi
+# EMail notifications sender address
+#export FROM=sender@domain.org
+# Only use one AZ
+#export AZS="nova"
 
-export EMAIL_PARAM=${EMAIL_PARAM:-"t-systems@garloff.de"}
+# Assume OS_ parameters have already been sourced from some .openrc file
+#export OS_DOMAIN=XXXXX
+#export OS_USER_DOMAIN_NAME=XXXXX
+#export OS_TENANT_NAME=YYYYY
+#export OS_PROJECT_NAME=${OS_PROJECT_NAME:-"eu-de_APIMonitor2"}
+#export OS_AUTH_URL=https://...."
+#export OS_ENDPOINT_TYPE=publicURL
+#export NOVA_ENDPOINT_TYPE=publicURL
+#export CINDER_ENDPOINT_TYPE=publicURL
+#export OS_IDENTITY_API_VERSION=3
+#export OS_IMAGE_API_VERSION=2
+#export OS_VOLUME_API_VERSION=2
+
+export EMAIL_PARAM=${EMAIL_PARAM:-"sender@domain.org"}
 
 # Terminate early on auth error
 openstack server list >/dev/null
@@ -36,37 +57,7 @@ for ENV in $TOCLEAN; do
   echo "******************************"
 done
 
-# Reduce API load during night hours for upgrade work
-echo $TZ
-YEAR=$(date +%Y)
-MONTH=$(date +%m)
-DAY=$(date +%d)
-HOUR=$(date +%H)
-
-# use Xen JumpHosts (ommputev1-1 aka c1.medium.1) until Mar 31, 2019, but not during
-# L1TF reboot windows on Nov 3,4,5/17,18,19 2018.
-unset JHFLAVOR
-if test $YEAR == 2019 -a $MONTH -le 3; then export JHFLAVOR=computev1-1; fi
-if test $YEAR -lt 2018; then export JHFLAVOR=computev1-1; fi
-if test $YEAR == 2018; then
-  if test $MONTH != 11; then JHFLAVOR=computev1-1
-  else if test $DAY != 3 -a $DAY != 4 -a $DAY != 5 -a $DAY != 17 -a $DAY != 18 -a $DAY != 19; then JHFLAVOR=computev1-1
-       else if test $DAY == 3 -o $DAY == 17 && test $HOUR -lt 19; then JHFLAVOR=computev1-1
-            else if test $DAY == 5 -o $DAY == 19 && test $HOUR -gt 8; then JHFLAVOR=computev1-1
-                 else if test $HOUR -gt 8 -a $HOUR -lt 19; then JHFLAVOR=computev1-1; fi
-                 fi
-            fi
-       fi
-  fi
-fi
-# Out of resources, see #985505
-#if test $YEAR == 2018 -a $DAY == 28; then unset JHFLAVOR; fi
-
-mv last.log prev.log || true
-export JHFLAVOR
-if test $YEAR == 2018 -a $MONTH == 06 -a $DAY -ge 04 -a $DAY -le 10 && test $HOUR -ge 16 -o $HOUR -lt 7; then
-  bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 1
-else
-  bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
-fi
+#bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
+#exec api_monitor.sh -o -C -D -N 2 -n 8 -s -e sender@domain.org -l APIMon_$$.log "$@"
+exec api_monitor.sh -O -C -D -N 2 -n 8 -s -e sender@domain.org -l APIMon_$$.log "$@"
 
