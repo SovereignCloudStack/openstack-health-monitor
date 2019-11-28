@@ -558,7 +558,7 @@ translate()
       OSTACKCMD=(openstack $DEFCMD create $ARGS)
     elif test "$DEFCMD" == "server" -a "$CMD" == "meta"; then
       # nova meta ${VMS[$no]} set deployment=$CFTEST server=$no
-      ARGS=$(echo "$@" | sed -e 's@set@@' -e 's@\([a-zA-Z_0-9]*=[^ ]*\)@--property \1@g')
+      ARGS=$(echo "$@" | sed -e 's@set @@' -e 's@\([a-zA-Z_0-9]*=[^ ]*\)@--property \1@g')
       OSTACKCMD=($OPST $DEFCMD set $ARGS)
     fi
   else
