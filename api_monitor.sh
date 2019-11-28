@@ -90,7 +90,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.52
+VERSION=1.53
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
@@ -105,7 +105,8 @@ FORCEDEL=NONONO
 if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
 if test "$RPRE" == "${RPRE%_}"; then echo "Need trailing _ for prefix RPRE"; exit 1; fi
 SHORT_DOMAIN="${OS_USER_DOMAIN_NAME##*OTC*00000000001000}"
-ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_REGION_NAME}/${OS_PROJECT_NAME#*_}"
+SHPRJ="${OS_PROJECT_NAME%_Project}"
+ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_REGION_NAME}/${SHPRJ#*_}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
 GRAFANANM=api-monitoring
 
@@ -139,13 +140,13 @@ VMERRWAIT=2
 unset DISASSOC
 
 # API timeouts
-NETTIMEOUT=16
+NETTIMEOUT=20
 FIPTIMEOUT=32
-NOVATIMEOUT=24
+NOVATIMEOUT=28
 NOVABOOTTIMEOUT=48
 CINDERTIMEOUT=32
 GLANCETIMEOUT=32
-DEFTIMEOUT=16
+DEFTIMEOUT=20
 
 REFRESHPRJ=0
 SUCCWAIT=${SUCCWAIT:-5}
@@ -1664,14 +1665,14 @@ setPortForward()
       return 1
     fi
     FWDMASQ=$( echo ${REDIRS[$JHNUM]} )
-    ssh-keygen -R ${FLOATS[$JHNUM]} -f ~/.ssh/known_hosts >/dev/null 2>&1
+    ssh-keygen -R ${FLOATS[$JHNUM]} -f ~/.ssh/known_hosts.$RPRE >/dev/null 2>&1
     SHEBANG='#!'
     SCRIPT=$(echo "$SHEBANG/bin/bash
 sed -i 's@^FW_FORWARD_MASQ=.*\$@FW_FORWARD_MASQ=\"$FWDMASQ\"@' /etc/sysconfig/SuSEfirewall2
 systemctl restart SuSEfirewall2
 ")
-    echo "$SCRIPT" | ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_sfw2"
-    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_sfw2"
+    echo "$SCRIPT" | ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_sfw2"
+    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_sfw2"
   done
 }
 
@@ -1849,8 +1850,8 @@ config2ndNIC()
       # Using rttbl2 (cloud-multiroute), calculating GW here is unneeded. We assume eth1 is the second vNIC here
       GW=${IP%.*}; LAST=${GW##*.}; GW=${GW%.*}.$((LAST-LAST%4)).1
       # There probably is an easier way to handle a secondary interface that needs a gateway ...
-      echo "ssh -o \"ConnectTimeout=6\" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} \"ADR=\$(ip addr show eth1 | grep ' inet ' | grep -v \$IP/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"\$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null" >> $LOGFILE
-      ssh -o "ConnectTimeout=6" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "ADR=$(ip addr show eth1 2>/dev/null | grep ' inet ' | grep -v $IP\/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null"
+      echo "ssh -o \"ConnectTimeout=6\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} \"ADR=\$(ip addr show eth1 | grep ' inet ' | grep -v \$IP/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"\$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null" >> $LOGFILE
+      ssh -o "ConnectTimeout=6" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -p $pno -i ${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "ADR=$(ip addr show eth1 2>/dev/null | grep ' inet ' | grep -v $IP\/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null"
       # ip route add default via $GW"
       RC=$?
       echo -n "+"
@@ -1975,52 +1976,52 @@ testlsandping()
   MAXWAIT=25
   if test -z "$3" -o "$3" = "22"; then
     unset pport
-    ssh-keygen -R $2 -f ~/.ssh/known_hosts >/dev/null 2>&1
+    ssh-keygen -R $2 -f ~/.ssh/known_hosts.$RPRE >/dev/null 2>&1
     USER="$JHDEFLTUSER"
   else
     pport="-p $3"
-    ssh-keygen -R [$2]:$3 -f ~/.ssh/known_hosts >/dev/null 2>&1
+    ssh-keygen -R [$2]:$3 -f ~/.ssh/known_hosts.$RPRE >/dev/null 2>&1
     USER="$DEFLTUSER"
   fi
   if test -z "$pport"; then
     if test -n "$LOGFILE"; then
-      echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" ${USER}@$2 ls" >> $LOGFILE
+      echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ls" >> $LOGFILE
     fi
     # no user_data on JumpHosts
-    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 4;
-    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${USER}@$2 ls >/dev/null 2>&1; } || return 2
+    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 4;
+    ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1; } || return 2
   else
     if test -n "$LOGFILE"; then
-      echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" ${USER}@$2 grep api_monitor.sh.${RPRE}[$4]" >> $LOGFILE
+      echo "ssh -i $1.pem $pport -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}[$4]" >> $LOGFILE
     fi
     # Test whether user_data file injection worked
     if test -n "$BOOTALLATONCE"; then
       # no indiv user data per VM when mass booting ...
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "o"; sleep 2;
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || return 2
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "o"; sleep 2;
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || return 2
     else
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "O"; sleep 2;
-      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || return 2
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "O"; sleep 2;
+      ssh -i $1.pem $pport -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || return 2
     fi
   fi
   #
   if test -n "$LOGFILE"; then
-    echo "ssh -i $1.pem $pport -o \"ConnectTimeout=8\" ${USER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
+    echo "ssh -i $1.pem $pport -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
   fi
   #nslookup $PINGTARGET >/dev/null 2>&1
-  PING=$(ssh -i $1.pem $pport -o "ConnectTimeout=8" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
+  PING=$(ssh -i $1.pem $pport -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   if test $? = 0; then echo $PING; return 0; fi
   #nslookup $PINGTARGET2 >/dev/null 2>&1
   echo -n "x"
   sleep 2
-  PING=$(ssh -i $1.pem $pport -o "ConnectTimeout=8" ${USER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
+  PING=$(ssh -i $1.pem $pport -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
   echo -n "x"
   if test $RC == 0; then return 0; fi
   echo "$PING"
   ERR=$PING
   #sleep 1
-  #PING=$(ssh -i $1.pem $pport -o "ConnectTimeout=8" ${USER}@$2 ping -c1 9.9.9.9 >/dev/null 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
+  #PING=$(ssh -i $1.pem $pport -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 9.9.9.9 >/dev/null 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   #RC=$?
   if test $RC != 0; then return 1; else return 0; fi
 }
@@ -2178,10 +2179,10 @@ EOT
     for red in ${REDIRS[$JHNO]}; do
       pno=${red#*tcp,}
       pno=${pno%%,*}
-      scp -i ${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
-      #echo "ssh -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}"
-      if test -n "$LOGFILE"; then echo "ssh -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]})" >> $LOGFILE; fi
-      PINGRES="$(ssh -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]})"
+      scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -i ${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
+      #echo "ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}"
+      if test -n "$LOGFILE"; then echo "ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]})" >> $LOGFILE; fi
+      PINGRES="$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]})"
       R=$?
       if test $R -gt $RC; then RC=$R; fi
       echo "$PINGRES"
@@ -2597,6 +2598,18 @@ LASTTIME=$(date +%H:%M:%S)
 # so we can reuse (option -r N).
 declare -a ROUTERS=()
 
+# We save roundtrips to keystone, so be 2s more aggressive with timeouts
+if test -n "$OPENSTACKTOKEN"; then
+  let NETTIMEOUT-=2
+  let FIPTIMEOUT-=2
+  let NOVATIMEOUT-=2
+  let NOVABOOTTIMEOUT-=2
+  let CINDERTIMEOUT-=2
+  let GLANCETIMEOUT-=2
+  let DEFTIMEOUT-=2
+fi
+
+
 # MAIN LOOP
 while test $loop != $MAXITER; do
 
@@ -2956,7 +2969,7 @@ if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0; then waitne
 #waitnetgone
 let loop+=1
 done
-rm -f ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem
+rm -f ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old
 if test "$REFRESHPRJ" != 0; then cleanprj; fi
 
 exit $TOTERR
