@@ -1707,14 +1707,14 @@ orderVMs()
   for netno in $(seq 0 $(($NONETS-1))); do
     declare -i off=$netno
     OLDIFS="$IFS"; IFS="|"
-    #nova list | grep ${RPRE}VM_VM_NET$netno
+    #nova list | grep " ${RPRE}VM_VM_NET$netno"
     while read sep vmid sep name sep; do
       #echo -n " VM$off=$vmid"
       IFS=" " VMS[$off]=$(echo $vmid)
       IFS=" " VMSTIME[$off]=${STMS[$netno]}
       #echo "DEBUG: VMS[$off]=$name $vmid (net $netno)"
       let off+=$NONETS
-    done  < <(echo "$OSTACKRESP" | grep "${RPRE}VM_VM_NET$netno")
+    done  < <(echo "$OSTACKRESP" | grep " ${RPRE}VM_VM_NET$netno")
     IFS="$OLDIFS"
     #echo
   done
