@@ -19,7 +19,6 @@
 #
 # TODO:
 # - Align sendalarm with Grafana database entries
-# - Support SNAT and port forwarding without the need for SuSEfirewall2-snat
 #
 # (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017-7/2017
 # License: CC-BY-SA (2.0)
@@ -38,7 +37,8 @@
 # - associating a floating IP to each Jumphost
 # - configuring the virtIP as default route
 # - JumpHosts do SNAT for outbound traffic and port forwarding for inbound
-#   (this requires SUSE images with SFW2-snat package to work)
+#   (this used to require SUSE images with SFW2-snat package to work, but now
+#    should work on most images, assuming iptables rules can be configured)
 # - create N internal VMs striped over the nets and AZs by
 #   a) creating disks (from image) -- if option -d is not used
 #   b) creating a port -- if option -P is not used
@@ -82,7 +82,7 @@
 # - sendmail (only if email notification is requested)
 # - jq (for JSON processing)
 # - python2 or 3 for math used to calc statistics
-# - SUSE image with SNAT/port-fwd (SuSEfirewall2-snat pkg) for the JumpHosts
+# - SUSE image with SNAT/port-fwd (SuSEfirewall2-snat pkg) for the JumpHosts recommended
 # - Any image for the VMs that allows login as user DEFLTUSER (linux) with injected key
 #   (If we use -2/-3/-4, we also need a SUSE image to have the cloud-multiroute pkg in there.)
 #
@@ -91,7 +91,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.54
+VERSION=1.55
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
@@ -109,7 +109,7 @@ SHORT_DOMAIN="${OS_USER_DOMAIN_NAME##*OTC*00000000001000}"
 SHPRJ="${OS_PROJECT_NAME%_Project}"
 ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_REGION_NAME}/${SHPRJ#*_}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
-GRAFANANM=api-monitoring
+GRAFANANM="${GRAFANANM:-api-monitoring}"
 
 # Number of VMs and networks
 if test -z "$AZS"; then
@@ -160,7 +160,7 @@ if ! echo "$@" | grep '\(CLEANUP\|CONNTEST\)' >/dev/null 2>&1; then
   echo "Using $RPRE prefix for resrcs on $OS_USER_DOMAIN_NAME/$OS_PROJECT_NAME/$OS_REGION_NAME (${AZS[*]})"
 fi
 
-# Images, flavors, disk sizes
+# Images, flavors, disk sizes defaults -- these can be overriden
 # Need SUSE image with SuSEfirewall2-snat for JumpHosts
 JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
 # Pass " " to filter if you don't need the optimization of image filtering
@@ -178,7 +178,7 @@ FLAVOR=${FLAVOR:-s2.medium.1}
 
 if [[ "$JHIMG" != *openSUSE* ]]; then
   echo "WARN: Need openSUSE as JumpHost for port forwarding via user_data" 1>&2
-  exit 1
+  #exit 1
 fi
 
 # Optionally increase JH and VM volume sizes beyond image size
@@ -245,6 +245,12 @@ usage()
   echo "        Option -f forces the deletion"
   echo "Or: api_monitor.sh [Options] CONNTEST XXX for full conn test for existing env XXX"
   echo "        Options: [-2/3/4] [-o/O] [-i N] [-e ADR] [-E] [-w/W/V N] [-l LOGFILE]"
+  echo "You need to have the OS_ variables set to allow OpenStack CLI tools to work."
+  echo "You can override defaults by exporting the environment variables AZS, VAZS, RPRE,"
+  echo " PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,"
+  echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES[],"
+  echo " NAMESERVER."
+  echo "Typically, you should configure [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER."
   exit 0
 }
 
@@ -1483,7 +1489,7 @@ extract_ip()
 SNATROUTE=""
 createFIPs()
 {
-  local VIP FLOAT RESP
+  local FLOAT RESP
   #createResources $NOAZS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --security-group ${SGROUPS[0]} --name "${RPRE}Port_JH\${no}" ${JHNETS[0]} || return
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list || return 1
   #EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\2/')
@@ -1605,7 +1611,7 @@ calcRedirs()
 # JumpHosts creation with SNAT and port forwarding
 createJHVMs()
 {
-  local VIP IP STR odd ptn RD USERDATA JHNUM port
+  local IP STR odd ptn RD USERDATA JHNUM port
   REDIRS=()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
@@ -1639,9 +1645,9 @@ $RD
       eth0: $VIP
 "
     fi
-    echo "$USERDATA" > user_data.yaml
-    cat user_data.yaml >> $LOGFILE
-    createResources 1 NOVABSTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[$JHNUM]} --key-name ${KEYPAIRS[0]} --user-data user_data.yaml --availability-zone ${AZS[$(($JHNUM%$NOAZS))]} --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[$JHNUM]} ${RPRE}VM_JH$JHNUM || return
+    echo "$USERDATA" > ${RPRE}user_data_JH.yaml
+    cat ${RPRE}user_data_JH.yaml >> $LOGFILE
+    createResources 1 NOVABSTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[$JHNUM]} --key-name ${KEYPAIRS[0]} --user-data ${RPRE}user_data_JH.yaml --availability-zone ${AZS[$(($JHNUM%$NOAZS))]} --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[$JHNUM]} ${RPRE}VM_JH$JHNUM || return
   done
 }
 
@@ -1682,7 +1688,7 @@ setPortForward()
   if test -n "$MANUALPORTSETUP"; then return; fi
   local JHNUM FWDMASQ SHEBANG SCRIPT
   # If we need to collect port info, do so now
-  if test -z "${PORTS[*]}"; then collectPorts; fi 
+  if test -z "${PORTS[*]}"; then collectPorts; fi
   calcRedirs
   #echo "#DEBUG: sPF VIP REDIR $VIP ${REDIRS[*]}"
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
@@ -1701,6 +1707,54 @@ systemctl restart SuSEfirewall2
     ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_sfw2"
   done
 }
+
+# Configure port forwarding etc. on non-SUSE VMs using plain iptables commands
+setPortForwardGen()
+{
+  #if test -n "$MANUALPORTSETUP"; then return; fi
+  local JHNUM FWDMASQ SHEBANG SCRIPT
+  # If we need to collect port info, do so now
+  if test -z "${PORTS[*]}"; then collectPorts; fi
+  calcRedirs
+  #echo "#DEBUG: sPF VIP REDIR $VIP ${REDIRS[*]}"
+  for JHNUM in $(seq 0 $(($NOAZS-1))); do
+    if test -z "${REDIRS[$JHNUM]}"; then
+      echo -e "${YELLOW}ERROR: No redirections?$NORM" 1>&2
+      return 1
+    fi
+    FWDMASQ=$( echo ${REDIRS[$JHNUM]} )
+    ssh-keygen -R ${FLOATS[$JHNUM]} -f ~/.ssh/known_hosts.$RPRE >/dev/null 2>&1
+    SHEBANG='#!'
+    SCRIPT=$(echo "$SHEBANG/bin/bash
+# SUSE image specific
+if test -f /etc/sysconfig/scripts/SuSEfirewall2-snathelper; then
+  sed -i 's@^FW_FORWARD_MASQ=.*\$@FW_FORWARD_MASQ=\"$FWDMASQ\"@' /etc/sysconfig/SuSEfirewall2
+  systemctl restart SuSEfirewall2
+else
+  # Determine default NIC
+  DEV=\$(ip route show | grep ^default | head -n1 | sed 's@default via [^ ]* dev \([^ ]*\) .*@\1@g')
+  # Add VIP
+  ip addr add $VIP/32 dev \$DEV
+  # Outbound Masquerading
+  iptables -t nat -A POSTROUTING -o \$DEV -s 10.250/16 -j MASQUERADE
+  iptables -I FORWARD 1 -i \$DEV -o \$DEV -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+  iptables -I FORWARD 2 -i \$DEV -o \$DEV -s 10.250/16 -j ACCEPT
+  # Inbound Masquerading
+  iptables -I FORWARD 3 -i \$DEV -o \$DEV -d 10.250/16 -p tcp --dport 22 -j ACCEPT
+  iptables -t nat -A POSTROUTING -o \$DEV -d 10.250/16 -p tcp --dport 22 -j MASQUERADE")
+# "0/0,10.250.0.24,tcp,222,22 0/0,10.250.4.16,tcp,223,22 0/0,10.250.0.9,tcp,224,22 0/0,10.250.4.10,tcp,225,22 0/0,10.250.0.7,tcp,226,22 0/0,10.250.4.5,tcp,227,22 0/0,10.250.0.4,tcp,228,22 0/0,10.250.4.4,tcp,229,22"
+    for FMQ in $FWDMASQ; do
+      OLDIFS="$IFS"; IFS=","
+      read saddr daddr proto port dport < <(echo "$FMQ")
+      IFS="$OLDIFS"
+      SCRIPT=$(echo -e "$SCRIPT\n  iptables -t nat -A PREROUTING -s $saddr -i \$DEV -j DNAT -p $proto --dport $port --to-destination $daddr:$dport")
+    done
+    SCRIPT=$(echo -e "$SCRIPT\nfi")
+    echo "$SCRIPT" | ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_ipt"
+    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_ipt"
+  done
+}
+
 
 waitJHVMs()
 {
@@ -1752,7 +1806,7 @@ createVMsAll()
 {
   local netno AZ THISNOVM vmid off STMS
   local ERRS=0
-  local UDTMP=./user_data_VM.$$.yaml
+  local UDTMP=./${RPRE}user_data_VM.yaml
   echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}ALL\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP
   declare -a STMS
   echo -n "Create VMs in batches: "
@@ -1779,7 +1833,7 @@ createVMsAll()
 createVMs()
 {
   if test -n "$BOOTALLATONCE"; then createVMsAll; return; fi
-  local UDTMP=./user_data_VM.$$.yaml
+  local UDTMP=./${RPRE}user_data_VM.yaml
   for no in $(seq 0 $NOVMS); do
     echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}$no\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP.$no
   done
@@ -2831,7 +2885,8 @@ else # test "$1" = "DEPLOY"; then
                 errwait $VMERRWAIT
               fi
               # Test normal hosts
-              setPortForward
+              #setPortForward
+              setPortForwardGen
               WSTART=$(date +%s)
               wait222
               WAITERRORS=$?
