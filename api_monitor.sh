@@ -177,7 +177,7 @@ JHFLAVOR=${JHFLAVOR:-s2.medium.1}
 FLAVOR=${FLAVOR:-s2.medium.1}
 
 if [[ "$JHIMG" != *openSUSE* ]]; then
-  echo "WARN: Need openSUSE as JumpHost for port forwarding via user_data" 1>&2
+  echo "WARN: port forwarding via openSUSE user_data is better tested ..."
   #exit 1
 fi
 
@@ -3052,7 +3052,7 @@ if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0; then waitne
 #waitnetgone
 let loop+=1
 done
-rm -f ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old
+rm -f ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old ${RPRE}user_data_JH.yaml ${RPRE}user_data_VM.yaml
 if test "$REFRESHPRJ" != 0; then cleanprj; fi
 
 exit $TOTERR
