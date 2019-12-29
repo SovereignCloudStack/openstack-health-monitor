@@ -19,6 +19,7 @@
 #
 # TODO:
 # - Align sendalarm with Grafana database entries
+# - Support SNAT and port forwarding without the need for SuSEfirewall2-snat
 #
 # (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017-7/2017
 # License: CC-BY-SA (2.0)
@@ -90,7 +91,7 @@
 # with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
 # ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 
-VERSION=1.53
+VERSION=1.54
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
@@ -925,6 +926,7 @@ colstat()
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
 waitResources()
 {
+  ERRRSC=()
   local STATNM=$1; local RNM=$2; local CSTAT=$3; local STIME=$4
   local COMP1=$5; local COMP2=$6; local IDNM=$7
   shift; shift; shift; shift; shift; shift; shift
@@ -957,6 +959,7 @@ waitResources()
       if test $STE != 0; then
         if test $STE = 1; then
           echo -e "\n${YELLOW}ERROR: $NM $rsrc status $STAT$NORM" 1>&2 #; return 1
+          ERRRSC[$WERR]=$rsrc
           let WERR+=1
         fi
         TM=$(date +%s)
@@ -996,6 +999,7 @@ waitResources()
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
 waitlistResources()
 {
+  ERRRSC=()
   local STATNM=$1; local RNM=$2; local CSTAT=$3; local STIME=$4
   local COMP1=$5; local COMP2=$6; local COL=$7
   local NERR=0
@@ -1044,6 +1048,7 @@ waitlistResources()
         if test $STE == 1; then
           # Really wait for deletion of errored resources?
           if test "$COMP2" == "XDELX"; then continue; fi
+          ERRRSC[$WERR]=$rsrc
           let WERR+=1
           echo -e "${YELLOW}ERROR: $NM $rsrc status $STAT$NORM" 1>&2 #; return 1
         fi
@@ -1133,6 +1138,25 @@ waitdelResources()
   if test $ctr -ge 320; then let WERR+=1; fi
   if test -n "${DLIST[*]}"; then echo -e "\nLEFT: ${RED}${DLIST[*]}${NORM}"; else echo; fi
   return $WERR
+}
+
+# Handle waitlistResources return value:
+# Do nothing for $? == 0.
+# Otherwise do custom commands (typically XXX show) for each resource in $ERRRSC[*]
+# This is to create additional info in the debug log file
+# $1: Statistics array
+# $2: Command timeout
+# $3-...: Command
+# Function return original $?
+handleWaitErr()
+{
+  local RV=$?
+  local rsrc
+  if test $RV = 0; then return $RV; fi
+  for rsrc in ${ERRRSC[*]}; do
+    ostackcmd_tm "$@" $rsrc
+  done
+  return $RV
 }
 
 # STATNM RESRNM COMMAND
@@ -1399,6 +1423,7 @@ waitJHVols()
 {
   #waitResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" "status" cinder show
   waitlistResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" $VOLSTATCOL $CINDERTIMEOUT cinder list
+  handleWaitErr VOLSTATS $CINDERTIMEOUT cinder show
 }
 
 deleteJHVols()
@@ -1419,6 +1444,7 @@ waitVols()
   if test -n "$BOOTFROMIMAGE"; then return 0; fi
   #waitResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" "status" cinder show
   waitlistResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" $VOLSTATCOL $CINDERTIMEOUT cinder list
+  handleWaitErr VOLSTATS $CINDERTIMEOUT cinder show
 }
 
 deleteVols()
@@ -1680,6 +1706,7 @@ waitJHVMs()
 {
   #waitResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NA" "status" nova show
   waitlistResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
+  handleWaitErr NOVASTATS $NOVATIMEOUT nova show
 }
 
 deleteJHVMs()
@@ -1781,6 +1808,7 @@ waitVMs()
 {
   #waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" nova show
   waitlistResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
+  handleWaitErr NOVASTATS $NOVATIMEOUT nova show
 }
 
 # Remove VMs (one by one or by batch if we created in batches)
