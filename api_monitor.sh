@@ -177,7 +177,7 @@ JHFLAVOR=${JHFLAVOR:-s2.medium.1}
 FLAVOR=${FLAVOR:-s2.medium.1}
 
 if [[ "$JHIMG" != *openSUSE* ]]; then
-  echo "WARN: port forwarding via openSUSE user_data is better tested ..."
+  echo "WARN: port forwarding via SUSEfirewall2-snat user_data is better tested ..."
   #exit 1
 fi
 
@@ -1737,8 +1737,11 @@ else
   ip addr add $VIP/32 dev \$DEV
   # Outbound Masquerading
   iptables -t nat -A POSTROUTING -o \$DEV -s 10.250/16 -j MASQUERADE
+  iptables -P FORWARD DROP
   iptables -I FORWARD 1 -i \$DEV -o \$DEV -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
   iptables -I FORWARD 2 -i \$DEV -o \$DEV -s 10.250/16 -j ACCEPT
+  # Set ip_forward
+  echo 1 > /proc/sys/net/ipv4/ip_forward
   # Inbound Masquerading
   iptables -I FORWARD 3 -i \$DEV -o \$DEV -d 10.250/16 -p tcp --dport 22 -j ACCEPT
   iptables -t nat -A POSTROUTING -o \$DEV -d 10.250/16 -p tcp --dport 22 -j MASQUERADE")
@@ -1751,7 +1754,8 @@ else
     done
     SCRIPT=$(echo -e "$SCRIPT\nfi")
     echo "$SCRIPT" | ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_ipt"
-    ssh -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_ipt"
+    # -tt is a workaround for a RHEL/CentOS 7 bug
+    ssh -tt -i ${KEYPAIRS[0]}.pem -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_ipt"
   done
 }
 
