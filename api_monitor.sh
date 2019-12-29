@@ -2817,9 +2817,9 @@ else # test "$1" = "DEPLOY"; then
  echo -e "$BOLD *** Start deployment $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM"
  date
  # Image IDs
- JHIMGID=$(ostackcmd_search $JHIMG $GLANCETIMEOUT glance image-list $JHIMGFILT | awk '{ print $2; }')
+ JHIMGID=$(ostackcmd_search "$JHIMG" $GLANCETIMEOUT glance image-list $JHIMGFILT | awk '{ print $2; }')
  if test -z "$JHIMGID" -o "$JHIMGID" == "0"; then sendalarm 1 "No JH image $JHIMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
- IMGID=$(ostackcmd_search $IMG $GLANCETIMEOUT glance image-list $IMGFILT | awk '{ print $2; }')
+ IMGID=$(ostackcmd_search "$IMG" $GLANCETIMEOUT glance image-list $IMGFILT | awk '{ print $2; }')
  if test -z "$IMGID" -o "$IMG" == "0"; then sendalarm 1 "No image $IMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
  let APICALLS+=2
  # Retrieve root volume size
@@ -2833,12 +2833,27 @@ else # test "$1" = "DEPLOY"; then
   read TM SZ <<<"$OR"
   JHVOLSIZE=$(($SZ+$ADDJHVOLSIZE))
  fi
+ if test $JHVOLSIZE = 0; then
+  #JHVOLSIZE=10
+  #echo "$RESP" | grep 'size'
+  #JHVOLSIZE=$(echo "$RESP" | grep "^| *size *|" | sed -e "s/^| *size *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
+  OR=$(ostackcmd_id size $GLANCETIMEOUT glance image-show $JHIMGID)
+  read TM JHVOLSIZE <<<"$OR"
+  JHVOLSIZE=$((($JHVOLSIZE/1024/1024+1023)/1024))
+ fi
  OR=$(ostackcmd_id min_disk $GLANCETIMEOUT glance image-show $IMGID)
  if test $? != 0; then
   let APIERRORS+=1; sendalarm 1 "glance image-show failed" "" $GLANCETIMEOUT
  else
   read TM SZ <<<"$OR"
   VOLSIZE=$(($SZ+$ADDVMVOLSIZE))
+ fi
+ if test $VOLSIZE = 0; then
+  #VOLSIZE=10
+  #VOLSIZE=$(echo "$RESP" | grep "^| *size *|" | sed -e "s/^| *size *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
+  OR=$(ostackcmd_id size $GLANCETIMEOUT glance image-show $JHIMGID)
+  read TM VOLSIZE <<<"$OR"
+  VOLSIZE=$((($VOLSIZE/1024/1024+1023)/1024))
  fi
  let APICALLS+=2
  #echo "Image $IMGID $VOLSIZE $JHIMGID $JHVOLSIZE"; exit 0;
