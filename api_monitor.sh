@@ -177,7 +177,7 @@ JHFLAVOR=${JHFLAVOR:-s2.medium.1}
 FLAVOR=${FLAVOR:-s2.medium.1}
 
 if [[ "$JHIMG" != *openSUSE* ]]; then
-  #echo "WARN: port forwarding via SUSEfirewall2-snat user_data is better tested ..."
+  echo "WARN: port forwarding via SUSEfirewall2-snat user_data is better tested ..." >/dev/null
 fi
 
 # Optionally increase JH and VM volume sizes beyond image size
