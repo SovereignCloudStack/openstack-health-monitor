@@ -177,8 +177,7 @@ JHFLAVOR=${JHFLAVOR:-s2.medium.1}
 FLAVOR=${FLAVOR:-s2.medium.1}
 
 if [[ "$JHIMG" != *openSUSE* ]]; then
-  echo "WARN: port forwarding via SUSEfirewall2-snat user_data is better tested ..."
-  #exit 1
+  #echo "WARN: port forwarding via SUSEfirewall2-snat user_data is better tested ..."
 fi
 
 # Optionally increase JH and VM volume sizes beyond image size
@@ -1738,12 +1737,13 @@ else
   # Outbound Masquerading
   iptables -t nat -A POSTROUTING -o \$DEV -s 10.250/16 -j MASQUERADE
   iptables -P FORWARD DROP
-  iptables -I FORWARD 1 -i \$DEV -o \$DEV -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-  iptables -I FORWARD 2 -i \$DEV -o \$DEV -s 10.250/16 -j ACCEPT
+  iptables -I FORWARD 1 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+  iptables -I FORWARD 2 -i \$DEV -o \$DEV -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+  iptables -I FORWARD 3 -i \$DEV -o \$DEV -s 10.250/16 -j ACCEPT
   # Set ip_forward
   echo 1 > /proc/sys/net/ipv4/ip_forward
   # Inbound Masquerading
-  iptables -I FORWARD 3 -i \$DEV -o \$DEV -d 10.250/16 -p tcp --dport 22 -j ACCEPT
+  iptables -I FORWARD 4 -i \$DEV -o \$DEV -d 10.250/16 -p tcp --dport 22 -j ACCEPT
   iptables -t nat -A POSTROUTING -o \$DEV -d 10.250/16 -p tcp --dport 22 -j MASQUERADE")
 # "0/0,10.250.0.24,tcp,222,22 0/0,10.250.4.16,tcp,223,22 0/0,10.250.0.9,tcp,224,22 0/0,10.250.4.10,tcp,225,22 0/0,10.250.0.7,tcp,226,22 0/0,10.250.4.5,tcp,227,22 0/0,10.250.0.4,tcp,228,22 0/0,10.250.4.4,tcp,229,22"
     for FMQ in $FWDMASQ; do
