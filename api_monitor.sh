@@ -47,9 +47,9 @@
 #   d) do some property changes to VMs
 # - after everything is complete, we wait for the VMs to be up
 # - we ping them, log in via ssh and see whether they can ping to the outside world (quad9)
-# - NOT YET: attach an additional disk
-# - NOT YET: attach an additional NIC
-# - NOT YET: Load-Balancer
+# - NOT YET: dynamically attach an additional disk
+# - NOT YET: dynamically attach an additional NIC (except -2/-3/-4)
+# - NOT YET: Load-Balancer (LBaaSv2/Octavia)
 # 
 # - Finally, we clean up ev'thing in reverse order
 #   (We have kept track of resources to clean up.
@@ -69,7 +69,7 @@
 # We of course also note any errors and timeouts and report these, optionally sending
 #  email of SMN alarms.
 #
-# This takes rather long, as typical API calls take b/w 1 and 2s on OTC
+# This takes rather long, as typical CLI calls take b/w 1 and 5s on OpenStack clouds
 # (including the round trip to keystone for the token).
 #
 # Optimization possibilities:
@@ -88,10 +88,12 @@
 #
 # Example:
 # Run 100 loops deploying (and deleting) 2+8 VMs (including nets, volumes etc.),
-# with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor
-# ./api_monitor.sh -n 8 -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
+# booting VMs directly from images (and creating ports implicitly), but with single calls (no -D).
+# with daily statistics sent to SMN...APIMon-Notes and Alarms to SMN...APIMonitor
+# ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
+# (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.55
+VERSION=1.56
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
@@ -161,7 +163,8 @@ if ! echo "$@" | grep '\(CLEANUP\|CONNTEST\)' >/dev/null 2>&1; then
 fi
 
 # Images, flavors, disk sizes defaults -- these can be overriden
-# Need SUSE image with SuSEfirewall2-snat for JumpHosts
+# Ideally have SUSE image with SuSEfirewall2-snat for JumpHosts, will be detected
+# otherwise raw iptables commands will set up SNAT.
 JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
 # Pass " " to filter if you don't need the optimization of image filtering
 JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
@@ -898,7 +901,7 @@ deleteResources()
 # $1 => status string
 # $2 => wanted1
 # $3 => wanted2 (optional)
-# Return code: 2 == found, 1 == ERROR, 0 in progress
+# Return code: 3 == missing, 2 == found, 1 == ERROR, 0 in progress
 colstat()
 {
   if test "$2" == "NONNULL" -a -n "$1" -a "$1" != "null"; then
@@ -910,7 +913,8 @@ colstat()
   elif test -n "$1"; then
     echo "${1:0:1}"
   else
-    echo "?"
+    # Handle empty (error)
+    echo "?"; return 3
   fi
   return 0
 }
@@ -962,7 +966,7 @@ waitResources()
       STE=$?
       echo -en "Wait $RNM: $STATSTR\r"
       if test $STE != 0; then
-        if test $STE = 1; then
+        if test $STE == 1 -o $STE == 3; then
           echo -e "\n${YELLOW}ERROR: $NM $rsrc status $STAT$NORM" 1>&2 #; return 1
           ERRRSC[$WERR]=$rsrc
           let WERR+=1
@@ -1037,6 +1041,7 @@ waitlistResources()
       sleep 10
     fi
     local TM
+    declare -i misserr=0
     for i in $(seq 0 $LAST ); do
       local rsrc=${RLIST[$i]}
       if test -z "${SLIST[$i]}"; then STATSTR+=$(colstat "${STATI[$i]}" "$COMP1" "$COMP2"); continue; fi
@@ -1050,11 +1055,12 @@ waitlistResources()
       # Found or ERROR
       if test $STE != 0; then
         # ERROR
-        if test $STE == 1; then
+        if test $STE == 1 -o $STE == 3; then
           # Really wait for deletion of errored resources?
           if test "$COMP2" == "XDELX"; then continue; fi
           ERRRSC[$WERR]=$rsrc
           let WERR+=1
+          let misserr+=1
           echo -e "${YELLOW}ERROR: $NM $rsrc status $STAT$NORM" 1>&2 #; return 1
         fi
         # Found
@@ -1074,6 +1080,8 @@ waitlistResources()
     done
     echo -en "Wait $RNM[${#SLIST[*]}/${#RLIST[*]}]: $STATSTR \r"
     if test -z "${SLIST[*]}"; then echo; return $WERR; fi
+    # We can stop waiting if all resources have failed/disappeared (more than once)
+    if test $misserr -ge ${#RLIST[@]} -a $WERR -ge $((${#RLIST[@]}*2)); then break; fi
     sleep 3
     let ctr+=1
   done
@@ -1127,7 +1135,7 @@ waitdelResources()
         STAT="XDELX"
       fi
       STATI[$i]=$STAT
-      STARTSTR+=$(colstat "$STAT" "XDELX" "")
+      STATSTR+=$(colstat "$STAT" "XDELX" "")
       if test -n "$GRAFANA"; then
         # log time / rc to grafana
         rc2grafana $RC
