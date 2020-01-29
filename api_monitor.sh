@@ -1028,6 +1028,7 @@ waitlistResources()
   declare -i ctr=0
   declare -i WERR=0
   declare -i misserr=0
+  local waitstart=$(date +%s)
   if test -n "$CSTAT"; then MAXWAIT=240; else MAXWAIT=30; fi
   if test -z "${RLIST[*]}"; then return 0; fi
   while test -n "${SLIST[*]}" -a $ctr -le $MAXWAIT; do
@@ -1064,7 +1065,7 @@ waitlistResources()
           ERRRSC[$WERR]=$rsrc
           let WERR+=1
           let misserr+=1
-          echo -e "${YELLOW}ERROR: $NM $rsrc status $STAT$NORM" 1>&2 #; return 1
+          echo -e "\n${YELLOW}ERROR: $NM $rsrc status $STAT$NORM" 1>&2 #; return 1
         fi
         # Found
         TM=$(date +%s)
@@ -1081,15 +1082,22 @@ waitlistResources()
         fi
       fi
     done
-    echo -en "Wait $RNM[${#SLIST[*]}/${#RLIST[*]}]: $STATSTR \r"
-    if test -z "${SLIST[*]}"; then echo; return $WERR; fi
+    echo -en "\rWait $RNM[${#SLIST[*]}/${#RLIST[*]}]: $STATSTR "
+    # Save 3s
+    if test -z "${SLIST[*]}"; then break; fi
     # We can stop waiting if all resources have failed/disappeared (more than once)
     if test $misserr -ge ${#RLIST[@]} -a $WERR -ge $((${#RLIST[@]}*2)); then break; fi
     sleep 3
     let ctr+=1
   done
   if test $ctr -ge $MAXWAIT; then let WERR+=${#SLIST[*]}; let misserr=${#SLIST[*]}; fi
-  if test -n "${SLIST[*]}"; then echo -e "\nLEFT: ${RED}${RRLIST[*]}:${SLIST[*]}${NORM}"; else echo; fi
+  if test -n "${SLIST[*]}"; then
+    echo " TIMEOUT $(($(date +%s)-$waitstart))"
+    echo -e "\n${YELLOW}Wait TIMEOUT/ERROR${NORM} ($(($(date +%s)-$waitstart))s, $ctr iterations), LEFT: ${RED}${RRLIST[*]}:${SLIST[*]}${NORM}" 1>&2
+    #FIXME: Shouldn't we send an alarm right here?
+  else
+    echo " ($(($(date +%s)-$waitstart))s, $ctr iterations)"
+  fi
   return $misserr
 }
 
