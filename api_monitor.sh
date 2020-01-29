@@ -1022,6 +1022,8 @@ waitlistResources()
   eval local SLIST=( \"\${${STIME}[@]}\" )
   local LAST=$(( ${#RLIST[@]} - 1 ))
   local PARSE="^|"
+  local WAITVAL
+  if test "$COMP1" == "XDELX"; then WAITVAL="del"; else WAITVAL="$COMP1"; fi
   for no in $(seq 1 $COL); do PARSE="$PARSE[^|]*|"; done
   PARSE="$PARSE *\([^|]*\)|.*\$"
   #echo "$PARSE"
@@ -1082,7 +1084,7 @@ waitlistResources()
         fi
       fi
     done
-    echo -en "\rWait $RNM[${#SLIST[*]}/${#RLIST[*]}]: $STATSTR "
+    echo -en "\rWait $WAITVAL $RNM[${#SLIST[*]}/${#RLIST[*]}]: $STATSTR "
     # Save 3s
     if test -z "${SLIST[*]}"; then break; fi
     # We can stop waiting if all resources have failed/disappeared (more than once)
@@ -2064,7 +2066,7 @@ wait222()
     done
     MAXWAIT=60
   done
-  if test $waiterr == 0; then echo "OK"; else echo "RET $waiterr"; fi
+  if test $waiterr == 0; then echo "OK ($(($(date +%s)-$ST))s)"; else echo "RET $waiterr ($(($(date +%s)-$ST))s)"; fi
   return $waiterr
 }
 
