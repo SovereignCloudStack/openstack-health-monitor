@@ -1005,6 +1005,8 @@ waitResources()
 # $9- > openstack command for querying status
 # The values from $2 get appended to the command
 #
+# Return value: Number of resources not in desired state (e.g. error, wrong state, missing, ...)
+#
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
 waitlistResources()
 {
@@ -1025,6 +1027,7 @@ waitlistResources()
   #echo "$PARSE"
   declare -i ctr=0
   declare -i WERR=0
+  declare -i misserr=0
   if test -n "$CSTAT"; then MAXWAIT=240; else MAXWAIT=30; fi
   if test -z "${RLIST[*]}"; then return 0; fi
   while test -n "${SLIST[*]}" -a $ctr -le $MAXWAIT; do
@@ -1041,7 +1044,7 @@ waitlistResources()
       sleep 10
     fi
     local TM
-    declare -i misserr=0
+    misserr=0
     for i in $(seq 0 $LAST ); do
       local rsrc=${RLIST[$i]}
       if test -z "${SLIST[$i]}"; then STATSTR+=$(colstat "${STATI[$i]}" "$COMP1" "$COMP2"); continue; fi
@@ -1085,9 +1088,9 @@ waitlistResources()
     sleep 3
     let ctr+=1
   done
-  if test $ctr -ge $MAXWAIT; then let WERR+=${#SLIST[*]}; fi
+  if test $ctr -ge $MAXWAIT; then let WERR+=${#SLIST[*]}; let misserr=${#SLIST[*]}; fi
   if test -n "${SLIST[*]}"; then echo -e "\nLEFT: ${RED}${RRLIST[*]}:${SLIST[*]}${NORM}"; else echo; fi
-  return $WERR
+  return $misserr
 }
 
 # UNUSED!
@@ -2826,7 +2829,7 @@ elif test "$1" = "CONNTEST"; then
 else # test "$1" = "DEPLOY"; then
  if test "$REFRESHPRJ" != 0 && test $(($RUNS%$REFRESHPRJ)) == 0; then createnewprj; fi
  # Complete setup
- echo -e "$BOLD *** Start deployment $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM"
+ echo -e "$BOLD *** Start deployment $loop for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM"
  date
  # Image IDs
  JHIMGID=$(ostackcmd_search "$JHIMG" $GLANCETIMEOUT glance image-list $JHIMGFILT | awk '{ print $2; }')
@@ -2889,81 +2892,85 @@ else # test "$1" = "DEPLOY"; then
              waitJHVMs
              RC=$?
              if test $RC != 0; then
-               # Errors will be counted later again
+               # ERR+=$RC Errors will be counted later again
                sendalarm $RC "Timeout waiting for JHVM " "${RRLIST[*]}" $((4*$MAXWAIT))
-             fi
-             if createFIPs; then
-              waitVMs
-              if test $RC != 0; then
-                # Errors will be counted later again
-                sendalarm $RC "Timeout waiting for VM " "${RRLIST[*]}" $((4*$MAXWAIT))
-              fi
-              setmetaVMs
-              create2ndSubNets
-              create2ndPorts
-              # Test JumpHosts
-              # NOTE: Alarms and Grafana error logging are not fully aligned here
-              testjhinet
-              RC=$?
-              if test $RC != 0; then echo "$ERR"; sleep 5; testjhinet; RC=$?; fi
-              if test $RC != 0; then
-                let VMERRORS+=$RC
-                sendalarm $RC "$ERR" "" 70
-                errwait $VMERRWAIT
-              fi
-              # Test normal hosts
-              #setPortForward
-              setPortForwardGen
-              WSTART=$(date +%s)
-              wait222
-              WAITERRORS=$?
-              # No need to send alarm yet, will do after testsnat
-              #if test $WAITERRORS != 0; then
-              #  sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
-              #  errwait $VMERRWAIT
-              #fi
-              testsnat
-              RC=$?
-              let VMERRORS+=$((RC/2))
-              if test $RC != 0; then
-                sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
-                errwait $VMERRWAIT
-              fi
-              # Attach and config 2ndary NICs
-              config2ndNIC
-              # Full connection test
-              if test -n "$FULLCONN"; then
-                fullconntest
-                # Test for FPERR instead?
-                if test $FPERR -gt 0; then
-                  sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
-                  errwait $ERRWAIT
-                fi
-        	if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
-        	  reShuffle
-                  fullconntest
-                  if test $FPERR -gt 0; then
-                    sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
-                    errwait $ERRWAIT
-                  fi
-                fi
-              fi
-              # TODO: Create disk ... and attach to JH VMs ... and test access
-              # TODO: Attach additional net interfaces to JHs ... and test IP addr
-              MSTOP=$(date +%s)
-              WAITTIME+=($(($MSTOP-$WSTART)))
-              echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
-              let SUCCRUNS+=1
-              if test $SUCCWAIT -ge 0; then sleep $SUCCWAIT; else echo -n "Hit enter to continue ..."; read ANS; fi
-              # Refresh token if needed
-              if test -n "$TOKENSTAMP" && test $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then
-                getToken
-                TOKENSTAMP=$(date +%s)
-              fi
-              # Subtract waiting time (5s here)
-              MSTART=$(($MSTART+$(date +%s)-$MSTOP))
-              # TODO: Detach and delete disks again
-             fi; deleteFIPs
+               # FIXME: Shouldn't we count errors and abort here? Without JumpHosts, the rest is hopeless ...
+               let ERR+=$RC
+               if test $RC -gt $NOAZS; then let VMERRORS+=$NOAZS; else let VMERRORS+=$RC; fi
+             else
+              if createFIPs; then
+               waitVMs
+               if test $RC != 0; then
+                 # Errors will be counted later again
+                 sendalarm $RC "Timeout waiting for VM " "${RRLIST[*]}" $((4*$MAXWAIT))
+               fi
+               setmetaVMs
+               create2ndSubNets
+               create2ndPorts
+               # Test JumpHosts
+               # NOTE: Alarms and Grafana error logging are not fully aligned here
+               testjhinet
+               RC=$?
+               if test $RC != 0; then echo "$ERR"; sleep 5; testjhinet; RC=$?; fi
+               if test $RC != 0; then
+                 let VMERRORS+=$RC
+                 sendalarm $RC "$ERR" "" 70
+                 errwait $VMERRWAIT
+               fi
+               # Test normal hosts
+               #setPortForward
+               setPortForwardGen
+               WSTART=$(date +%s)
+               wait222
+               WAITERRORS=$?
+               # No need to send alarm yet, will do after testsnat
+               #if test $WAITERRORS != 0; then
+               #  sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
+               #  errwait $VMERRWAIT
+               #fi
+               testsnat
+               RC=$?
+               let VMERRORS+=$((RC/2))
+               if test $RC != 0; then
+                 sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
+                 errwait $VMERRWAIT
+               fi
+               # Attach and config 2ndary NICs
+               config2ndNIC
+               # Full connection test
+               if test -n "$FULLCONN"; then
+                 fullconntest
+                 # Test for FPERR instead?
+                 if test $FPERR -gt 0; then
+                   sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
+                   errwait $ERRWAIT
+                 fi
+                 if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
+                   reShuffle
+                   fullconntest
+                   if test $FPERR -gt 0; then
+                     sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
+                     errwait $ERRWAIT
+                   fi
+                 fi
+               fi
+               # TODO: Create disk ... and attach to JH VMs ... and test access
+               # TODO: Attach additional net interfaces to JHs ... and test IP addr
+               MSTOP=$(date +%s)
+               WAITTIME+=($(($MSTOP-$WSTART)))
+               echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
+               let SUCCRUNS+=1
+               if test $SUCCWAIT -ge 0; then sleep $SUCCWAIT; else echo -n "Hit enter to continue ..."; read ANS; fi
+               # Refresh token if needed
+               if test -n "$TOKENSTAMP" && test $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then
+                 getToken
+                 TOKENSTAMP=$(date +%s)
+               fi
+               # Subtract waiting time (5s here)
+               MSTART=$(($MSTART+$(date +%s)-$MSTOP))
+               # TODO: Detach and delete disks again
+              fi; deleteFIPs
+             fi; #JH wait successful
             fi; deleteVMs
            fi; deleteJHVMs
           fi; deleteKeypairs
