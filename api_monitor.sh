@@ -93,7 +93,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.56
+VERSION=1.57
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
@@ -2166,7 +2166,7 @@ testjhinet()
 #      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$R $(date +%s%N)" >/dev/null
 #    fi
   done
-  if test $RC = 0; then echo -e "$GREEN SUCCESS $NORM"; else echo -e "$RED FAIL $ERR $NORM"; return $RC; fi
+  if test $RC = 0; then echo -e "$GREEN SUCCESS $NORM ($(($(date +%s)-$ST))s)"; else echo -e "$RED FAIL $ERR $NORM ($(($(date +%s)-$ST))s)"; return $RC; fi
   if test -n "$ERR"; then echo -e "$RED $ERR $NORM"; fi
 }
 
@@ -2887,8 +2887,8 @@ else # test "$1" = "DEPLOY"; then
    if createSubNets; then
     if createRIfaces; then
      if createSGroups; then
-      if createVIPs; then
-       if createJHVols; then
+      if createJHVols; then
+       if createVIPs; then
         if createJHPorts; then
          if createVols; then
           if createKeypairs; then
@@ -2992,8 +2992,8 @@ else # test "$1" = "DEPLOY"; then
         #if test -n "$SECONDNET" -o -n "$MANUALPORTSETUP"; then deletePorts; fi
         #deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
         unset IGNORE_ERRORS
-       fi; deleteJHVols
-      fi; deleteVIPs
+       fi; deleteVIPs
+      fi; deleteJHVols
      # There is a chance that some VMs were not created, but ports were allocated, so clean ...
      fi; cleanupPorts; deleteSGroups
     fi; deleteRIfaces
