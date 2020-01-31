@@ -2895,8 +2895,8 @@ else # test "$1" = "DEPLOY"; then
   if createNets; then
    if createSubNets; then
     if createRIfaces; then
-     if createJHVols; then
-      if createSGroups; then
+     if createSGroups; then
+      if createJHVols; then
        if createVIPs; then
         if createJHPorts; then
          if createVols; then
@@ -3008,9 +3008,9 @@ else # test "$1" = "DEPLOY"; then
         #deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
         unset IGNORE_ERRORS
        fi; deleteVIPs
-      # There is a chance that some VMs were not created, but ports were allocated, so clean ...
-      fi; cleanupPorts; deleteSGroups
-     fi; deleteJHVols
+      fi; deleteJHVols
+     # There is a chance that some VMs were not created, but ports were allocated, so clean ...
+     fi; cleanupPorts; deleteSGroups
     fi; deleteRIfaces
    fi; deleteSubNets
   fi; deleteNets
