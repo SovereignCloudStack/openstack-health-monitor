@@ -93,7 +93,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.57
+VERSION=1.58
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
@@ -1794,7 +1794,8 @@ deleteJHVMs()
   # to see whether it becomes active, so deletion has a better chance to suceed in finite time.
   # Note: We wait ~100s (30x4s) and don't disturb VMCSTATS by this, empty CSTATS is handled
   #  as special case in waitlistResources
-  waitlistResources NOVASTATS JHVM "" JVMSTIME "ACTIVE" "ERROR" 2 $NOVATIMEOUT nova list
+  # Note: We meanwhile abort for broken JHs, so this is no longer needed.
+  #waitlistResources NOVASTATS JHVM "" JVMSTIME "ACTIVE" "ERROR" 2 $NOVATIMEOUT nova list
   JVMSTIME=()
   deleteResources NOVABSTATS JHVM JVMSTIME $NOVATIMEOUT nova delete
 }
@@ -2080,12 +2081,13 @@ wait222()
 testlsandping()
 {
   unset SSH_AUTH_SOCK
-  MAXWAIT=25
   if test -z "$3" -o "$3" = "22"; then
+    MAXWAIT=36
     unset pport
     ssh-keygen -R $2 -f ~/.ssh/known_hosts.$RPRE >/dev/null 2>&1
     USER="$JHDEFLTUSER"
   else
+    MAXWAIT=26
     pport="-p $3"
     ssh-keygen -R [$2]:$3 -f ~/.ssh/known_hosts.$RPRE >/dev/null 2>&1
     USER="$DEFLTUSER"
@@ -2096,7 +2098,7 @@ testlsandping()
     fi
     # no user_data on JumpHosts
     ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 4;
-    ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1; } || return 2
+    ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=20" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1; } || return 2
   else
     if test -n "$LOGFILE"; then
       echo "ssh -i $1.pem $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}[$4]" >> $LOGFILE
@@ -2144,15 +2146,16 @@ testjhinet()
   declare -i RC=0
   for JHNO in $(seq 0 $(($NOAZS-1))); do
     echo -n "Access JH$JHNO (${FLOATS[$JHNO]}): "
-    # Do wait up to 40s for ping
+    # Do wait up to 60s for ping
     declare -i ctr=0
-    while test $ctr -lt 10; do
+    while test $ctr -lt 15; do
       ping -c1 -w2 ${FLOATS[$JHNO]} >/dev/null 2>&1 && break
       sleep 2
       echo -n "."
       let ctr+=1
     done
-    # Wait up to 30s for ssh
+    if test $ctr -ge 15; then echo -n "(ping timeout)"; ERR="${ERR}ping ${FLOATS[$JHNO]}; "; fi
+    # Wait up to 36s for ssh
     testlsandping ${KEYPAIRS[0]} ${FLOATS[$JHNO]}
     R=$?
     if test $R == 2; then
@@ -2160,14 +2163,20 @@ testjhinet()
     elif test $R == 1; then
       let CUMPINGERRORS+=1; ERR="${ERR}ssh JH$JHNO ping $PINGTARGET || ping $PINGTARGET2; "
     fi
-# Don't generate entry here, we'll test this again in wait222, which records the fail/time
-#    if test -n "$GRAFANA"; then
-#      TIM=$(($(date +%s)-$ST))
-#      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$R $(date +%s%N)" >/dev/null
-#    fi
+# We skip wait222 now for failed JHs, so we need to record this here in case of failure
+# Don't generate entry for success here, we'll test this again in wait222, which records the success/time
+    if test -n "$GRAFANA" -a $R != 0; then
+      TIM=$(($(date +%s)-$ST))
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$R $(date +%s%N)" >/dev/null
+    fi
   done
-  if test $RC = 0; then echo -e "$GREEN SUCCESS $NORM ($(($(date +%s)-$ST))s)"; else echo -e "$RED FAIL $ERR $NORM ($(($(date +%s)-$ST))s)"; return $RC; fi
-  if test -n "$ERR"; then echo -e "$RED $ERR $NORM"; fi
+  if test $RC = 0; then
+    echo -e "$GREEN SUCCESS $NORM ($(($(date +%s)-$ST))s)"
+    if test -n "$ERR"; then echo -e "RC=0 but $RED $ERR $NORM"; fi
+  else
+     echo -e "$RED FAIL $ERR $NORM ($(($(date +%s)-$ST))s)"
+  fi
+  return $RC
 }
 
 # Test VM access (fwdmasq) and outgoing SNAT inet on all VMs
@@ -2886,8 +2895,8 @@ else # test "$1" = "DEPLOY"; then
   if createNets; then
    if createSubNets; then
     if createRIfaces; then
-     if createSGroups; then
-      if createJHVols; then
+     if createJHVols; then
+      if createSGroups; then
        if createVIPs; then
         if createJHPorts; then
          if createVols; then
@@ -2921,63 +2930,69 @@ else # test "$1" = "DEPLOY"; then
                # NOTE: Alarms and Grafana error logging are not fully aligned here
                testjhinet
                RC=$?
+               # Retry
                if test $RC != 0; then echo "$ERR"; sleep 5; testjhinet; RC=$?; fi
+               # Non-working JH breaks us ...
                if test $RC != 0; then
                  let VMERRORS+=$RC
                  sendalarm $RC "$ERR" "" 70
                  errwait $VMERRWAIT
+                 # FIXME: Shouldn't we abort here?
+                 echo "${BOLD}Aborting this deployment due to non-functional JH, clean up now ...${NORM}"
+                 sleep 1
+               else
+                # Test normal hosts
+                #setPortForward
+                setPortForwardGen
+                WSTART=$(date +%s)
+                wait222
+                WAITERRORS=$?
+                # No need to send alarm yet, will do after testsnat
+                #if test $WAITERRORS != 0; then
+                #  sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
+                #  errwait $VMERRWAIT
+                #fi
+                testsnat
+                RC=$?
+                let VMERRORS+=$((RC/2))
+                if test $RC != 0; then
+                  sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
+                  errwait $VMERRWAIT
+                fi
+                # Attach and config 2ndary NICs
+                config2ndNIC
+                # Full connection test
+                if test -n "$FULLCONN"; then
+                  fullconntest
+                  # Test for FPERR instead?
+                  if test $FPERR -gt 0; then
+                    sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
+                    errwait $ERRWAIT
+                  fi
+                  if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
+                    reShuffle
+                    fullconntest
+                    if test $FPERR -gt 0; then
+                      sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
+                      errwait $ERRWAIT
+                    fi
+                  fi
+                fi
+                # TODO: Create disk ... and attach to JH VMs ... and test access
+                # TODO: Attach additional net interfaces to JHs ... and test IP addr
+                MSTOP=$(date +%s)
+                WAITTIME+=($(($MSTOP-$WSTART)))
+                echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
+                let SUCCRUNS+=1
+                if test $SUCCWAIT -ge 0; then sleep $SUCCWAIT; else echo -n "Hit enter to continue ..."; read ANS; fi
+                # Refresh token if needed
+                if test -n "$TOKENSTAMP" && test $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then
+                  getToken
+                  TOKENSTAMP=$(date +%s)
+                fi
+                # Subtract waiting time (5s here)
+                MSTART=$(($MSTART+$(date +%s)-$MSTOP))
                fi
-               # Test normal hosts
-               #setPortForward
-               setPortForwardGen
-               WSTART=$(date +%s)
-               wait222
-               WAITERRORS=$?
-               # No need to send alarm yet, will do after testsnat
-               #if test $WAITERRORS != 0; then
-               #  sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
-               #  errwait $VMERRWAIT
-               #fi
-               testsnat
-               RC=$?
-               let VMERRORS+=$((RC/2))
-               if test $RC != 0; then
-                 sendalarm $RC "$ERR" "" $((4*$MAXWAIT))
-                 errwait $VMERRWAIT
-               fi
-               # Attach and config 2ndary NICs
-               config2ndNIC
-               # Full connection test
-               if test -n "$FULLCONN"; then
-                 fullconntest
-                 # Test for FPERR instead?
-                 if test $FPERR -gt 0; then
-                   sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
-                   errwait $ERRWAIT
-                 fi
-                 if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
-                   reShuffle
-                   fullconntest
-                   if test $FPERR -gt 0; then
-                     sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
-                     errwait $ERRWAIT
-                   fi
-                 fi
-               fi
-               # TODO: Create disk ... and attach to JH VMs ... and test access
-               # TODO: Attach additional net interfaces to JHs ... and test IP addr
-               MSTOP=$(date +%s)
-               WAITTIME+=($(($MSTOP-$WSTART)))
-               echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
-               let SUCCRUNS+=1
-               if test $SUCCWAIT -ge 0; then sleep $SUCCWAIT; else echo -n "Hit enter to continue ..."; read ANS; fi
-               # Refresh token if needed
-               if test -n "$TOKENSTAMP" && test $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then
-                 getToken
-                 TOKENSTAMP=$(date +%s)
-               fi
-               # Subtract waiting time (5s here)
-               MSTART=$(($MSTART+$(date +%s)-$MSTOP))
                # TODO: Detach and delete disks again
               fi; deleteFIPs
              fi; #JH wait successful
@@ -2993,9 +3008,9 @@ else # test "$1" = "DEPLOY"; then
         #deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
         unset IGNORE_ERRORS
        fi; deleteVIPs
-      fi; deleteJHVols
-     # There is a chance that some VMs were not created, but ports were allocated, so clean ...
-     fi; cleanupPorts; deleteSGroups
+      # There is a chance that some VMs were not created, but ports were allocated, so clean ...
+      fi; cleanupPorts; deleteSGroups
+     fi; deleteJHVols
     fi; deleteRIfaces
    fi; deleteSubNets
   fi; deleteNets
