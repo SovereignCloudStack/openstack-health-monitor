@@ -2850,6 +2850,7 @@ else # test "$1" = "DEPLOY"; then
  # Complete setup
  echo -e "$BOLD *** Start deployment $loop for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM"
  date
+ unset THISRUNSUCCESS
  # Image IDs
  JHIMGID=$(ostackcmd_search "$JHIMG" $GLANCETIMEOUT glance image-list $JHIMGFILT | awk '{ print $2; }')
  if test -z "$JHIMGID" -o "$JHIMGID" == "0"; then sendalarm 1 "No JH image $JHIMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
@@ -2984,6 +2985,7 @@ else # test "$1" = "DEPLOY"; then
                 WAITTIME+=($(($MSTOP-$WSTART)))
                 echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
                 let SUCCRUNS+=1
+                THISRUNSUCCESS=1
                 if test $SUCCWAIT -ge 0; then sleep $SUCCWAIT; else echo -n "Hit enter to continue ..."; read ANS; fi
                 # Refresh token if needed
                 if test -n "$TOKENSTAMP" && test $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then
@@ -3020,7 +3022,10 @@ else # test "$1" = "DEPLOY"; then
  #echo "${NETSTATS[*]}"
  echo -e "$BOLD *** Cleanup complete *** $NORM"
  THISRUNTIME=$(($(date +%s)-$MSTART))
- TOTTIME+=($THISRUNTIME)
+ # Only account successful runs for total runtime stats
+ if test -n "$THISRUNSUCCESS"; then
+   TOTTIME+=($THISRUNTIME)
+ fi
  # Raise an alarm if we have not yet sent one and we're very slow despite this
  if test -n "$OPENSTACKTOKEN"; then
    if test -n "$BOOTALLATONCE"; then CON=400; NFACT=12; FACT=24; else CON=384; NFACT=12; FACT=36; fi
@@ -3031,6 +3036,7 @@ else # test "$1" = "DEPLOY"; then
  if test -n "$SECONDNET"; then let MAXCYC+=$(($NFACT*$NONETS+$NFACT*$NOVMS)); fi
  if test -n "$RESHUFFLE"; then let MAXCYC+=$((2*$NFACT*$NOVMS)); fi
  if test -n "$FULLCONN"; then let MAXCYC+=$(($NOVMS*$NOVMS/10)); fi
+ # FIXME: We could check THISRUNSUCCESS instead?
  if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $MAXCYC; then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME (max $MAXCYC)" $MAXCYC
     #waiterr $WAITERR
