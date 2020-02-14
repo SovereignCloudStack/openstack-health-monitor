@@ -2848,7 +2848,7 @@ elif test "$1" = "CONNTEST"; then
 else # test "$1" = "DEPLOY"; then
  if test "$REFRESHPRJ" != 0 && test $(($RUNS%$REFRESHPRJ)) == 0; then createnewprj; fi
  # Complete setup
- echo -e "$BOLD *** Start deployment $loop for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM"
+ echo -e "$BOLD *** Start deployment $loop for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM ($OS_USER_DOMAIN_NAME/$OS_REGION_NAME/$OS_PROJECT_NAME)"
  date
  unset THISRUNSUCCESS
  # Image IDs
