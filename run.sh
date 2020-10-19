@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Specify image names, JumpHost needs to have sfw2-snat
+# Specify image names, JumpHost ideally has sfw2-snat
 #export JHIMG="openSUSE_15_1_CN_20191114"
 #export IMG="openSUSE_15_1_CN_20191114"
 #export JHIMGFILT=" "
@@ -32,6 +32,8 @@
 #export OS_IDENTITY_API_VERSION=3
 #export OS_IMAGE_API_VERSION=2
 #export OS_VOLUME_API_VERSION=2
+## or just (using clouds.yaml)
+#export OS_CLOUD=cloudname
 
 export EMAIL_PARAM=${EMAIL_PARAM:-"sender@domain.org"}
 
