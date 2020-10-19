@@ -95,6 +95,9 @@
 
 VERSION=1.58
 
+# debugging
+if test "$1" == "--debug"; then set -x; shift; fi
+
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
 
@@ -115,7 +118,8 @@ GRAFANANM="${GRAFANANM:-api-monitoring}"
 
 # Number of VMs and networks
 if test -z "$AZS"; then
-  AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
+  #AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
+  AZS=$(openstack availability zone list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
   if test -z "$AZS"; then AZS=$(otc.sh vm listaz 2>/dev/null | grep -v region | sort -n); fi
   if test -z "$AZS"; then AZS="eu-de-01 eu-de-02"; fi
 fi
@@ -123,7 +127,8 @@ AZS=($AZS)
 #echo "${#AZS[*]} AZs: ${AZS[*]}"; exit 0
 NOAZS=${#AZS[*]}
 if test -z "$VAZS"; then
-  VAZS=$(cinder availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
+  #VAZS=$(cinder availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
+  VAZS=$(openstack availability zone list --volume 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
   if test -z "$VAZS"; then VAZS=(${AZS[*]}); else VAZS=($VAZS); fi
 fi
 NOVAZS=${#VAZS[*]}
@@ -158,8 +163,9 @@ DOMAIN=$(grep '^search' /etc/resolv.conf | awk '{ print $2; }'; exit ${PIPESTATU
 HOSTNAME=$(hostname)
 FQDN=$(hostname -f 2>/dev/null) || FQDN=$HOSTNAME.$DOMAIN
 echo "Running api_monitor.sh v$VERSION on host $FQDN"
+if test -z "$OS_PROJECT_NAME"; then TRIPLE="$OS_CLOUD"; else TRIPLE="$OS_USER_DOMAIN_NAME/$OS_PROJECT_NAME/$OS_REGION_NAME"; fi
 if ! echo "$@" | grep '\(CLEANUP\|CONNTEST\)' >/dev/null 2>&1; then
-  echo "Using $RPRE prefix for resrcs on $OS_USER_DOMAIN_NAME/$OS_PROJECT_NAME/$OS_REGION_NAME (${AZS[*]})"
+  echo "Using $RPRE prefix for resrcs on $TRIPLE (${AZS[*]})"
 fi
 
 # Images, flavors, disk sizes defaults -- these can be overriden
@@ -211,6 +217,7 @@ usage()
 {
   #echo "Usage: api_monitor.sh [-n NUMVM] [-l LOGFILE] [-p] CLEANUP|DEPLOY"
   echo "Usage: api_monitor.sh [options]"
+  echo " --debug Use set -x to print every line executed"
   echo " -n N   number of VMs to create (beyond #AZ JumpHosts, def: 12)"
   echo " -N N   number of networks/subnets/jumphosts to create (def: # AZs)"
   echo " -l LOGFILE record all command in LOGFILE"
@@ -292,6 +299,9 @@ while test -n "$1"; do
     "-3") SECONDNET=1; RESHUFFLE=1;;
     "-4") SECONDNET=1; RESHUFFLE=1; STARTRESHUFFLE=1;;
     "-E") EXITERR=1;;
+    "--debug") set -x;;
+    "--os-cloud") export OS_CLOUD="$2"; shift;;
+    "--os-cloud="*) export OS_CLOUD="${1#--os-cloud=}";;
     "CLEANUP") break;;
     "CONNTEST") if test "$MAXITER" == "-9999"; then MAXITER=1; fi; break;;
     *) echo "Unknown argument \"$1\""; exit 1;;
@@ -331,7 +341,7 @@ if test $? != 0 -a -n "$EMAIL"; then
   exit 1
 fi
 
-if test -z "$OS_USERNAME"; then
+if test -z "$OS_USERNAME" -a -z "$OS_CLOUD"; then
   echo "source OS_ settings file before running this test"
   exit 1
 fi
@@ -2594,19 +2604,27 @@ waitnetgone()
 }
 
 # Token retrieval and catalog ...
+
+# Args: Name (implicit: OSTACKRESP)
+getPublicEP()
+{
+  local EPS
+  EPS=$(echo "$OSTACKRESP" | jq ".[] | select(.Name == \"$1\") | .Endpoints")
+  EPS=$(echo "$EPS" | jq '.[] | .interface+"|"+.region+"|"+.region_id+"|"+.url' | tr -d '"')
+  if test -n "$OS_REGION_NAME"; then EPS=$(echo "$EPS" | grep "$OS_REGION_NAME"); fi
+  EPS=$(echo "$EPS" | grep public)
+  echo "${EPS##*|}"
+}
+
 TOKEN=""
 getToken()
 {
   ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack catalog list -f json
-  NOVA_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "nova") | .Endpoints')
-  NOVA_EP=$(echo -e "$NOVA_EP" | tr -d '"' | grep -A1 "^$OS_REGION_NAME" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
-  CINDER_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "cinderv3") | .Endpoints')
-  if test "$CINDER_EP" == "null"; then CINDER_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "cinderv2") | .Endpoints'); fi
-  CINDER_EP=$(echo -e "$CINDER_EP" | tr -d '"' | grep -A1 "^$OS_REGION_NAME" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
-  GLANCE_EP=$(echo "$OSTACKRESP" | jq '.[] | select(.Name == "glance") | .Endpoints')
-  GLANCE_EP=$(echo -e "$GLANCE_EP" | tr -d '"' | grep -A1 "^$OS_REGION_NAME" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
-  NEUTRON_EP=$(echo "$OSTACKRESP" | jq ".[] | select(.Name == \"neutron\") $FILTER_REGION | .Endpoints")
-  NEUTRON_EP=$(echo -e "$NEUTRON_EP" | tr -d '"' | grep -A1 "^$OS_REGION_NAME" | grep '^ *public:' | sed 's/^ *public: //' | head -n1)
+  NOVA_EP=$(getPublicEP nova)
+  CINDER_EP=$(getPublicEP cinder)
+  if test -z "$CINDER_EP"; then CINDER_EP=$(getPublicEP cinderv2); fi
+  GLANCE_EP=$(getPublicEP glance)
+  NEUTRON_EP=$(getPublicEP neutron)
   #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP"
   ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
   TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')
@@ -2848,7 +2866,7 @@ elif test "$1" = "CONNTEST"; then
 else # test "$1" = "DEPLOY"; then
  if test "$REFRESHPRJ" != 0 && test $(($RUNS%$REFRESHPRJ)) == 0; then createnewprj; fi
  # Complete setup
- echo -e "$BOLD *** Start deployment $loop for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM ($OS_USER_DOMAIN_NAME/$OS_REGION_NAME/$OS_PROJECT_NAME)"
+ echo -e "$BOLD *** Start deployment $loop for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM ($TRIPLE)"
  date
  unset THISRUNSUCCESS
  # Image IDs
