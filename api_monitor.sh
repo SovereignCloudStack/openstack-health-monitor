@@ -93,7 +93,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.58
+VERSION=1.59
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -148,7 +148,7 @@ VMERRWAIT=2
 unset DISASSOC
 
 # API timeouts
-NETTIMEOUT=20
+NETTIMEOUT=24
 FIPTIMEOUT=32
 NOVATIMEOUT=28
 NOVABOOTTIMEOUT=48
@@ -163,7 +163,13 @@ DOMAIN=$(grep '^search' /etc/resolv.conf | awk '{ print $2; }'; exit ${PIPESTATU
 HOSTNAME=$(hostname)
 FQDN=$(hostname -f 2>/dev/null) || FQDN=$HOSTNAME.$DOMAIN
 echo "Running api_monitor.sh v$VERSION on host $FQDN"
-if test -z "$OS_PROJECT_NAME"; then TRIPLE="$OS_CLOUD"; else TRIPLE="$OS_USER_DOMAIN_NAME/$OS_PROJECT_NAME/$OS_REGION_NAME"; fi
+if test -z "$OS_PROJECT_NAME"; then
+	TRIPLE="$OS_CLOUD"
+	STRIPLE="$OS_CLOUD"
+else
+	TRIPLE="$OS_USER_DOMAIN_NAME/$OS_PROJECT_NAME/$OS_REGION_NAME"
+	STRIPLE="$SHORT_DOMAIN/$SHPRJ/$OS_REGION_NAME"
+fi
 if ! echo "$@" | grep '\(CLEANUP\|CONNTEST\)' >/dev/null 2>&1; then
   echo "Using $RPRE prefix for resrcs on $TRIPLE (${AZS[*]})"
 fi
@@ -434,7 +440,7 @@ To: $RECEIVER
 Subject: $PRE on $ALARMPRE: $2
 Date: $(date -R)
 
-$PRE on $SHORT_DOMAIN/$OS_REGION_NAME/$OS_PROJECT_NAME
+$PRE on $STRIPLE
 
 ${RPRE%_} on $HOSTNAME:
 $2
@@ -452,7 +458,7 @@ $TOMSG" | /usr/sbin/sendmail -t -f $FROM
   fi
   for RECEIVER in "${RECEIVER_LIST[@]}"
   do
-    echo "$PRE on $SHORT_DOMAIN/$OS_REGION_NAME/$OS_PROJECT_NAME: $DATE
+    echo "$PRE on $STRIPLE: $DATE
 ${RPRE%_} on $HOSTNAME:
 $2
 $3
@@ -655,7 +661,9 @@ math()
 myopenstack()
 {
   echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-url $EP $@" >> $LOGFILE
-  OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-project-name "" --os-token $TOKEN --os-url $EP "$@"
+  #echo "openstack --os-auth-type admin_token --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-endpoint $EP $@" >> $LOGFILE
+  OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-project-name "" --os-token $TOKEN --os-url $EP "$@"
+  #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-auth-type admin_token --os-token $TOKEN --os-endpoint $EP --os-project-name "" --os-project-domain-name "" "$@"
   #OS_PASSWORD="" OS_USERNAME="" OS_PROJECT_DOMAIN_NAME="" OS_PROJECT_NAME="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME=""
 }
 
@@ -3080,7 +3088,7 @@ CTIME=$(date +%H:%M:%S)
 if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn Errors"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
 if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXITER; then
   sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
-$RPRE $VERSION on $HOSTNAME testing $SHORT_DOMAIN/$OS_REGION_NAME/$OS_PROJECT_NAME:
+$RPRE $VERSION on $HOSTNAME testing $STRIPLE:
 
 $RUNS deployments ($SUCCRUNS successful, $CUMVMS/$(($RUNS*($NOAZS+$NOVMS))) VMs, $CUMAPICALLS CLI calls)
 $CUMVMERRORS VM LOGIN ERRORS
