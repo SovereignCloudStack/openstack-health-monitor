@@ -1645,11 +1645,13 @@ calcRedirs()
       if test -z "$OPENSTACKCLIENT"; then
         IP=$(echo "$OSTACKRESP" | jq -r ".[] | select(.id == \"$port\") | .fixed_ips[].ip_address" | tr -d '"')
       else
-        IP=$(echo "$OSTACKRESP" | jq -r ".[] | select(.ID == \"$port\") | .[\"Fixed IP Addresses\"]" | tr -d '"'); IP=$(echo -e "$IP" | sed "$PORTFIXED2")
+        IP=$(echo "$OSTACKRESP" | jq -r ".[] | select(.ID == \"$port\") | .[\"Fixed IP Addresses\"]")
+	if echo "$IP" | grep ip_address >/dev/null 2>&1; then IP=$(echo "$IP" | jq '.[].ip_address'); fi
+	IP=$(echo -e "$IP" | tr -d '"' | sed "$PORTFIXED2")
       fi
       STR="0/0,$IP,tcp,$ptn,22"
       off=$(($pi%$NOAZS))
-      #echo "$STR => REDIRS[$off]"
+      echo "Port $port: $STR => REDIRS[$off]"
       REDIRS[$off]="${REDIRS[$off]}$STR
 "
       if test $(($off+1)) == $NOAZS; then let ptn+=1; fi
@@ -1720,7 +1722,9 @@ collectPorts()
     if test -z "$OPENSTACKCLIENT"; then
       ports=$(echo "$OSTACKRESP" | jq -r ".[] | select(.device_id == \"$vmid\") | .id+\" \"+.fixed_ips[].ip_address" | tr -d '"')
     else
-      ports=$(echo "$OSTACKRESP" | jq -r ".[] | select(.device_id == \"$vmid\") | .ID+\" \"+.[\"Fixed IP Addresses\"]" | tr -d '"'); ports=$(echo -e "$ports" | sed "$PORTFIXED2")
+      ports=$(echo "$OSTACKRESP" | jq -r "def str(s): s|tostring; .[] | select(.device_id == \"$vmid\") | .ID+\" \"+str(.[\"Fixed IP Addresses\"])" | tr -d '"')
+      #if echo "$ports" | grep ip_address >/dev/null 2>&1; then ports=$(echo "$ports" | jq '.[].ip_address'); fi
+      ports=$(echo -e "$ports" | tr -d '"' | sed "$PORTFIXED2")
     fi
     port=$(echo -e "$ports" | grep 10.250 | sed 's/^\([^ ]*\) .*$/\1/')
     PORTS[$vm]=$port
@@ -2305,7 +2309,9 @@ EOT
     if test -z "$OPENSTACKCLIENT"; then
       IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.id == \"$port\") | .fixed_ips[] | .ip_address" | tr -d '"')
     else
-      IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.ID == \"$port\") | .[\"Fixed IP Addresses\"]" | tr -d '"' | sed "$PORTFIXED")
+      IPS[$pno]=$(echo "$OSTACKRESP" | jq ".[] | select(.ID == \"$port\") | .[\"Fixed IP Addresses\"]")
+      if echo "${IPS[$pno]}" | grep ip_address >/dev/null 2>&1; then IPS[$pno]=$(echo "${IPS[$pno]}" | jq '.[].ip_address'); fi
+      IPS[$pno]=$(echo "${IPS[$pno]}" | tr -d '"' | sed "$PORTFIXED")
     fi
   done
   if test -n "$SECONDNET"; then
@@ -2314,7 +2320,9 @@ EOT
       if test -z "$OPENSTACKCLIENT"; then
         IPS[$((pno+NP))]=$(echo "$OSTACKRESP" | jq ".[] | select(.id == \"$port\") | .fixed_ips[] | .ip_address" | tr -d '"')
       else
-        IPS[$((pno+NP))]=$(echo "$OSTACKRESP" | jq ".[] | select(.ID == \"$port\") | .[\"Fixed IP Addresses\"]" | tr -d '"' | sed "$PORTFIXED")
+        IPS[$((pno+NP))]=$(echo "$OSTACKRESP" | jq ".[] | select(.ID == \"$port\") | .[\"Fixed IP Addresses\"]")
+        if echo "${IPS[$((pno+NP))]}" | grep ip_address >/dev/null 2>&1; then IPS[$((pno+NP))]=$(echo "${IPS[$((pno+NP))]}" | jq '.[].ip_address'); fi
+        IPS[$((pno+NP))]=$(echo "${IPS[$((pno+NP))]}" | tr -d '"' | sed "$PORTFIXED")
       fi
     done
   fi
