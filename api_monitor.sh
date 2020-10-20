@@ -119,7 +119,8 @@ GRAFANANM="${GRAFANANM:-api-monitoring}"
 # Number of VMs and networks
 if test -z "$AZS"; then
   #AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
-  AZS=$(openstack availability zone list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
+  #AZS=$(openstack availability zone list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | grep -v '| Zone Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
+  AZS=$(openstack availability zone list -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"')
   if test -z "$AZS"; then AZS=$(otc.sh vm listaz 2>/dev/null | grep -v region | sort -n); fi
   if test -z "$AZS"; then AZS="eu-de-01 eu-de-02"; fi
 fi
@@ -128,7 +129,8 @@ AZS=($AZS)
 NOAZS=${#AZS[*]}
 if test -z "$VAZS"; then
   #VAZS=$(cinder availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
-  VAZS=$(openstack availability zone list --volume 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
+  #VAZS=$(openstack availability zone list --volume 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | grep -v '| Zone Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
+  VAZS=$(openstack availability zone list --volume -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"')
   if test -z "$VAZS"; then VAZS=(${AZS[*]}); else VAZS=($VAZS); fi
 fi
 NOVAZS=${#VAZS[*]}
