@@ -93,7 +93,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.59
+VERSION=1.60
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -256,6 +256,7 @@ usage()
   echo " -O     like -o, but use token_endpoint auth (after getting token)"
   echo " -x     assume eXclusive project, clean all floating IPs found"
   echo " -I     dIsassociate floating IPs before deleting them"
+  echo " -L     create Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
   echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test"
   echo " -3     Create 2ndary subnets, attach, test, reshuffle and retest"
@@ -305,6 +306,7 @@ while test -n "$1"; do
     "-x") CLEANALLFIPS=1;;
     "-I") DISASSOC=1;;
     "-r") ROUTERITER=$2; shift;;
+    "-L") LOADBALANCER=1;;
     "-t") let TIMEOUTFACT+=1;;
     "-R") SECONDRECREATE=1;;
     "-2") SECONDNET=1;;
@@ -643,6 +645,8 @@ translate()
       #ARGS=$(echo "$@" | sed -e 's@--port-id \([^ ]\) *\([^ ]*\)$@\2 \1@')
       #OSTACKCMD=($OPST $C1 $CMD $ARGS)
       OSTACKCMD=($OPST $C1 $CMD $@)
+    elif test "$C1" == "lbaas loadbalancer"; then
+      OSTACKCMD=(openstack loadbalancer $CMD $@)
     fi
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
   fi
@@ -1286,6 +1290,9 @@ createSubNets()
     createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
     createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_VM_\$no" "\$VAL" "10.250.\$((no*4)).0/22"
   fi
+  if test -n "$LOADBALANCER"; then
+    createResources 1 NETSTATS LBAAS NONE NONE "" id $NETTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id $JHNETS --name "${RPRE}LB"
+  fi
 }
 
 create2ndSubNets()
@@ -1301,6 +1308,9 @@ create2ndSubNets()
 
 deleteSubNets()
 {
+  if test -n "$LBAASS"; then
+    deleteResources NETSTATS LBAAS "" $NETTIMEOUT neutron lbaas-loadbalancer-delete
+  fi
   if test -n "$SECONDNET"; then
     deleteResources NETSTATS SECONDSUBNET "" $NETTIMEOUT neutron subnet-delete
   fi
@@ -2476,6 +2486,7 @@ collectRes()
   JHSUBNETS=( $(findres ${RPRE}SUBNET_JH neutron subnet-list) )
   SUBNETS=( $(findres ${RPRE}SUBNET_VM neutron subnet-list) )
   SECONDSUBNETS=( $(findres ${RPRE}SUBNET2_VM neutron subnet-list) )
+  LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
   JHNETS=( $(findres ${RPRE}NET_JH neutron net-list) )
   NETS=( $(findres ${RPRE}NET_VM neutron net-list) )
   SECONDNETS=( $(findres ${RPRE}NET2_VM neutron net-list) )
@@ -2799,6 +2810,7 @@ declare -a NETS=()
 declare -a SUBNETS=()
 declare -a JHNETS=()
 declare -a JHSUBNETS=()
+declare -a LBAASS=()
 declare -a SGROUPS=()
 declare -a JHPORTS=()
 declare -a PORTS=()
