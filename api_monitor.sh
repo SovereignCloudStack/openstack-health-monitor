@@ -2641,11 +2641,19 @@ waitnetgone()
 # Args: Name (implicit: OSTACKRESP)
 getPublicEP()
 {
-  local EPS
+  local EPS EPS2 NL
+  NL="$(echo)"
   EPS=$(echo "$OSTACKRESP" | jq ".[] | select(.Name == \"$1\") | .Endpoints")
-  EPS=$(echo "$EPS" | jq '.[] | .interface+"|"+.region+"|"+.region_id+"|"+.url' | tr -d '"')
-  if test -n "$OS_REGION_NAME"; then EPS=$(echo "$EPS" | grep "$OS_REGION_NAME"); fi
-  EPS=$(echo "$EPS" | grep public)
+  EPS2=$(echo "$EPS" | jq '.[] | .interface+"|"+.region+"|"+.region_id+"|"+.url' 2>/dev/null | tr -d '"')
+  if test -z "$EPS2" -a -n "$EPS"; then
+    while read ln; do
+      if echo "$ln" | grep '^[^:]*$' >/dev/null 2>&1; then REG=$ln; continue; fi
+      ENT=$(echo $ln | sed "s@^ *\([^:]*\): @\1|$REG|$REG|@")
+      EPS2="${EPS2}$ENT$NL"
+    done < <(echo -e $EPS)
+  fi
+  if test -n "$OS_REGION_NAME"; then EPS2=$(echo "$EPS2" | grep "$OS_REGION_NAME"); fi
+  EPS=$(echo "$EPS2" | grep public)
   echo "${EPS##*|}"
 }
 
