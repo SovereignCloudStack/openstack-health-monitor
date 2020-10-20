@@ -55,7 +55,7 @@ $SECGRPS
 for ENV in $TOCLEAN; do
   echo "******************************"
   echo "CLEAN $ENV"
-  bash ./api_monitor.sh -q -c CLEANUP $ENV
+  bash ./api_monitor.sh -q -o -c CLEANUP $ENV
   echo "******************************"
 done
 

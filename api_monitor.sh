@@ -155,6 +155,7 @@ NOVABOOTTIMEOUT=48
 CINDERTIMEOUT=32
 GLANCETIMEOUT=32
 DEFTIMEOUT=20
+TIMEOUTFACT=1
 
 REFRESHPRJ=0
 SUCCWAIT=${SUCCWAIT:-5}
@@ -252,6 +253,7 @@ usage()
   echo " -O     like -o, but use token_endpoint auth (after getting token)"
   echo " -x     assume eXclusive project, clean all floating IPs found"
   echo " -I     dIsassociate floating IPs before deleting them"
+  echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
   echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test"
   echo " -3     Create 2ndary subnets, attach, test, reshuffle and retest"
   echo " -4     Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest"
@@ -300,6 +302,7 @@ while test -n "$1"; do
     "-x") CLEANALLFIPS=1;;
     "-I") DISASSOC=1;;
     "-r") ROUTERITER=$2; shift;;
+    "-t") let TIMEOUTFACT+=1;;
     "-R") SECONDRECREATE=1;;
     "-2") SECONDNET=1;;
     "-3") SECONDNET=1; RESHUFFLE=1;;
@@ -677,6 +680,7 @@ ostackcmd_search()
 {
   local SEARCH=$1; shift
   local TIMEOUT=$1; shift
+  if test $TIMEOUTFACT -gt 1; then let TIMEOUT*=$TIMEOUTFACT; fi
   local LSTART=$(date +%s.%3N)
   translate "$@"
   if test "$TIMEOUT" = "0"; then
@@ -710,6 +714,7 @@ ostackcmd_id()
 {
   local IDNM=$1; shift
   local TIMEOUT=$1; shift
+  if test $TIMEOUTFACT -gt 1; then let TIMEOUT*=$TIMEOUTFACT; fi
   local LSTART=$(date +%s.%3N)
   translate "$@"
   if test "$TIMEOUT" = "0"; then
@@ -757,6 +762,7 @@ ostackcmd_tm()
 {
   local STATNM=$1; shift
   local TIMEOUT=$1; shift
+  if test $TIMEOUTFACT -gt 1; then let TIMEOUT*=$TIMEOUTFACT; fi
   local LSTART=$(date +%s.%3N)
   # We can count here, as we are not in a subprocess
   let APICALLS+=1
@@ -817,6 +823,7 @@ createResources()
   local STIME=$6; local IDNM=$7
   shift; shift; shift; shift; shift; shift; shift
   local TIMEOUT=$1; shift
+  #if test $TIMEOUTFACT -gt 1; then let TIMEOUT+=2; fi
   eval local LIST=( \"\${${ORNM}S[@]}\" )
   eval local MLIST=( \"\${${MRNM}S[@]}\" )
   if test "$RNM" != "NONE"; then echo -n "New $RNM: "; fi
@@ -866,6 +873,7 @@ deleteResources()
   local ERR=0
   shift; shift; shift
   local TIMEOUT=$1; shift
+  #if test $TIMEOUTFACT -gt 1; then let TIMEOUT+=2; fi
   local FAILDEL=()
   eval local LIST=( \"\${${ORNM}S[@]}\" )
   #eval local varAlias=( \"\${myvar${varname}[@]}\" )
@@ -958,6 +966,7 @@ waitResources()
   local COMP1=$5; local COMP2=$6; local IDNM=$7
   shift; shift; shift; shift; shift; shift; shift
   local TIMEOUT=$1; shift
+  #if test $TIMEOUTFACT -gt 1; then let TIMEOUT+=2; fi
   local STATI=()
   eval local RLIST=( \"\${${RNM}S[@]}\" )
   eval local SLIST=( \"\${${STIME}[@]}\" )
@@ -1034,6 +1043,7 @@ waitlistResources()
   local NERR=0
   shift; shift; shift; shift; shift; shift; shift
   local TIMEOUT=$1; shift
+  #if test $TIMEOUTFACT -gt 1; then let TIMEOUT+=2; fi
   local STATI=()
   eval local RLIST=( \"\${${RNM}S[@]}\" )
   eval RRLIST=( \"\${${RNM}S[@]}\" )
@@ -1137,6 +1147,7 @@ waitdelResources()
   local STATNM=$1; local RNM=$2; local DSTAT=$3; local DTIME=$4
   shift; shift; shift; shift
   local TIMEOUT=$1; shift
+  #if test $TIMEOUTFACT -gt 1; then let TIMEOUT+=2; fi
   eval local RLIST=( \"\${${RNM}S[@]}\" )
   eval local DLIST=( \"\${${DTIME}[@]}\" )
   local STATI=()
@@ -1215,6 +1226,7 @@ showResources()
   local RESP
   shift; shift
   local TIMEOUT=$1; shift
+  #if test $TIMEOUTFACT -gt 1; then let TIMEOUT+=2; fi
   eval local LIST=( \"\${$RNM}S[@]\" )
   local rsrc TM
   while rsrc in ${LIST}; do
