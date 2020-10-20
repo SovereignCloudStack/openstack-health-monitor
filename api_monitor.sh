@@ -562,7 +562,7 @@ translate()
   #echo "#DEBUG: $@" 1>&2
   if test -z "$DEFCMD"; then echo "ERROR: Unknown cmd $@" 1>&2; return 1; fi
   local OPST
-  if test -n "$OPENSTACKTOKEN"; then OPST=myopenstack; else OPST=openstack; fi
+  if test -n "$OPENSTACKTOKEN" -a "$DEFCMD" != "image"; then OPST=myopenstack; else OPST=openstack; fi
   shift
   CMD=${1##*-}
   if test "$CMD" == "$1"; then
@@ -666,10 +666,11 @@ math()
 # Allows to inject OS_TOKEN and OS_URL to enforce token_endpoint auth
 myopenstack()
 {
-  echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-url $EP $@" >> $LOGFILE
-  #echo "openstack --os-auth-type admin_token --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-endpoint $EP $@" >> $LOGFILE
-  OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-project-name "" --os-token $TOKEN --os-url $EP "$@"
-  #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-auth-type admin_token --os-token $TOKEN --os-endpoint $EP --os-project-name "" --os-project-domain-name "" "$@"
+  #TODO: Check whether old openstack client version accept the syntax (maybe they need --os-auth-type admin_token?)
+  #echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-url $EP $@" >> $LOGFILE
+  echo "openstack --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-endpoint $EP $@" >> $LOGFILE
+  #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-project-name "" --os-token $TOKEN --os-url $EP "$@"
+  OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP "$@"
   #OS_PASSWORD="" OS_USERNAME="" OS_PROJECT_DOMAIN_NAME="" OS_PROJECT_NAME="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME=""
 }
 
@@ -1651,7 +1652,7 @@ calcRedirs()
       fi
       STR="0/0,$IP,tcp,$ptn,22"
       off=$(($pi%$NOAZS))
-      echo "Port $port: $STR => REDIRS[$off]"
+      #echo "Port $port: $STR => REDIRS[$off]"
       REDIRS[$off]="${REDIRS[$off]}$STR
 "
       if test $(($off+1)) == $NOAZS; then let ptn+=1; fi
