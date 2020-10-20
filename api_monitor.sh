@@ -670,7 +670,8 @@ myopenstack()
   #echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-url $EP $@" >> $LOGFILE
   echo "openstack --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-endpoint $EP $@" >> $LOGFILE
   #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-project-name "" --os-token $TOKEN --os-url $EP "$@"
-  OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP "$@"
+  #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP "$@"
+  OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP --os-auth-type admin_token --os-project-name="" "$@"
   #OS_PASSWORD="" OS_USERNAME="" OS_PROJECT_DOMAIN_NAME="" OS_PROJECT_NAME="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME=""
 }
 
