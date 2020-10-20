@@ -674,7 +674,8 @@ myopenstack()
   #echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-url $EP $@" >> $LOGFILE
   echo "openstack --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-endpoint $EP $@" >> $LOGFILE
   #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-project-name "" --os-token $TOKEN --os-url $EP "$@"
-  OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP "$@"
+  #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP "$@"
+  OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP --os-auth-type admin_token --os-project-name="" "$@"
   #OS_PASSWORD="" OS_USERNAME="" OS_PROJECT_DOMAIN_NAME="" OS_PROJECT_NAME="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME=""
 }
 
@@ -2651,11 +2652,19 @@ waitnetgone()
 # Args: Name (implicit: OSTACKRESP)
 getPublicEP()
 {
-  local EPS
+  local EPS EPS2 NL
+  NL="$(echo)"
   EPS=$(echo "$OSTACKRESP" | jq ".[] | select(.Name == \"$1\") | .Endpoints")
-  EPS=$(echo "$EPS" | jq '.[] | .interface+"|"+.region+"|"+.region_id+"|"+.url' | tr -d '"')
-  if test -n "$OS_REGION_NAME"; then EPS=$(echo "$EPS" | grep "$OS_REGION_NAME"); fi
-  EPS=$(echo "$EPS" | grep public)
+  EPS2=$(echo "$EPS" | jq '.[] | .interface+"|"+.region+"|"+.region_id+"|"+.url' 2>/dev/null | tr -d '"')
+  if test -z "$EPS2" -a -n "$EPS"; then
+    while read ln; do
+      if echo "$ln" | grep '^[^:]*$' >/dev/null 2>&1; then REG=$ln; continue; fi
+      ENT=$(echo $ln | sed "s@^ *\([^:]*\): @\1|$REG|$REG|@")
+      EPS2="${EPS2}$ENT$NL"
+    done < <(echo -e $EPS)
+  fi
+  if test -n "$OS_REGION_NAME"; then EPS2=$(echo "$EPS2" | grep "$OS_REGION_NAME"); fi
+  EPS=$(echo "$EPS2" | grep public)
   echo "${EPS##*|}"
 }
 
