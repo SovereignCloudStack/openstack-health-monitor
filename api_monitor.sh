@@ -3009,8 +3009,6 @@ else # test "$1" = "DEPLOY"; then
             waitVols
             if createVMs; then
              let ROUNDVMS+=$NOVMS
-             # loadbalancer
-             waitLBs
              waitJHVMs
              RC=$?
              if test $RC != 0; then
@@ -3020,6 +3018,8 @@ else # test "$1" = "DEPLOY"; then
                let ERR+=$RC
                if test $RC -gt $NOAZS; then let VMERRORS+=$NOAZS; else let VMERRORS+=$RC; fi
              else
+              # loadbalancer
+              waitLBs
               if createFIPs; then
                waitVMs
                if test $RC != 0; then
