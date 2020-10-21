@@ -1291,9 +1291,6 @@ createSubNets()
     createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
     createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_VM_\$no" "\$VAL" "10.250.\$((no*4)).0/22"
   fi
-  if test -n "$LOADBALANCER"; then
-    createResources 1 NETSTATS LBAAS NONE NONE "" id $NETTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id $JHNETS --name "${RPRE}LB"
-  fi
 }
 
 create2ndSubNets()
@@ -1309,9 +1306,7 @@ create2ndSubNets()
 
 deleteSubNets()
 {
-  if test -n "$LBAASS"; then
-    deleteResources NETSTATS LBAAS "" $NETTIMEOUT neutron lbaas-loadbalancer-delete
-  fi
+  # TODO: Need to wait for LB being gone?
   if test -n "$SECONDNET"; then
     deleteResources NETSTATS SECONDSUBNET "" $NETTIMEOUT neutron subnet-delete
   fi
@@ -1829,6 +1824,29 @@ else
   done
 }
 
+
+# Loadbalancers
+createLBs()
+{
+  if test -n "$LOADBALANCER"; then
+    createResources 1 NETSTATS LBAAS JHNET NONE LBSTIME id $NETTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0"
+  fi
+}
+
+deleteLBs()
+{
+  if test -n "$LBAASS"; then
+    deleteResources NETSTATS LBAAS "" $NETTIMEOUT neutron lbaas-loadbalancer-delete
+  fi
+}
+
+waitLBs()
+{
+  #echo "Wait for LBs ${LBAASS[*]} ..."
+  #waitResources NETSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NA" "provisioning_status" neutron lbaas-loadbalancer-show
+  waitlistResources NETSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
+  handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show
+}
 
 waitJHVMs()
 {
@@ -2425,6 +2443,9 @@ allstats()
  stats $1 NOVASTATS  2 "Nova CLI Stats    "
  stats $1 NOVABSTATS 2 "Nova Boot Stats   "
  stats $1 VMCSTATS   0 "VM Creation Stats "
+ if test -n "$LOADBALANCER"; then
+   stats $1 LBCSTATS   0 "LB Creation Stats "
+ fi
  stats $1 VMDSTATS   0 "VM Deletion Stats "
  stats $1 VOLSTATS   2 "Cinder CLI Stats  "
  stats $1 VOLCSTATS  0 "Vol Creation Stats"
@@ -2528,6 +2549,7 @@ cleanup_new()
   deleteFIPs
   deleteJHVMs
   deleteVIPs
+  deleteLBs
   waitdelVMs; deleteVols
   VOLUMES=("${VOLUMES2[@]}"); deleteVols
   waitdelJHVMs; deleteJHVols
@@ -2559,6 +2581,8 @@ cleanup()
   deleteJHVMs
   VIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
   deleteVIPs
+  LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
+  deleteLBs
   VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
   waitdelVMs; deleteVols
   # When we boot from image, names are different ...
@@ -2761,6 +2785,7 @@ declare -a NOVABSTATS
 declare -a VOLCSTATS
 declare -a VOLDSTATS
 declare -a VMCSTATS
+declare -a LBCSTATS
 declare -a VMCDTATS
 
 declare -a TOTTIME
@@ -2813,6 +2838,7 @@ declare -a VOLSTIME=()
 declare -a JVOLSTIME=()
 declare -a VMSTIME=()
 declare -a JVMSTIME=()
+declare -a LBSTIME=()
 
 # List of resources - neutron
 declare -a NETS=()
@@ -2968,6 +2994,7 @@ else # test "$1" = "DEPLOY"; then
    if createSubNets; then
     if createRIfaces; then
      if createSGroups; then
+      createLBs;
       if createJHVols; then
        if createVIPs; then
         if createJHPorts; then
@@ -2980,6 +3007,8 @@ else # test "$1" = "DEPLOY"; then
             waitVols
             if createVMs; then
              let ROUNDVMS+=$NOVMS
+             # loadbalancer
+             waitLBs
              waitJHVMs
              RC=$?
              if test $RC != 0; then
@@ -3081,7 +3110,8 @@ else # test "$1" = "DEPLOY"; then
         #deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
         unset IGNORE_ERRORS
        fi; deleteVIPs
-      fi; deleteJHVols
+      fi; deleteLBs
+      deleteJHVols
      # There is a chance that some VMs were not created, but ports were allocated, so clean ...
      fi; cleanupPorts; deleteSGroups
     fi; deleteRIfaces
@@ -3180,6 +3210,7 @@ $(allstats -m)" > Stats.$LASTDATA.$LASTTIME.$CDATE.$CTIME.psv
   VOLCSTATS=()
   VOLDSTATS=()
   VMCSTATS=()
+  LBCSTATS=()
   VMDSTATS=()
   TOTTIME=()
   WAITTIME=()
