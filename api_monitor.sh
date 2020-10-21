@@ -2601,9 +2601,11 @@ cleanup()
   SGROUPS=( $(findres "" neutron security-group-list) )
   deleteSGroups
   SUBNETS=( $(findres "" neutron subnet-list) )
+  JHSUBNETS=()
   deleteRIfaces
   deleteSubNets
   NETS=( $(findres "" neutron net-list) )
+  JHNETS=()
   deleteNets
   deleteRouters
 }
