@@ -93,7 +93,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.59
+VERSION=1.60
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -256,6 +256,7 @@ usage()
   echo " -O     like -o, but use token_endpoint auth (after getting token)"
   echo " -x     assume eXclusive project, clean all floating IPs found"
   echo " -I     dIsassociate floating IPs before deleting them"
+  echo " -L     create Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
   echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test"
   echo " -3     Create 2ndary subnets, attach, test, reshuffle and retest"
@@ -305,6 +306,7 @@ while test -n "$1"; do
     "-x") CLEANALLFIPS=1;;
     "-I") DISASSOC=1;;
     "-r") ROUTERITER=$2; shift;;
+    "-L") LOADBALANCER=1;;
     "-t") let TIMEOUTFACT+=1;;
     "-R") SECONDRECREATE=1;;
     "-2") SECONDNET=1;;
@@ -643,6 +645,8 @@ translate()
       #ARGS=$(echo "$@" | sed -e 's@--port-id \([^ ]\) *\([^ ]*\)$@\2 \1@')
       #OSTACKCMD=($OPST $C1 $CMD $ARGS)
       OSTACKCMD=($OPST $C1 $CMD $@)
+    elif test "$C1" == "lbaas loadbalancer"; then
+      OSTACKCMD=(openstack loadbalancer $CMD $@)
     fi
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
   fi
@@ -1302,6 +1306,7 @@ create2ndSubNets()
 
 deleteSubNets()
 {
+  # TODO: Need to wait for LB being gone?
   if test -n "$SECONDNET"; then
     deleteResources NETSTATS SECONDSUBNET "" $NETTIMEOUT neutron subnet-delete
   fi
@@ -1819,6 +1824,29 @@ else
   done
 }
 
+
+# Loadbalancers
+createLBs()
+{
+  if test -n "$LOADBALANCER"; then
+    createResources 1 NETSTATS LBAAS JHNET NONE LBSTIME id $NETTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0"
+  fi
+}
+
+deleteLBs()
+{
+  if test -n "$LBAASS"; then
+    deleteResources NETSTATS LBAAS "" $NETTIMEOUT neutron lbaas-loadbalancer-delete
+  fi
+}
+
+waitLBs()
+{
+  #echo "Wait for LBs ${LBAASS[*]} ..."
+  #waitResources NETSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NA" "provisioning_status" neutron lbaas-loadbalancer-show
+  waitlistResources NETSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
+  handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show
+}
 
 waitJHVMs()
 {
@@ -2415,6 +2443,9 @@ allstats()
  stats $1 NOVASTATS  2 "Nova CLI Stats    "
  stats $1 NOVABSTATS 2 "Nova Boot Stats   "
  stats $1 VMCSTATS   0 "VM Creation Stats "
+ if test -n "$LOADBALANCER"; then
+   stats $1 LBCSTATS   0 "LB Creation Stats "
+ fi
  stats $1 VMDSTATS   0 "VM Deletion Stats "
  stats $1 VOLSTATS   2 "Cinder CLI Stats  "
  stats $1 VOLCSTATS  0 "Vol Creation Stats"
@@ -2477,6 +2508,7 @@ collectRes()
   JHSUBNETS=( $(findres ${RPRE}SUBNET_JH neutron subnet-list) )
   SUBNETS=( $(findres ${RPRE}SUBNET_VM neutron subnet-list) )
   SECONDSUBNETS=( $(findres ${RPRE}SUBNET2_VM neutron subnet-list) )
+  LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
   JHNETS=( $(findres ${RPRE}NET_JH neutron net-list) )
   NETS=( $(findres ${RPRE}NET_VM neutron net-list) )
   SECONDNETS=( $(findres ${RPRE}NET2_VM neutron net-list) )
@@ -2517,6 +2549,7 @@ cleanup_new()
   deleteFIPs
   deleteJHVMs
   deleteVIPs
+  deleteLBs
   waitdelVMs; deleteVols
   VOLUMES=("${VOLUMES2[@]}"); deleteVols
   waitdelJHVMs; deleteJHVols
@@ -2548,6 +2581,8 @@ cleanup()
   deleteJHVMs
   VIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
   deleteVIPs
+  LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
+  deleteLBs
   VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
   waitdelVMs; deleteVols
   # When we boot from image, names are different ...
@@ -2566,9 +2601,11 @@ cleanup()
   SGROUPS=( $(findres "" neutron security-group-list) )
   deleteSGroups
   SUBNETS=( $(findres "" neutron subnet-list) )
+  JHSUBNETS=()
   deleteRIfaces
   deleteSubNets
   NETS=( $(findres "" neutron net-list) )
+  JHNETS=()
   deleteNets
   deleteRouters
 }
@@ -2750,6 +2787,7 @@ declare -a NOVABSTATS
 declare -a VOLCSTATS
 declare -a VOLDSTATS
 declare -a VMCSTATS
+declare -a LBCSTATS
 declare -a VMCDTATS
 
 declare -a TOTTIME
@@ -2802,12 +2840,14 @@ declare -a VOLSTIME=()
 declare -a JVOLSTIME=()
 declare -a VMSTIME=()
 declare -a JVMSTIME=()
+declare -a LBSTIME=()
 
 # List of resources - neutron
 declare -a NETS=()
 declare -a SUBNETS=()
 declare -a JHNETS=()
 declare -a JHSUBNETS=()
+declare -a LBAASS=()
 declare -a SGROUPS=()
 declare -a JHPORTS=()
 declare -a PORTS=()
@@ -2956,6 +2996,7 @@ else # test "$1" = "DEPLOY"; then
    if createSubNets; then
     if createRIfaces; then
      if createSGroups; then
+      createLBs;
       if createJHVols; then
        if createVIPs; then
         if createJHPorts; then
@@ -2977,6 +3018,8 @@ else # test "$1" = "DEPLOY"; then
                let ERR+=$RC
                if test $RC -gt $NOAZS; then let VMERRORS+=$NOAZS; else let VMERRORS+=$RC; fi
              else
+              # loadbalancer
+              waitLBs
               if createFIPs; then
                waitVMs
                if test $RC != 0; then
@@ -3069,7 +3112,8 @@ else # test "$1" = "DEPLOY"; then
         #deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
         unset IGNORE_ERRORS
        fi; deleteVIPs
-      fi; deleteJHVols
+      fi; deleteLBs
+      deleteJHVols
      # There is a chance that some VMs were not created, but ports were allocated, so clean ...
      fi; cleanupPorts; deleteSGroups
     fi; deleteRIfaces
@@ -3168,6 +3212,7 @@ $(allstats -m)" > Stats.$LASTDATA.$LASTTIME.$CDATE.$CTIME.psv
   VOLCSTATS=()
   VOLDSTATS=()
   VMCSTATS=()
+  LBCSTATS=()
   VMDSTATS=()
   TOTTIME=()
   WAITTIME=()
