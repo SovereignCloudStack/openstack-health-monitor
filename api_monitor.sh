@@ -1868,6 +1868,10 @@ testLBs()
   createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   # TODO: Assign a FIP to the LB
   # TODO: Access LB several times
+}
+
+cleanLBs()
+{
   deleteResources NETSTATS MEMBER "" $NETTIMEOUT neutron lbaas-member-delete ${POOLS[0]}
   deleteResources NETSTATS LISTENER "" $NETTIMEOUT neutron lbaas-listener-delete
   deleteResources NETSTATS POOL "" $NETTIMEOUT neutron lbaas-pool-delete
@@ -2537,7 +2541,11 @@ collectRes()
   SUBNETS=( $(findres ${RPRE}SUBNET_VM neutron subnet-list) )
   SECONDSUBNETS=( $(findres ${RPRE}SUBNET2_VM neutron subnet-list) )
   LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
-  # TODO: Collect LBaaS pools and listeners
+  if test -n "$LBAASS"; then
+    POOLS=( $(findres ${RPRE}Pool neutron lbaas-pool-list) )
+    LISTENERS=( $(findres ${RPRE}Listener neutron lbaas-listener-list) )
+    #MEMBERS=( $(findres ${RPRE}Member neutron lbaas-member-list ${POOLS[0]}) )
+  fi
   JHNETS=( $(findres ${RPRE}NET_JH neutron net-list) )
   NETS=( $(findres ${RPRE}NET_VM neutron net-list) )
   SECONDNETS=( $(findres ${RPRE}NET2_VM neutron net-list) )
@@ -2578,11 +2586,11 @@ cleanup_new()
   deleteFIPs
   deleteJHVMs
   deleteVIPs
-  deleteLBs
+  cleanLBs
   waitdelVMs; deleteVols
   VOLUMES=("${VOLUMES2[@]}"); deleteVols
   waitdelJHVMs; deleteJHVols
-  # TODO: deleteLBs
+  deleteLBs
   deleteKeypairs
   delete2ndPorts; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
   deleteSGroups
@@ -2609,11 +2617,15 @@ cleanup()
   deleteFIPs
   JHVMS=( $(findres ${RPRE}VM_JH nova list) )
   deleteJHVMs
+  LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
+    if test -n "$LBAASS"; then
+    POOLS=( $(findres ${RPRE}Pool neutron lbaas-pool-list) )
+    LISTENERS=( $(findres ${RPRE}Listener neutron lbaas-listener-list) )
+    #MEMBERS=( $(findres ${RPRE}Member neutron lbaas-member-list ${POOLS[0]}) )
+  fi
+  cleanLBs
   VIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
   deleteVIPs
-  LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
-  # TODO: collect pools and listeners and delete them
-  deleteLBs
   VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
   waitdelVMs; deleteVols
   # When we boot from image, names are different ...
@@ -2621,6 +2633,7 @@ cleanup()
   deleteVols
   JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) )
   waitdelJHVMs; deleteJHVols
+  deleteLBs
   translate nova keypair-list
   KEYPAIRS=( $(${OSTACKCMD[@]} | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   deleteKeypairs
@@ -3129,6 +3142,7 @@ else # test "$1" = "DEPLOY"; then
                   getToken
                   TOKENSTAMP=$(date +%s)
                 fi
+                if test -n "$LOADBALANCER" -a $LBERR = 0; then cleanLBs; fi
                 # Subtract waiting time (5s here)
                 MSTART=$(($MSTART+$(date +%s)-$MSTOP))
                fi
