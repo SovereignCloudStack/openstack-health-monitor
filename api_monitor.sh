@@ -1867,6 +1867,7 @@ waitLBs()
 testLBs()
 {
   local ERR=0
+  echo -n "LBaaS2 "
   createResources 1 NETSTATS POOL LBAAS NONE "" id $NETTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol HTTP --lb-algorithm=ROUND_ROBIN --session-persistence type=HTTP_COOKIE --loadbalancer ${LBAASS[0]} # --wait
   let ERR+=$?
   createResources 1 NETSTATS LISTENER POOL LBAAS "" id $NETTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]}
@@ -1878,9 +1879,12 @@ testLBs()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show ${LBAASS[0]} -f value -c vip_port_id
   let ERR+=$?
   LBPORT=$OSTACKRESP
-  createResources 1 NETSTATS LBFIP NONE NONE "" id $NETTIMEOUT neutron floating-ip-create --port $LBPORT $EXTNET
+  echo -n "Attach FIP to LB port $LBPORT: "
+  ostackcmd_tm FIPSTATS $FIPTIMEOUT neutron floating-ip-create --port $LBPORT $EXTNET
   let ERR+=$?
-  LBIP=$(echo "$RESP" | grep ' floating_ip_address ' | sed 's/^|[^|]*| *\([a-f0-9:\.]*\).*$/\1/')
+  LBIP=$(echo "$OSTACKRESP" | grep ' floating_ip_address ' | sed 's/^|[^|]*| *\([a-f0-9:\.]*\).*$/\1/')
+  LBFIPS=( $(echo "$OSTACKRESP" | grep ' id ' | sed 's/^|[^|]*| *\([a-f0-9\-]*\).*$/\1/') )
+  echo "${LBFIPS[0]}"
   echo -n "Test LB at $LBIP:"
   # Access LB several times
   for i in $(seq 0 $NOVMS); do
@@ -1895,6 +1899,7 @@ testLBs()
       errwait $ERRWAIT
     fi
   done
+  echo
   return $ERR
 }
 
