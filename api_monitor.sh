@@ -47,10 +47,7 @@
 #   d) do some property changes to VMs
 # - after everything is complete, we wait for the VMs to be up
 # - we ping them, log in via ssh and see whether they can ping to the outside world (quad9)
-# - NOT YET: dynamically attach an additional disk
-# - NOT YET: dynamically attach an additional NIC (except -2/-3/-4)
-# - NOT YET: Load-Balancer (LBaaSv2/Octavia)
-# 
+#
 # - Finally, we clean up ev'thing in reverse order
 #   (We have kept track of resources to clean up.
 #    We can also identify them by name, which helps if we got interrupted, or
@@ -67,22 +64,28 @@
 #
 # We do some statistics on the duration of the steps (min, avg, median, 95% quantile, max)
 # We of course also note any errors and timeouts and report these, optionally sending
-#  email of SMN alarms.
+#  email or (on OTC) SMN alarms.
 #
 # This takes rather long, as typical CLI calls take b/w 1 and 5s on OpenStack clouds
 # (including the round trip to keystone for the token).
 #
+# Future enhancements:
+# - dynamically attach an additional disk
+# - dynamically attach an additional NIC (we do this already with -2/-3/-4)
+# - test DNS (designate)
+#
 # Optimization possibilities:
 # - DONE: Cache token and reuse when creating a large number of resources in a loop
-#   Use option -O (not used for volume create)
+#   Use option -O (not used for volume create and image and LB stuff)
 #
 # Prerequisites:
 # - Working python-XXXclient tools (openstack, glance, neutron, nova, cinder)
-# - otc.sh from otc-tools (only if using optional SMN -m and project creation -p)
-# - sendmail (only if email notification is requested)
+# - Optionally otc.sh from otc-tools (only if using optional SMN -m and project creation -p)
+# - Optionally sendmail (only if email notification is requested)
 # - jq (for JSON processing)
 # - python2 or 3 for math used to calc statistics
 # - SUSE image with SNAT/port-fwd (SuSEfirewall2-snat pkg) for the JumpHosts recommended
+#   (but we can do manual iptables settings otherwise nowadays)
 # - Any image for the VMs that allows login as user DEFLTUSER (linux) with injected key
 #   (If we use -2/-3/-4, we also need a SUSE image to have the cloud-multiroute pkg in there.)
 #
@@ -93,7 +96,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.61
+VERSION=1.62
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -844,7 +847,7 @@ createResources()
   eval local MLIST=( \"\${${MRNM}S[@]}\" )
   if test "$RNM" != "NONE"; then echo -n "New $RNM: "; fi
   local RC=0
-  local RESP
+  local TIRESP
   # FIXME: Should we get a token once here and reuse it?
   for no in `seq 0 $(($QUANT-1))`; do
     local AZN=$(($no%$NOAZS))
@@ -857,12 +860,12 @@ createResources()
     local STM=$(date +%s)
     if test -n "$STIME"; then eval "${STIME}+=( $STM )"; fi
     let APICALLS+=1
-    RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
+    TIRESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
     RC=$?
     #echo "DEBUG: ostackcmd_id $CMD => $RC" 1>&2
     updAPIerr $RC
     local TM
-    read TM ID <<<"$RESP"
+    read TM ID <<<"$TIRESP"
     if test $RC == 0; then eval ${STATNM}+="($TM)"; fi
     let ctr+=1
     # Workaround for teuto.net
@@ -898,7 +901,7 @@ deleteResources()
   test -n "$LIST" && echo -n "Del $RNM: "
   #for rsrc in $LIST; do
   local LN=${#LIST[@]}
-  local RESP
+  local TIRESP
   local IGNERRS=0
   while test ${#LIST[*]} -gt 0; do
     local rsrc=${LIST[-1]}
@@ -907,7 +910,7 @@ deleteResources()
     if test -n "$DTIME"; then eval "${DTIME}+=( $DTM )"; fi
     local TM
     let APICALLS+=1
-    RESP=$(ostackcmd_id id $TIMEOUT $@ $rsrc)
+    TIRESP=$(ostackcmd_id id $TIMEOUT $@ $rsrc)
     local RC="$?"
     if test -z "$IGNORE_ERRORS"; then
       updAPIerr $RC
@@ -915,12 +918,12 @@ deleteResources()
       let IGNERRS+=$RC
       RC=0
     fi
-    read TM ID <<<"$RESP"
+    read TM ID <<<"$TIRESP"
     if test $RC != 0; then
       echo -e "${YELLOW}ERROR deleting $RNM $rsrc; retry and continue ...$NORM" 1>&2
       let ERR+=1
       sleep 2
-      RESP=$(ostackcmd_id id $(($TIMEOUT+8)) $@ $rsrc)
+      TIRESP=$(ostackcmd_id id $(($TIMEOUT+8)) $@ $rsrc)
       RC=$?
       updAPIerr $RC
       if test $RC != 0; then FAILDEL+=($rsrc); fi
@@ -989,7 +992,7 @@ waitResources()
   local LAST=$(( ${#RLIST[@]} - 1 ))
   declare -i ctr=0
   declare -i WERR=0
-  local RESP
+  local TIRESP
   while test -n "${SLIST[*]}" -a $ctr -le 320; do
     local STATSTR=""
     for i in $(seq 0 $LAST ); do
@@ -997,11 +1000,11 @@ waitResources()
       if test -z "${SLIST[$i]}"; then STATSTR+=$(colstat "${STATI[$i]}" "$COMP1" "$COMP2"); continue; fi
       local CMD=`eval echo $@ $rsrc 2>&1`
       let APICALLS+=1
-      RESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
+      TIRESP=$(ostackcmd_id $IDNM $TIMEOUT $CMD)
       local RC=$?
       updAPIerr $RC
       local TM STAT
-      read TM STAT <<<"$RESP"
+      read TM STAT <<<"$TIRESP"
       eval ${STATNM}+="( $TM )"
       if test $RC != 0; then echo -e "\n${YELLOW}ERROR: Querying $RNM $rsrc failed$NORM" 1>&2; return 1; fi
       STATI[$i]=$STAT
@@ -1863,11 +1866,36 @@ waitLBs()
 
 testLBs()
 {
+  local ERR=0
   createResources 1 NETSTATS POOL LBAAS NONE "" id $NETTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol HTTP --lb-algorithm=ROUND_ROBIN --session-persistence type=HTTP_COOKIE --loadbalancer ${LBAASS[0]} # --wait
+  let ERR+=$?
   createResources 1 NETSTATS LISTENER POOL LBAAS "" id $NETTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]}
+  let ERR+=$?
   createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
-  # TODO: Assign a FIP to the LB
-  # TODO: Access LB several times
+  let ERR+=$?
+  # TODO: Implement health monitors?
+  # Assign a FIP to the LB
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show ${LBAASS[0]} -f value -c vip_port_id
+  let ERR+=$?
+  LBPORT=$OSTACKRESP
+  createResources 1 NETSTATS LBFIP NONE NONE "" id $NETTIMEOUT neutron floating-ip-create --port $LBPORT $EXTNET
+  let ERR+=$?
+  LBIP=$(echo "$RESP" | grep ' floating_ip_address ' | sed 's/^|[^|]*| *\([a-f0-9:\.]*\).*$/\1/')
+  echo -n "Test LB at $LBIP:"
+  # Access LB several times
+  for i in $(seq 0 $NOVMS); do
+    ANS=$(curl -m4 http://$LBIP/hostname 2>/dev/null)
+    RC=$?
+    echo -n " $ANS"
+    if test $RC != 0; then
+      sendalarm 2 "No response from LB $LBIP port 80" "$RC" 4
+      if test -n "$EXITERR"; then exit 3; fi
+      let LBERRORS+=$RC
+      let ERR+=1
+      errwait $ERRWAIT
+    fi
+  done
+  return $ERR
 }
 
 cleanLBs()
@@ -1875,6 +1903,7 @@ cleanLBs()
   deleteResources NETSTATS MEMBER "" $NETTIMEOUT neutron lbaas-member-delete ${POOLS[0]}
   deleteResources NETSTATS LISTENER "" $NETTIMEOUT neutron lbaas-listener-delete
   deleteResources NETSTATS POOL "" $NETTIMEOUT neutron lbaas-pool-delete
+  deleteResources NETSTATS LBFIP "" $NETTIMEOUT neutron floating-ip-delete
 }
 
 waitJHVMs()
@@ -1931,7 +1960,8 @@ createVMsAll()
   local UDTMP=./${RPRE}user_data_VM.yaml
   echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}ALL\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP
   if test -n "$LOADBALANCER"; then
-    echo -e "packages:\n  - thttpd\nruncmd:\n  - systemctl start thttpd\n  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl restart SuSEfirewall2" >> $UDTMP
+    # FIXME: This is distro dependent, implement at least also for CentOS & Ubuntu
+    echo -e "packages:\n  - thttpd\nruncmd:\n  - hostname > /srv/www/htdocs/hostname\n  - systemctl start thttpd\n  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl restart SuSEfirewall2" >> $UDTMP
   fi
   declare -a STMS
   echo -n "Create VMs in batches: "
@@ -2838,6 +2868,7 @@ declare -a TOTTIME
 declare -a WAITTIME
 
 declare -i CUMPINGERRORS=0
+declare -i CUMLBERRORS=0
 declare -i CUMAPIERRORS=0
 declare -i CUMAPITIMEOUTS=0
 declare -i CUMAPICALLS=0
@@ -2874,6 +2905,7 @@ declare -i PINGERRORS=0
 declare -i APIERRORS=0
 declare -i APITIMEOUTS=0
 declare -i VMERRORS=0
+declare -i LBERRORS=0
 declare -i WAITERRORS=0
 declare -i CONNERRORS=0
 declare -i APICALLS=0
@@ -3195,13 +3227,15 @@ else # test "$1" = "DEPLOY"; then
  fi
  allstats
  if test -n "$FULLCONN"; then CONNTXT="$CONNERRORS Conn Errors, "; else CONNTXT=""; fi
- echo "This run: Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS CLI calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, ${CONNTXT}$(date +'%Y-%m-%d %H:%M:%S %Z')"
+ if test -n "$LOADBALANCER"; then LBTXT="$LBERRORS LB Errors, "; else LBTXT=""; fi
+ echo "This run: Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS CLI calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, ${CONNTXT}${LBTXT}$(date +'%Y-%m-%d %H:%M:%S %Z')"
 #else
 #  usage
 fi
 let CUMAPIERRORS+=$APIERRORS
 let CUMAPITIMEOUTS+=$APITIMEOUTS
 let CUMVMERRORS+=$VMERRORS
+let CUMLBERRORS+=$LBERRORS
 let CUMPINGERRORS+=$PINGERRORS
 let CUMWAITERRORS+=$WAITERRORS
 let CUMCONNERRPRS+=$CONNERRORS
@@ -3214,6 +3248,7 @@ if test -z "$OS_PROJECT_NAME"; then OPRJ="$OS_CLOUD"; else OPRJ="$OS_PROJECT_NAM
 CDATE=$(date +%Y-%m-%d)
 CTIME=$(date +%H:%M:%S)
 if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn Errors"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
+if test -n "$LOADBALANCER"; then LBTXT="$CUMLBERRORS LB Errors"; LBST="|$CUMLBERRORS"; else LBTXT=""; LBST=""; fi
 if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXITER; then
   sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $HOSTNAME testing $STRIPLE:
@@ -3225,13 +3260,14 @@ $CUMAPIERRORS API ERRORS
 $CUMAPITIMEOUTS API TIMEOUTS
 $CUMPINGERRORS Ping failures
 $CONNTXT
+$LBTXT
 
 $(allstats)
 
 #TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$HOSTNAME|$OPRJ|$OS_REGION_NAME
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
 #RUN: $RUNS|$SUCCRUNS|$CUMVMS|$((($NOAZS+$NOVMS)*$RUNS))|$CUMAPICALLS
-#ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS$CONNST
+#ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS$CONNST$LBST
 $(allstats -m)
 " 0
   echo "#TEST: $SHORT_DOMAIN|$VERSION|$RPRE|$HOSTNAME|$OPRJ|$OS_REGION_NAME
