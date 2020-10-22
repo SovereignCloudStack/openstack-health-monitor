@@ -648,12 +648,12 @@ translate()
     elif test "$C1" == "lbaas loadbalancer"; then
       OSTACKCMD=(openstack loadbalancer $CMD $@)
     elif test "$C1" == "lbaas pool"; then
-      OSTACKCMD=(openstack loadbalancer pool $CMD $@)
+      OSTACKCMD=(openstack loadbalancer pool $CMD --wait $@)
     elif test "$C1" == "lbaas listener"; then
       ARGS=$(echo "$@" | sed 's/--loadbalancer //')
-      OSTACKCMD=(openstack loadbalancer listener $CMD $ARGS)
+      OSTACKCMD=(openstack loadbalancer listener $CMD --wait $ARGS)
     elif test "$C1" == "lbaas member"; then
-      OSTACKCMD=(openstack loadbalancer member $CMD $@)
+      OSTACKCMD=(openstack loadbalancer member $CMD --wait $@)
     fi
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
   fi
@@ -1865,10 +1865,10 @@ testLBs()
 {
   createResources 1 NETSTATS POOL LBAAS NONE "" id $NETTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol HTTP --lb-algorithm=ROUND_ROBIN --session-persistence type=HTTP_COOKIE --loadbalancer ${LBAASS[0]} # --wait
   createResources 1 NETSTATS LISTENER POOL LBAAS "" id $NETTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]}
-  createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol HTTP --protocol-port 80 ${POOLS[0]}
+  createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   # TODO: Assign a FIP to the LB
   # TODO: Access LB several times
-  deleteResources NETSTATS MEMBER "" $NETTIMEOUT neutron lbaas-member-delete
+  deleteResources NETSTATS MEMBER "" $NETTIMEOUT neutron lbaas-member-delete ${POOLS[0]}
   deleteResources NETSTATS LISTENER "" $NETTIMEOUT neutron lbaas-listener-delete
   deleteResources NETSTATS POOL "" $NETTIMEOUT neutron lbaas-pool-delete
 }
