@@ -1,12 +1,20 @@
 #!/bin/bash
 
 # Specify image names, JumpHost ideally has sfw2-snat
+# Options for the images: my openSUSE 15.2 (linux), Ubuntu 20.04 (ubuntu),
+#  openSUSE Leap 15.2 (opensuse), CentOS 8 (centos)
+# You can freely mix ...
+#export JHIMG="Ubuntu 20.04"
 export JHIMG="openSUSE 15.2"
-export IMG="openSUSE 15.2"
-export JHIMGFILT=" "
-export IMGFILT=" "
-##export JHIMGFILT="--property-filter os_version=openSUSE-15.0"
-##export IMGFILT="--property-filter os_version=openSUSE-15.0"
+#export ADDJHVOLSIZE=2
+#export IMG="Ubuntu 20.04"
+export IMG="openSUSE Leap 15.2"
+#export IMG="CentOS 8"
+export DEFLTUSER=opensuse
+#export JHDEFLTUSER=ubuntu
+# You can use a filter when listing images (because your catalog is huge)
+#export JHIMGFILT="--property-filter os_version=openSUSE-15.0"
+#export IMGFILT="--property-filter os_version=openSUSE-15.0"
 # ECP flavors
 #if test $OS_REGION_NAME == Kna1; then
 export JHFLAVOR=1C-2GB-20GB

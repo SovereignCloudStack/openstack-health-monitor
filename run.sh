@@ -1,12 +1,20 @@
 #!/bin/bash
 
 # Specify image names, JumpHost ideally has sfw2-snat
-#export JHIMG="openSUSE_15_1_CN_20191114"
-#export IMG="openSUSE_15_1_CN_20191114"
-#export JHIMGFILT=" "
-#export IMGFILT=" "
-##export JHIMGFILT="--property-filter os_version=openSUSE-15.0"
-##export IMGFILT="--property-filter os_version=openSUSE-15.0"
+# Options for the images: my openSUSE 15.2 (linux), Ubuntu 20.04 (ubuntu),
+#  openSUSE Leap 15.2 (opensuse), CentOS 8 (centos)
+# You can freely mix ...
+#export JHIMG="Ubuntu 20.04"
+export JHIMG="openSUSE 15.2"
+#export ADDJHVOLSIZE=2
+#export IMG="Ubuntu 20.04"
+export IMG="openSUSE 15.2"
+#export IMG="CentOS 8"
+#export DEFLTUSER=ubuntu
+#export JHDEFLTUSER=ubuntu
+# You can use a filter when listing images (because your catalog is huge)
+#export JHIMGFILT="--property-filter os_version=openSUSE-15.0"
+#export IMGFILT="--property-filter os_version=openSUSE-15.0"
 # ECP flavors
 #if test $OS_REGION_NAME == Kna1; then
 #export JHFLAVOR=1C-1GB
@@ -21,18 +29,7 @@
 #export AZS="nova"
 
 # Assume OS_ parameters have already been sourced from some .openrc file
-#export OS_DOMAIN=XXXXX
-#export OS_USER_DOMAIN_NAME=XXXXX
-#export OS_TENANT_NAME=YYYYY
-#export OS_PROJECT_NAME=${OS_PROJECT_NAME:-"eu-de_APIMonitor2"}
-#export OS_AUTH_URL=https://...."
-#export OS_ENDPOINT_TYPE=publicURL
-#export NOVA_ENDPOINT_TYPE=publicURL
-#export CINDER_ENDPOINT_TYPE=publicURL
-#export OS_IDENTITY_API_VERSION=3
-#export OS_IMAGE_API_VERSION=2
-#export OS_VOLUME_API_VERSION=2
-## or just (using clouds.yaml)
+# or just set OS_CLOUD (using clouds.yaml/secure.yaml)
 #export OS_CLOUD=cloudname
 
 export EMAIL_PARAM=${EMAIL_PARAM:-"sender@domain.org"}

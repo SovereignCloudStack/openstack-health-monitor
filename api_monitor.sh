@@ -3050,7 +3050,7 @@ else # test "$1" = "DEPLOY"; then
  if test -z "$IMGID" -o "$IMG" == "0"; then sendalarm 1 "No image $IMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
  let APICALLS+=2
  # Retrieve root volume size
- ostackcmd_tm GLANCESTATS $GLANCETIMEOUT glance image-show -f json $JHIMGID 
+ ostackcmd_tm GLANCESTATS $GLANCETIMEOUT glance image-show -f json $JHIMGID
  if test $? != 0; then
   let APIERRORS+=1; sendalarm 1 "glance image-show failed" "" $GLANCETIMEOUT
   errwait $ERRWAIT
