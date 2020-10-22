@@ -96,7 +96,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.62
+VERSION=1.63
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -186,10 +186,10 @@ fi
 # otherwise raw iptables commands will set up SNAT.
 JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
 # Pass " " to filter if you don't need the optimization of image filtering
-JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
+#JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
 # For 2nd interface (-2/3/4), use also SUSE image with cloud-multiroute
 IMG="${IMG:-Standard_CentOS_7_latest}"
-IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
+#IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
 # ssh login names with injected key
 DEFLTUSER=${DEFLTUSER:-linux}
 JHDEFLTUSER=${JHDEFLTUSER:-$DEFLTUSER}
@@ -1699,6 +1699,8 @@ createJHVMs()
     if test -z "${REDIRS[$JHNUM]}"; then
       # No fwdmasq config possible yet
       USERDATA="#cloud-config
+packages:
+  - iptables
 otc:
    internalnet:
       - 10.250/16
@@ -1870,8 +1872,10 @@ testLBs()
   echo -n "LBaaS2 "
   createResources 1 NETSTATS POOL LBAAS NONE "" id $NETTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol HTTP --lb-algorithm=ROUND_ROBIN --session-persistence type=HTTP_COOKIE --loadbalancer ${LBAASS[0]} # --wait
   let ERR+=$?
+  echo -n " "
   createResources 1 NETSTATS LISTENER POOL LBAAS "" id $NETTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]}
   let ERR+=$?
+  echo -n " "
   createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   let ERR+=$?
   # TODO: Implement health monitors?
@@ -1879,7 +1883,7 @@ testLBs()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show ${LBAASS[0]} -f value -c vip_port_id
   let ERR+=$?
   LBPORT=$OSTACKRESP
-  echo -n "Attach FIP to LB port $LBPORT: "
+  echo -n " Attach FIP to LB port $LBPORT: "
   ostackcmd_tm FIPSTATS $FIPTIMEOUT neutron floating-ip-create --port $LBPORT $EXTNET
   let ERR+=$?
   LBIP=$(echo "$OSTACKRESP" | grep ' floating_ip_address ' | sed 's/^|[^|]*| *\([a-f0-9:\.]*\).*$/\1/')
@@ -1894,7 +1898,7 @@ testLBs()
     if test $RC != 0; then
       sendalarm 2 "No response from LB $LBIP port 80" "$RC" 4
       if test -n "$EXITERR"; then exit 3; fi
-      let LBERRORS+=$RC
+      let LBERRORS+=1
       let ERR+=1
       errwait $ERRWAIT
     fi
@@ -1905,10 +1909,14 @@ testLBs()
 
 cleanLBs()
 {
+  echo -n "LBaaS2 "
   deleteResources NETSTATS MEMBER "" $NETTIMEOUT neutron lbaas-member-delete ${POOLS[0]}
+  echo -n " "
   deleteResources NETSTATS LISTENER "" $NETTIMEOUT neutron lbaas-listener-delete
+  echo -n " "
   deleteResources NETSTATS POOL "" $NETTIMEOUT neutron lbaas-pool-delete
-  deleteResources NETSTATS LBFIP "" $NETTIMEOUT neutron floating-ip-delete
+  echo -n " "
+  deleteResources FIPSTATS LBFIP "" $NETTIMEOUT neutron floating-ip-delete
 }
 
 waitJHVMs()
@@ -1965,8 +1973,12 @@ createVMsAll()
   local UDTMP=./${RPRE}user_data_VM.yaml
   echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}ALL\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP
   if test -n "$LOADBALANCER"; then
-    # FIXME: This is distro dependent, implement at least also for CentOS & Ubuntu
-    echo -e "packages:\n  - thttpd\nruncmd:\n  - hostname > /srv/www/htdocs/hostname\n  - systemctl start thttpd\n  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl restart SuSEfirewall2" >> $UDTMP
+    #echo -e "packages:\n  - thttpd\nruncmd:\n  - hostname > /srv/www/htdocs/hostname\n  - systemctl start thttpd\n  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl restart SuSEfirewall2" >> $UDTMP
+    # This only requires python3
+    echo -e "packages:\n  - python3\nruncmd:\n  - mkdir -p /var/run/www/htdocs\n  - hostname > /var/run/www/htdocs/hostname\n  - cd /var/run/www/htdocs && python3 -m http.server 80 &" >> $UDTMP
+    if [[ "$IMG" = "openSUSE"* ]]; then
+      echo -e "  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl status SuSEfirewall2 && systemctl restart SuSEfirewall2" >> $UDTMP
+    fi
   fi
   declare -a STMS
   echo -n "Create VMs in batches: "
@@ -3038,40 +3050,35 @@ else # test "$1" = "DEPLOY"; then
  if test -z "$IMGID" -o "$IMG" == "0"; then sendalarm 1 "No image $IMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
  let APICALLS+=2
  # Retrieve root volume size
- OR=$(ostackcmd_id min_disk $GLANCETIMEOUT glance image-show $JHIMGID)
+ ostackcmd_tm GLANCESTATS $GLANCETIMEOUT glance image-show -f json $JHIMGID
  if test $? != 0; then
   let APIERRORS+=1; sendalarm 1 "glance image-show failed" "" $GLANCETIMEOUT
   errwait $ERRWAIT
   let loop+=1
   continue
  else
-  read TM SZ <<<"$OR"
-  JHVOLSIZE=$(($SZ+$ADDJHVOLSIZE))
+  MD=$(echo "$OSTACKRESP" | jq '.min_disk' | tr -d '"')
+  SZ=$(echo "$OSTACKRESP" | jq '.size' | tr -d '"')
+  USER=$(echo "$OSTACKRESP" | jq '.properties.image_original_user' | tr -d '"')
+  SZ=$((SZ/1024/1024/1024))
+  if test "$SZ" -gt "$MD"; then MD=$SZ; fi
+  JHVOLSIZE=$(($MD+$ADDJHVOLSIZE))
+  if test -n "$USER" -a "$USER" != "null"; then JHDEFLTUSER="$USER"; fi
  fi
- if test $JHVOLSIZE = 0; then
-  #JHVOLSIZE=10
-  #echo "$RESP" | grep 'size'
-  #JHVOLSIZE=$(echo "$RESP" | grep "^| *size *|" | sed -e "s/^| *size *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
-  OR=$(ostackcmd_id size $GLANCETIMEOUT glance image-show $JHIMGID)
-  read TM JHVOLSIZE <<<"$OR"
-  JHVOLSIZE=$((($JHVOLSIZE/1024/1024+1023)/1024))
- fi
- OR=$(ostackcmd_id min_disk $GLANCETIMEOUT glance image-show $IMGID)
+ ostackcmd_tm GLANCESTATS $GLANCETIMEOUT glance image-show -f json $IMGID
  if test $? != 0; then
   let APIERRORS+=1; sendalarm 1 "glance image-show failed" "" $GLANCETIMEOUT
  else
-  read TM SZ <<<"$OR"
-  VOLSIZE=$(($SZ+$ADDVMVOLSIZE))
+  MD=$(echo "$OSTACKRESP" | jq '.min_disk' | tr -d '"')
+  SZ=$(echo "$OSTACKRESP" | jq '.size' | tr -d '"')
+  USER=$(echo "$OSTACKRESP" | jq '.properties.image_original_user' | tr -d '"')
+  SZ=$((SZ/1024/1024/1024))
+  if test "$SZ" -gt "$MD"; then MD=$SZ; fi
+  VOLSIZE=$(($MD+$ADDVMVOLSIZE))
+  if test -n "$USER" -a "$USER" != "null"; then DEFLTUSER="$USER"; fi
  fi
- if test $VOLSIZE = 0; then
-  #VOLSIZE=10
-  #VOLSIZE=$(echo "$RESP" | grep "^| *size *|" | sed -e "s/^| *size *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
-  OR=$(ostackcmd_id size $GLANCETIMEOUT glance image-show $JHIMGID)
-  read TM VOLSIZE <<<"$OR"
-  VOLSIZE=$((($VOLSIZE/1024/1024+1023)/1024))
- fi
- let APICALLS+=2
- #echo "Image $IMGID $VOLSIZE $JHIMGID $JHVOLSIZE"; exit 0;
+ #let APICALLS+=2
+ echo "Using images $IMG $VOLSIZE $DEFLTUSER $JHIMG $JHVOLSIZE $JHDEFLTUSER"
  if createRouters; then
   if createNets; then
    if createSubNets; then
