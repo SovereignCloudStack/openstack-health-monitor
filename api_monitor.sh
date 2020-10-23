@@ -1899,7 +1899,7 @@ testLBs()
   createResources 1 NETSTATS LISTENER POOL LBAAS "" id $NETTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
   let ERR+=$?
   echo -n " $ST "
-  if test "$ST" != "ACTIVE"; then sleep 3; fi
+  if test "$ST" != "ACTIVE"; then sleep 4; fi
   echo -n " "
   createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   let ERR+=$?
@@ -2245,6 +2245,7 @@ wait222()
   return $waiterr
 }
 
+BENCH=""
 # Test ssh and test for user_data (or just plain ls) and internet ping (via SNAT instance)
 # $1 => Keypair
 # $2 => IP
@@ -2293,7 +2294,28 @@ testlsandping()
   fi
   #nslookup $PINGTARGET >/dev/null 2>&1
   PING=$(ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
-  if test $? = 0; then echo $PING; return 0; fi
+  RC=$?
+  if test $RC = 0; then echo $PING; fi
+  if test -n "$BCBENCH" -a -z "$pport"; then
+    cat >${RPRE}wait <<EOT
+#!/bin/bash
+let MAXW=90
+while test \$MAXW -ge 1; do
+  if test -e "\$1"; then exit 0; fi
+  let MAXW-=1
+  sleep 1
+done
+exit 1
+EOT
+    chmod +x ${RPRE}wait
+    scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -i $1.pem $pport -p ${RPRE}wait ${USER}@$2: >/dev/null
+    rm ${RPRE}wait
+    if test -n "$LOGFILE"; then echo "ssh -i $1.pem $pport -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 cat /tmp/bcbench.txt" >> $LOGFILE; fi
+    sleep 10
+    BENCH=$(ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 "./${RPRE}wait /tmp/bcbench; cat /tmp/bcbench.txt 2>&1"; exit ${PIPESTATUS[0]})
+    #RC=$?
+  fi
+  if test $RC = 0; then return 0; fi
   #nslookup $PINGTARGET2 >/dev/null 2>&1
   echo -n "x"
   sleep 2
@@ -2305,10 +2327,6 @@ testlsandping()
   ERR=$PING
   #sleep 1
   #PING=$(ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 9.9.9.9 >/dev/null 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
-  if test -n "$BCBENCH"; then
-    BENCH=$(ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 cat /tmp/bcbench.txt 2>&1; exit ${PIPESTATUS[0]})
-    #RC=$?
-  fi
   if test $RC != 0; then return 1; else return 0; fi
 }
 
@@ -2483,7 +2501,7 @@ EOT
       pno=${pno%%,*}
       scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -i ${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
       #echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}"
-      if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]})" >> $LOGFILE; fi
+      if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}" >> $LOGFILE; fi
       PINGRES="$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]})"
       R=$?
       if test $R -gt $RC; then RC=$R; fi
@@ -2505,21 +2523,38 @@ $PINGRES"
 # Do iperf3 tests
 iperf3test()
 {
+  cat >${RPRE}wait <<EOT
+#!/bin/bash
+let MAXW=90
+while test \$MAXW -ge 1; do
+  if test -e "\$1"; then exit 0; fi
+  let MAXW-=1
+  sleep 1
+done
+exit 1
+EOT
+  chmod +x ${RPRE}wait
   # Do tests from 2nd host in 1st net and connect to 1st hosts in 1st/2nd/... net
+  red=${REDIRS[0]}
+  red=$(echo $red | cut -d " " -f $((NONETS+1)))
+  #echo "$red"
+  pno=${red#*tcp,}
+  pno=${pno%%,*}
+  scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -i ${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
+  rm ${RPRE}wait
   for VM in $(seq 0 $((NONETS-1))); do
     TGT=${IPS[$VM]}
-    red=${REDIRS[0]}
-    red=$(echo "$red" | cut -d " " -f 2)
-    pno=${red#*tcp,}
-    pno=${pno%%,*}
-    if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} iperf3 -t5 -J -c $TGT)" >> $LOGFILE; fi
-    IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[0]} iperf3 -t5 -J -c $TGT)
+    if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[0]} iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
+    IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[0]} "./${RPRE}wait /usr/bin/iperf3; iperf3 -t5 -J -c $TGT")
+    if test $? != 0; then return 1; fi
     if test -n "$LOGFILE"; then echo "$IPJSON" >> $LOGFILE; fi
     SENDBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_sent.bits_per_second'))/1048576))
     RECVBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_received.bits_per_second'))/1048576))
     HUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.host_total'))
     RUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.remote_total'))
-    echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECBW Mbps $HTUIL $RUTIL"
+    echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL"
+    # TODO: Collect stats
+    if test -n "$LOGFILE"; then echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
   done
 }
 
