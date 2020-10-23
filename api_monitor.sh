@@ -73,6 +73,7 @@
 # - dynamically attach an additional disk
 # - dynamically attach an additional NIC (we do this already with -2/-3/-4)
 # - test DNS (designate)
+# - test object storage (swift/s3)
 #
 # Optimization possibilities:
 # - DONE: Cache token and reuse when creating a large number of resources in a loop
@@ -260,6 +261,8 @@ usage()
   echo " -x     assume eXclusive project, clean all floating IPs found"
   echo " -I     dIsassociate floating IPs before deleting them"
   echo " -L     create Loadbalancer (LBaaSv2/octavia) and test it"
+  echo " -b     run a simple compute benchmark"
+  echo " -B     run iperf3"
   echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
   echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test"
   echo " -3     Create 2ndary subnets, attach, test, reshuffle and retest"
@@ -310,6 +313,8 @@ while test -n "$1"; do
     "-I") DISASSOC=1;;
     "-r") ROUTERITER=$2; shift;;
     "-L") LOADBALANCER=1;;
+    "-b") BCBENCH=1;;
+    "-B") IPERF=1;;
     "-t") let TIMEOUTFACT+=1;;
     "-R") SECONDRECREATE=1;;
     "-2") SECONDNET=1;;
@@ -1415,6 +1420,12 @@ createSGroups()
     read TM ID <<<"$RESP"
     NETSTATS+=( $TM )
   fi  
+  if test -n "$IPERF"; then
+    RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 5201 --port-range-max 5201 --remote-ip-prefix $JHSUBNETIP $SG1)
+    updAPIerr $?
+    read TM ID <<<"$RESP"
+    NETSTATS+=( $TM )
+  fi
   #neutron security-group-show $SG0
   #neutron security-group-show $SG1
   test $OLDAPIERRS == $APIERRORS
@@ -1701,6 +1712,7 @@ createJHVMs()
       USERDATA="#cloud-config
 packages:
   - iptables
+  - bc
 otc:
    internalnet:
       - 10.250/16
@@ -1723,6 +1735,10 @@ otc:
 $RD
    addip:
       eth0: $VIP
+"
+    fi
+    if test -n "$BCBENCH"; then USERDATA="${USERDATA}runcmd:
+  - echo "$scale=4000; 4*a(1)" | | bc -l >/dev/null 2>/tmp/bcbench.txt
 "
     fi
     echo "$USERDATA" > ${RPRE}user_data_JH.yaml
@@ -1975,9 +1991,12 @@ createVMsAll()
   if test -n "$LOADBALANCER"; then
     #echo -e "packages:\n  - thttpd\nruncmd:\n  - hostname > /srv/www/htdocs/hostname\n  - systemctl start thttpd\n  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl restart SuSEfirewall2" >> $UDTMP
     # This only requires python3
-    echo -e "packages:\n  - python3\nruncmd:\n  - mkdir -p /var/run/www/htdocs\n  - hostname > /var/run/www/htdocs/hostname\n  - cd /var/run/www/htdocs && python3 -m http.server 80 &" >> $UDTMP
+    echo -e "packages:\n  - python3\n  - iperf3\nruncmd:\n  - mkdir -p /var/run/www/htdocs\n  - hostname > /var/run/www/htdocs/hostname\n  - cd /var/run/www/htdocs && python3 -m http.server 80 &" >> $UDTMP
     if [[ "$IMG" = "openSUSE"* ]]; then
-      echo -e "  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl status SuSEfirewall2 && systemctl restart SuSEfirewall2" >> $UDTMP
+      echo -e "  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http targus-getdata1"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl status SuSEfirewall2 && systemctl restart SuSEfirewall2" >> $UDTMP
+    fi
+    if test -n "$IPERF"; then
+      echo -e "  - iperf3 -s" >> $UDTMP
     fi
   fi
   declare -a STMS
