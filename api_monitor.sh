@@ -2311,7 +2311,7 @@ EOT
     scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -i $1.pem $pport -p ${RPRE}wait ${USER}@$2: >/dev/null
     rm ${RPRE}wait
     if test -n "$LOGFILE"; then echo "ssh -i $1.pem $pport -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 cat /tmp/bcbench.txt" >> $LOGFILE; fi
-    sleep 10
+    #sleep 10
     BENCH=$(ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 "./${RPRE}wait /tmp/bcbench; cat /tmp/bcbench.txt 2>&1"; exit ${PIPESTATUS[0]})
     #RC=$?
   fi
@@ -2374,7 +2374,10 @@ testjhinet()
   if test -n "$BENCH"; then
      echo "Benchmark (4000digits pi): $BENCH s"
      echo "Benchmark (4000digits pi): $BENCH s" >> $LOGFILE
-     curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=4000pi,method=JHVM$JHNO duration=$BENCH,return_code=0 $(date +%s%N)" >/dev/null
+     if test -n "$GRAFANA" != 0; then
+       curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=4000pi,method=JHVM$JHNO duration=$BENCH,return_code=0 $(date +%s%N)" >/dev/null
+     fi
+     PITIME+=($BENCH)
   fi
   return $RC
 }
@@ -2553,12 +2556,16 @@ EOT
     HUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.host_total'))
     RUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.remote_total'))
     echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL"
-    # TODO: Collect stats
-    if test -n "$LOGFILE"; then echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
+    if test -n "$LOGFILE"; then echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
+    BANDWIDTH+=($SENDBW $RECVBW)
+    if test -n "$GRAFANA" != 0; then
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=s$VM duration=$SENDBW,return_code=0 $(date +%s%N)" >/dev/null
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=r$VM duration=$RECVBW,return_code=0 $(date +%s%N)" >/dev/null
+    fi
   done
 }
 
-# [-m] STATLIST [DIGITS [NAME]]
+# [-m] STATLIST [DIGITS [NAME [PCTILE]]]
 # m for machine readable
 stats()
 {
@@ -2577,6 +2584,7 @@ stats()
   eval LIST=( \"\${${1}[@]}\" )
   if test -z "${LIST[*]}"; then return; fi
   DIG=${2:-2}
+  PCT=${3:-95}
   OLDIFS="$IFS"
   IFS=$'\n' SLIST=($(sort -n <<<"${LIST[*]}"))
   IFS="$OLDIFS"
@@ -2589,7 +2597,7 @@ stats()
   if test $(($NO%2)) = 1; then MED=${SLIST[$MID]};
   else MED=`math "%.${DIG}f" "(${SLIST[$MID]}+${SLIST[$(($MID-1))]})/2"`
   fi
-  NFQ=$(scale=3; echo "(($NO-1)*95)/100" | bc -l)
+  NFQ=$(scale=3; echo "(($NO-1)*$PCT)/100" | bc -l)
   NFQL=${NFQ%.*}; NFQR=$((NFQL+1)); NFQF=0.${NFQ#*.}
   #echo "DEBUG 95%: $NFQ $NFQL $NFR $NFQF"
   if test $NO = 1; then NFP=${SLIST[$NFQL]}; else
@@ -2602,7 +2610,7 @@ stats()
   if test -n "$MACHINE"; then
     echo "#$NM: $NO|$MIN|$MED|$AVG|$NFP|$MAX" | tee -a $LOGFILE
   else
-    echo "$NAME: Num $NO Min $MIN Med $MED Avg $AVG 95% $NFP Max $MAX" | tee -a $LOGFILE
+    echo "$NAME: Num $NO Min $MIN Med $MED Avg $AVG $PCT% $NFP Max $MAX" | tee -a $LOGFILE
   fi
 }
 
@@ -2616,6 +2624,12 @@ allstats()
  stats $1 VMCSTATS   0 "VM Creation Stats "
  if test -n "$LOADBALANCER"; then
    stats $1 LBCSTATS   0 "LB Creation Stats "
+ fi
+ if test -n "$BCBENCH"; then
+   stats $1 PITIME   1 "Calc PI 4k Stats    "
+ fi
+ if test -n "$IPERF"; then
+   stats $1 PITIME   1 "Bandwidth Stats     " 5
  fi
  stats $1 VMDSTATS   0 "VM Deletion Stats "
  stats $1 VOLSTATS   2 "Cinder CLI Stats  "
@@ -2975,6 +2989,9 @@ declare -a VMCDTATS
 
 declare -a TOTTIME
 declare -a WAITTIME
+
+declare -a PITIME
+declare -a BANDWIDTH
 
 declare -i CUMPINGERRORS=0
 declare -i CUMLBERRORS=0
