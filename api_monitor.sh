@@ -975,28 +975,6 @@ colstat()
   return 0
 }
 
-# Wait for a resource to have a desired status
-# $1 = id to extract
-# $2 = wanted status
-# $3 = timeout for command (in s)
-# $4 = max wait time
-# $5-oo => command
-waitSingleResource()
-{
-  STAT=""
-  ID="$1"; WANTED="$2" CMDTO=$3; MAXW=$4
-  shift; shift; shift; shift
-  ITER=0
-  while test "$STAT" != "$WANTED" -a $ITER -lt $MAXW; do
-    sleep 1
-    let ITER+=1
-    ITRESP=$(ostackcmd_id $ID $CMDTO "$@")
-    if test "$?" != "0"; then continue; fi
-    read STAT TM ST <<<"$ITRESP"
-  done
-  if test "$STAT" == "$WANTED"; then return 0; else return 1; fi
-}
-
 
 # Wait for resources reaching a desired state
 # $1 => name of timing statistics array
