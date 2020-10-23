@@ -1986,6 +1986,8 @@ orderVMs()
   done
 }
 
+if [[ "$IMG" = "openSUSE"* ]] || [[ "$IMG" = "SLES"* ]]; then IPERF3=iperf; else IPERF3=iperf3; fi
+
 # Create many VMs with one API call (option -D)
 createVMsAll()
 {
@@ -1996,7 +1998,7 @@ createVMsAll()
   if test -n "$LOADBALANCER"; then
     #echo -e "packages:\n  - thttpd\nruncmd:\n  - hostname > /srv/www/htdocs/hostname\n  - systemctl start thttpd\n  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl restart SuSEfirewall2" >> $UDTMP
     # This only requires python3
-    echo -e "packages:\n  - python3\n  - iperf3\n  - iperf\nruncmd:\n  - mkdir -p /var/run/www/htdocs\n  - hostname > /var/run/www/htdocs/hostname\n  - cd /var/run/www/htdocs && python3 -m http.server 80 &" >> $UDTMP
+    echo -e "packages:\n  - python3\n  - $IPERF3\nruncmd:\n  - mkdir -p /var/run/www/htdocs\n  - hostname > /var/run/www/htdocs/hostname\n  - cd /var/run/www/htdocs && python3 -m http.server 80 &" >> $UDTMP
     if [[ "$IMG" = "openSUSE"* ]]; then
       echo -e "  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http targus-getdata1"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl status SuSEfirewall2 && systemctl restart SuSEfirewall2" >> $UDTMP
     fi
