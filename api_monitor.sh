@@ -2584,7 +2584,7 @@ stats()
   eval LIST=( \"\${${1}[@]}\" )
   if test -z "${LIST[*]}"; then return; fi
   DIG=${2:-2}
-  PCT=${3:-95}
+  PCT=${4:-95}
   OLDIFS="$IFS"
   IFS=$'\n' SLIST=($(sort -n <<<"${LIST[*]}"))
   IFS="$OLDIFS"
@@ -2626,10 +2626,10 @@ allstats()
    stats $1 LBCSTATS   0 "LB Creation Stats "
  fi
  if test -n "$BCBENCH"; then
-   stats $1 PITIME   1 "Calc PI 4k Stats    "
+   stats $1 PITIME     1 "Calc PI 4k Stats  "
  fi
  if test -n "$IPERF"; then
-   stats $1 PITIME   1 "Bandwidth Stats     " 5
+   stats $1 BANDWIDTH  0 "Bandwidth Stats   " 5
  fi
  stats $1 VMDSTATS   0 "VM Deletion Stats "
  stats $1 VOLSTATS   2 "Cinder CLI Stats  "
