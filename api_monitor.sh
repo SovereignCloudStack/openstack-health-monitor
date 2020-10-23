@@ -975,6 +975,28 @@ colstat()
   return 0
 }
 
+# Wait for a resource to have a desired status
+# $1 = id to extract
+# $2 = wanted status
+# $3 = timeout for command (in s)
+# $4 = max wait time
+# $5-oo => command
+waitSingleResource()
+{
+  STAT=""
+  ID="$1"; WANTED="$2" CMDTO=$3; MAXW=$4
+  shift; shift; shift; shift
+  ITER=0
+  while test "$STAT" != "$WANTED" -a $ITER -lt $MAXW; do
+    sleep 1
+    let ITER+=1
+    ITRESP=$(ostackcmd_id $ID $CMDTO "$@")
+    if test "$?" != "0"; then continue; fi
+    read STAT TM ST <<<"$ITRESP"
+  done
+  if test "$STAT" == "$WANTED"; then return 0; else return 1; fi
+}
+
 
 # Wait for resources reaching a desired state
 # $1 => name of timing statistics array
@@ -1894,13 +1916,10 @@ testLBs()
   echo -n "LBaaS2 "
   createResources 1 NETSTATS POOL LBAAS NONE "" id $NETTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol HTTP --lb-algorithm=ROUND_ROBIN --session-persistence type=HTTP_COOKIE --loadbalancer ${LBAASS[0]} # --wait
   let ERR+=$?
-  echo -n " $ST "
-  if test "$ST" != "ACTIVE"; then sleep 3; fi
+  waitlistResources NETSTATS POOL NONE NONE "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-pool-list
   createResources 1 NETSTATS LISTENER POOL LBAAS "" id $NETTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
   let ERR+=$?
-  echo -n " $ST "
-  if test "$ST" != "ACTIVE"; then sleep 4; fi
-  echo -n " "
+  waitlistResources NETSTATS LISTENER NONE NONE "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-listener-list
   createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   let ERR+=$?
   # TODO: Implement health monitors?
