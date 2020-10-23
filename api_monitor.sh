@@ -2558,7 +2558,7 @@ EOT
     echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL"
     if test -n "$LOGFILE"; then echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
     BANDWIDTH+=($SENDBW $RECVBW)
-    if test -n "$GRAFANA" != 0; then
+    if test -n "$GRAFANA"; then
       curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=s$VM duration=$SENDBW,return_code=0 $(date +%s%N)" >/dev/null
       curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=r$VM duration=$RECVBW,return_code=0 $(date +%s%N)" >/dev/null
     fi
