@@ -656,12 +656,15 @@ translate()
     elif test "$C1" == "lbaas loadbalancer"; then
       OSTACKCMD=(openstack loadbalancer $CMD $@)
     elif test "$C1" == "lbaas pool"; then
-      OSTACKCMD=(openstack loadbalancer pool $CMD --wait $@)
+      #OSTACKCMD=(openstack loadbalancer pool $CMD --wait $@)
+      OSTACKCMD=(openstack loadbalancer pool $CMD $@)
     elif test "$C1" == "lbaas listener"; then
       ARGS=$(echo "$@" | sed 's/--loadbalancer //')
-      OSTACKCMD=(openstack loadbalancer listener $CMD --wait $ARGS)
+      #OSTACKCMD=(openstack loadbalancer listener $CMD --wait $ARGS)
+      OSTACKCMD=(openstack loadbalancer listener $CMD $ARGS)
     elif test "$C1" == "lbaas member"; then
-      OSTACKCMD=(openstack loadbalancer member $CMD --wait $@)
+      #OSTACKCMD=(openstack loadbalancer member $CMD --wait $@)
+      OSTACKCMD=(openstack loadbalancer member $CMD $@)
     fi
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
   fi
@@ -733,7 +736,7 @@ ostackcmd_search()
 # $2 = timeout (in s)
 # $3-oo => command
 # Return value: Error from command
-# Output: "TIME ID"
+# Output: "TIME ID STATUS"
 ostackcmd_id()
 {
   local IDNM=$1; shift
@@ -761,15 +764,17 @@ ostackcmd_id()
     sendalarm $RC "$*" "$RESP" $TIMEOUT
     errwait $ERRWAIT
   fi
+  STATUS=$(echo "$RESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
+  if test -z "$STATUS"; then STATUS=$(echo "$RESP" | grep "^| *provisioning_status *|" | sed -e "s/^| *provisioning_status *| *\([^|]*\).*\$/\1/" -e 's/ *$//'); fi
   if test "$IDNM" = "DELETE"; then
-    ID=$(echo "$RESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
-    echo "$LSTART/$LEND/$ID: ${OSTACKCMD[@]} => $RC $RESP" >> $LOGFILE
+    ID="$STATUS"
+    echo "$LSTART/$LEND/$ID/$STATUS: ${OSTACKCMD[@]} => $RC $RESP" >> $LOGFILE
   else
     ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed -e "s/^| *$IDNM *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
-    echo "$LSTART/$LEND/$ID: ${OSTACKCMD[@]} => $RC $RESP" >> $LOGFILE
+    echo "$LSTART/$LEND/$ID/$STATUS: ${OSTACKCMD[@]} => $RC $RESP" >> $LOGFILE
     if test "$RC" != "0" -a -z "$IGNORE_ERRORS"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; return $RC; fi
   fi
-  echo "$TIM $ID"
+  echo "$TIM $ID $STATUS"
   return $RC
 }
 
@@ -823,6 +828,7 @@ ostackcmd_tm()
   return $RC
 }
 
+ST=""
 # Create a number of resources and keep track of them
 # $1 => quantity of resources
 # $2 => name of timing statistics array
@@ -870,7 +876,7 @@ createResources()
     #echo "DEBUG: ostackcmd_id $CMD => $RC" 1>&2
     updAPIerr $RC
     local TM
-    read TM ID <<<"$TIRESP"
+    read TM ID ST <<<"$TIRESP"
     if test $RC == 0; then eval ${STATNM}+="($TM)"; fi
     let ctr+=1
     # Workaround for teuto.net
@@ -923,7 +929,7 @@ deleteResources()
       let IGNERRS+=$RC
       RC=0
     fi
-    read TM ID <<<"$TIRESP"
+    read TM ID ST <<<"$TIRESP"
     if test $RC != 0; then
       echo -e "${YELLOW}ERROR deleting $RNM $rsrc; retry and continue ...$NORM" 1>&2
       let ERR+=1
@@ -1009,7 +1015,7 @@ waitResources()
       local RC=$?
       updAPIerr $RC
       local TM STAT
-      read TM STAT <<<"$TIRESP"
+      read TM STAT ST <<<"$TIRESP"
       eval ${STATNM}+="( $TM )"
       if test $RC != 0; then echo -e "\n${YELLOW}ERROR: Querying $RNM $rsrc failed$NORM" 1>&2; return 1; fi
       STATI[$i]=$STAT
@@ -1177,7 +1183,7 @@ waitdelResources()
   local STATI=()
   local LAST=$(( ${#RLIST[@]} - 1 ))
   local STATI=()
-  local RESP
+  local TIRESP
   #echo "waitdelResources $STATNM $RNM $DSTAT $DTIME - ${RLIST[*]} - ${DLIST[*]}"
   declare -i ctr=0
   while test -n "${DLIST[*]}"i -a $ctr -le 320; do
@@ -1187,11 +1193,11 @@ waitdelResources()
       if test -z "${DLIST[$i]}"; then STATSTR+=$(colstat "${STATI[$i]}" "XDELX" ""); continue; fi
       local CMD=`eval echo $@ $rsrc`
       let APICALLS+=1
-      RESP=$(ostackcmd_id DELETE $TIMEOUT $CMD)
+      TIRESP=$(ostackcmd_id DELETE $TIMEOUT $CMD)
       local RC=$?
       updAPIerr $RC
       local TM STAT
-      read TM STAT <<<"$RESP"
+      read TM STAT ST <<<"$TIRESP"
       eval ${STATNM}+="( $TM )"
       if test $RC != 0; then
         TM=$(date +%s)
@@ -1257,7 +1263,7 @@ showResources()
     let APICALLS+=1
     RESP=$(ostackcmd_id id $TIMEOUT $@ $rsrc)
     updAPIerr $?
-    #read TM ID <<<"$RESP"
+    #read TM ID ST <<<"$RESP"
   done
 }
 
@@ -1346,7 +1352,7 @@ deleteRIfaces()
     echo -n " "
   fi
   deleteResources NETSTATS SUBNET "" $FIPTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
-  echo -n " "
+  if test -n "$JHSUBNETS"; then echo -n " "; fi
   deleteResources NETSTATS JHSUBNET "" $FIPTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
 }
 
@@ -1366,64 +1372,64 @@ createSGroups()
   #RESP=$(ostackcmd_id id neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG0 $SG0)
   RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-ip-prefix $JHSUBNETIP $SG0)
   updAPIerr $?
-  read TM ID <<<"$RESP"
+  read TM ID ST <<<"$RESP"
   NETSTATS+=( $TM )
   #RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG0 $SG0)
   #updAPIerr $?
-  #read TM ID <<<"$RESP"
+  #read TM ID ST <<<"$RESP"
   #NETSTATS+=( $TM )
   # Configure SGs: Internal ingress allowed
   RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG1)
   updAPIerr $?
-  read TM ID <<<"$RESP"
+  read TM ID ST <<<"$RESP"
   NETSTATS+=( $TM )
   RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv6 --remote-group-id $SG1 $SG1)
   updAPIerr $?
-  read TM ID <<<"$RESP"
+  read TM ID ST <<<"$RESP"
   NETSTATS+=( $TM )
   # Configure RPRE_SG_JumpHost rule: All from the other group, port 22 and 222- from outside
   RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --remote-group-id $SG1 $SG0)
   updAPIerr $?
-  read TM ID <<<"$RESP"
+  read TM ID ST <<<"$RESP"
   NETSTATS+=( $TM )
   RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
   updAPIerr $?
-  read TM ID <<<"$RESP"
+  read TM ID ST <<<"$RESP"
   NETSTATS+=( $TM )
   RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max $((222+($NOVMS-1)/$NOAZS)) --remote-ip-prefix 0/0 $SG0)
   updAPIerr $?
-  read TM ID <<<"$RESP"
+  read TM ID ST <<<"$RESP"
   NETSTATS+=( $TM )
   RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
   updAPIerr $?
-  read TM ID <<<"$RESP"
+  read TM ID ST <<<"$RESP"
   NETSTATS+=( $TM )
   # Configure RPRE_SG_Internal rule: ssh (and https) and ping from the other group
   #RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-group-id $SG0 $SG1)
   RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix $JHSUBNETIP $SG1)
   updAPIerr $?
-  read TM ID <<<"$RESP"
+  read TM ID ST <<<"$RESP"
   NETSTATS+=( $TM )
   #RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-group-id $SG0 $SG1)
   #RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 443 --port-range-max 443 --remote-ip-prefix $JHSUBNETIP $SG1)
   #updAPIerr $?
-  #read TM ID <<<"$RESP"
+  #read TM ID ST <<<"$RESP"
   #NETSTATS+=( $TM )
   #RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-group-id $SG0 $SG1)
   RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix $JHSUBNETIP $SG1)
   updAPIerr $?
-  read TM ID <<<"$RESP"
+  read TM ID ST <<<"$RESP"
   NETSTATS+=( $TM )
   if test -n "$LOADBALANCER"; then
     RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 80 --port-range-max 80 --remote-ip-prefix $JHSUBNETIP $SG1)
     updAPIerr $?
-    read TM ID <<<"$RESP"
+    read TM ID ST <<<"$RESP"
     NETSTATS+=( $TM )
   fi  
   if test -n "$IPERF"; then
     RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 5201 --port-range-max 5201 --remote-ip-prefix $JHSUBNETIP $SG1)
     updAPIerr $?
-    read TM ID <<<"$RESP"
+    read TM ID ST <<<"$RESP"
     NETSTATS+=( $TM )
   fi
   #neutron security-group-show $SG0
@@ -1467,7 +1473,7 @@ createJHPorts()
     RESP=$(ostackcmd_id id $NETTIMEOUT neutron port-update ${JHPORTS[$i]} --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1)
     RC=$?
     updAPIerr $RC
-    read TM ID <<<"$RESP"
+    read TM ID ST <<<"$RESP"
     NETSTATS+=( $TM )
     if test $RC != 0; then echo -e "${YELLOW}ERROR: Failed setting allowed-adr-pair for port ${JHPORTS[$i]}$NORM" 1>&2; return 1; fi
   done
@@ -1598,7 +1604,7 @@ createFIPs()
   # Find out whether the router does SNAT ...
   RESP=$(ostackcmd_id external_gateway_info $NETTIMEOUT neutron router-show ${ROUTERS[0]})
   updAPIerr $?
-  read TM EXTGW <<<"$RESP"
+  read TM EXTGW ST <<<"$RESP"
   NETSTATS+=( $TM )
   SNAT=$(echo $EXTGW | sed 's/^[^,]*, "enable_snat": \([^ }]*\).*$/\1/')
   if test "$SNAT" = "false"; then
@@ -1738,7 +1744,7 @@ $RD
 "
     fi
     if test -n "$BCBENCH"; then USERDATA="${USERDATA}runcmd:
-  - echo "$scale=4000; 4*a(1)" | | bc -l >/dev/null 2>/tmp/bcbench.txt
+  - \"{ TIMEFORMAT=%R; time echo 'scale=4000; 4*a(1)' | bc -l; } >/dev/null 2>/tmp/bcbench.txt\"
 "
     fi
     echo "$USERDATA" > ${RPRE}user_data_JH.yaml
@@ -1888,9 +1894,12 @@ testLBs()
   echo -n "LBaaS2 "
   createResources 1 NETSTATS POOL LBAAS NONE "" id $NETTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol HTTP --lb-algorithm=ROUND_ROBIN --session-persistence type=HTTP_COOKIE --loadbalancer ${LBAASS[0]} # --wait
   let ERR+=$?
-  echo -n " "
-  createResources 1 NETSTATS LISTENER POOL LBAAS "" id $NETTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]}
+  echo -n " $ST "
+  if test "$ST" != "ACTIVE"; then sleep 3; fi
+  createResources 1 NETSTATS LISTENER POOL LBAAS "" id $NETTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
   let ERR+=$?
+  echo -n " $ST "
+  if test "$ST" != "ACTIVE"; then sleep 3; fi
   echo -n " "
   createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   let ERR+=$?
@@ -1991,12 +2000,12 @@ createVMsAll()
   if test -n "$LOADBALANCER"; then
     #echo -e "packages:\n  - thttpd\nruncmd:\n  - hostname > /srv/www/htdocs/hostname\n  - systemctl start thttpd\n  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl restart SuSEfirewall2" >> $UDTMP
     # This only requires python3
-    echo -e "packages:\n  - python3\n  - iperf3\nruncmd:\n  - mkdir -p /var/run/www/htdocs\n  - hostname > /var/run/www/htdocs/hostname\n  - cd /var/run/www/htdocs && python3 -m http.server 80 &" >> $UDTMP
+    echo -e "packages:\n  - python3\n  - iperf\nruncmd:\n  - mkdir -p /var/run/www/htdocs\n  - hostname > /var/run/www/htdocs/hostname\n  - cd /var/run/www/htdocs && python3 -m http.server 80 &" >> $UDTMP
     if [[ "$IMG" = "openSUSE"* ]]; then
       echo -e "  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http targus-getdata1"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl status SuSEfirewall2 && systemctl restart SuSEfirewall2" >> $UDTMP
     fi
     if test -n "$IPERF"; then
-      echo -e "  - iperf3 -s" >> $UDTMP
+      echo -e "  - iperf3 -Ds" >> $UDTMP
     fi
   fi
   declare -a STMS
@@ -2296,7 +2305,10 @@ testlsandping()
   ERR=$PING
   #sleep 1
   #PING=$(ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 9.9.9.9 >/dev/null 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
-  #RC=$?
+  if test -n "$BCBENCH"; then
+    BENCH=$(ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 cat /tmp/bcbench.txt 2>&1; exit ${PIPESTATUS[0]})
+    #RC=$?
+  fi
   if test $RC != 0; then return 1; else return 0; fi
 }
 
@@ -2340,6 +2352,11 @@ testjhinet()
     if test -n "$ERR"; then echo -e "RC=0 but $RED $ERR $NORM"; fi
   else
      echo -e "$RED FAIL $ERR $NORM ($(($(date +%s)-$ST))s)"
+  fi
+  if test -n "$BENCH"; then
+     echo "Benchmark (4000digits pi): $BENCH s"
+     echo "Benchmark (4000digits pi): $BENCH s" >> $LOGFILE
+     curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=4000pi,method=JHVM$JHNO duration=$BENCH,return_code=0 $(date +%s%N)" >/dev/null
   fi
   return $RC
 }
@@ -2483,6 +2500,27 @@ $PINGRES"
   done
   rm ${RPRE}ping
   return $RC
+}
+
+# Do iperf3 tests
+iperf3test()
+{
+  # Do tests from 2nd host in 1st net and connect to 1st hosts in 1st/2nd/... net
+  for VM in $(seq 0 $((NONETS-1))); do
+    TGT=${IPS[$VM]}
+    red=${REDIRS[0]}
+    red=$(echo "$red" | cut -d " " -f 2)
+    pno=${red#*tcp,}
+    pno=${pno%%,*}
+    if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} iperf3 -t5 -J -c $TGT)" >> $LOGFILE; fi
+    IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[0]} iperf3 -t5 -J -c $TGT)
+    if test -n "$LOGFILE"; then echo "$IPJSON" >> $LOGFILE; fi
+    SENDBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_sent.bits_per_second'))/1048576))
+    RECVBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_received.bits_per_second'))/1048576))
+    HUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.host_total'))
+    RUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.remote_total'))
+    echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECBW Mbps $HTUIL $RUTIL"
+  done
 }
 
 # [-m] STATLIST [DIGITS [NAME]]
@@ -3097,7 +3135,7 @@ else # test "$1" = "DEPLOY"; then
   if test -n "$USER" -a "$USER" != "null"; then DEFLTUSER="$USER"; fi
  fi
  #let APICALLS+=2
- echo "Using images $IMG $VOLSIZE $DEFLTUSER $JHIMG $JHVOLSIZE $JHDEFLTUSER"
+ echo "Using images JH ($JHVOLSIZE GB) $JHDEFLTUSER@$JHIMG, VM ($VOLSIZE GB) $DEFLTUSER@$IMG"
  if createRouters; then
   if createNets; then
    if createSubNets; then
@@ -3189,6 +3227,7 @@ else # test "$1" = "DEPLOY"; then
                       errwait $ERRWAIT
                     fi
                   fi
+		  if test -n "$IPERF"; then iperf3test; fi
                 fi
                 # TODO: Create disk ... and attach to JH VMs ... and test access
                 # TODO: Attach additional net interfaces to JHs ... and test IP addr
