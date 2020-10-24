@@ -300,7 +300,7 @@ while test -n "$1"; do
     "-i") MAXITER=$2; shift;;
     "-g") ADDVMVOLSIZE=$2; shift;;
     "-G") ADDJHVOLSIZE=$2; shift;;
-    "-w") ERRWAIT=$2; shift;;
+    "-w") ERRWAIT=$2; VMERRWAIT=$2; shift;;
     "-W") VMERRWAIT=$2; shift;;
     "-V") SUCCWAIT=$2; shift;;
     "-f") FORCEDEL=XDELX;;
@@ -1073,6 +1073,7 @@ waitlistResources()
   local NERR=0
   shift; shift; shift; shift; shift; shift; shift
   local TIMEOUT=$1; shift
+  #echo "waitListResource $STATNM $RNM $COMP1 $COL $@"
   #if test $TIMEOUTFACT -gt 1; then let TIMEOUT+=2; fi
   local STATI=()
   eval local RLIST=( \"\${${RNM}S[@]}\" )
@@ -1520,7 +1521,7 @@ createJHVols()
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
 waitJHVols()
 {
-  #waitResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" "status" cinder show
+  #waitResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" "status" $CINDERTIMEOUT cinder show
   waitlistResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" $VOLSTATCOL $CINDERTIMEOUT cinder list
   handleWaitErr VOLSTATS $CINDERTIMEOUT cinder show
 }
@@ -1541,7 +1542,7 @@ createVols()
 waitVols()
 {
   if test -n "$BOOTFROMIMAGE"; then return 0; fi
-  #waitResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" "status" cinder show
+  #waitResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" "status" $CINDERTIMEOUT cinder show
   waitlistResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" $VOLSTATCOL $CINDERTIMEOUT cinder list
   handleWaitErr VOLSTATS $CINDERTIMEOUT cinder show
 }
@@ -1743,10 +1744,6 @@ $RD
       eth0: $VIP
 "
     fi
-    if test -n "$BCBENCH"; then USERDATA="${USERDATA}runcmd:
-  - \"{ TIMEFORMAT=%R; time echo 'scale=4000; 4*a(1)' | bc -l; } >/dev/null 2>/tmp/bcbench.txt\"
-"
-    fi
     echo "$USERDATA" > ${RPRE}user_data_JH.yaml
     cat ${RPRE}user_data_JH.yaml >> $LOGFILE
     createResources 1 NOVABSTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[$JHNUM]} --key-name ${KEYPAIRS[0]} --user-data ${RPRE}user_data_JH.yaml --availability-zone ${AZS[$(($JHNUM%$NOAZS))]} --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[$JHNUM]} ${RPRE}VM_JH$JHNUM || return
@@ -1883,7 +1880,7 @@ deleteLBs()
 waitLBs()
 {
   #echo "Wait for LBs ${LBAASS[*]} ..."
-  #waitResources NETSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NA" "provisioning_status" neutron lbaas-loadbalancer-show
+  #waitResources NETSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NA" "provisioning_status" $NETTIMEOUT neutron lbaas-loadbalancer-show
   waitlistResources NETSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
   handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show
 }
@@ -1895,9 +1892,11 @@ testLBs()
   createResources 1 NETSTATS POOL LBAAS NONE "" id $NETTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol HTTP --lb-algorithm=ROUND_ROBIN --session-persistence type=HTTP_COOKIE --loadbalancer ${LBAASS[0]} # --wait
   let ERR+=$?
   waitlistResources NETSTATS POOL NONE NONE "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-pool-list
+  handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-pool-show
   createResources 1 NETSTATS LISTENER POOL LBAAS "" id $NETTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
   let ERR+=$?
-  waitlistResources NETSTATS LISTENER NONE NONE "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-listener-list
+  waitResources NETSTATS LISTENER NONE NONE "ACTIVE" "NONONO" "provisioning_status" $NETTIMEOUT neutron lbaas-listener-show
+  handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-listener-show
   createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   let ERR+=$?
   # TODO: Implement health monitors?
@@ -1943,7 +1942,7 @@ cleanLBs()
 
 waitJHVMs()
 {
-  #waitResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NA" "status" nova show
+  #waitResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NA" "status" $NOVATIMEOUT nova show
   waitlistResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
   handleWaitErr NOVASTATS $NOVATIMEOUT nova show
 }
@@ -1987,6 +1986,8 @@ orderVMs()
   done
 }
 
+if [[ "$IMG" = "openSUSE"* ]] || [[ "$IMG" = "SLES"* ]]; then IPERF3=iperf; else IPERF3=iperf3; fi
+
 # Create many VMs with one API call (option -D)
 createVMsAll()
 {
@@ -1997,7 +1998,7 @@ createVMsAll()
   if test -n "$LOADBALANCER"; then
     #echo -e "packages:\n  - thttpd\nruncmd:\n  - hostname > /srv/www/htdocs/hostname\n  - systemctl start thttpd\n  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl restart SuSEfirewall2" >> $UDTMP
     # This only requires python3
-    echo -e "packages:\n  - python3\n  - iperf\nruncmd:\n  - mkdir -p /var/run/www/htdocs\n  - hostname > /var/run/www/htdocs/hostname\n  - cd /var/run/www/htdocs && python3 -m http.server 80 &" >> $UDTMP
+    echo -e "packages:\n  - python3\n  - $IPERF3\nruncmd:\n  - mkdir -p /var/run/www/htdocs\n  - hostname > /var/run/www/htdocs/hostname\n  - cd /var/run/www/htdocs && python3 -m http.server 80 &" >> $UDTMP
     if [[ "$IMG" = "openSUSE"* ]]; then
       echo -e "  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http targus-getdata1"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl status SuSEfirewall2 && systemctl restart SuSEfirewall2" >> $UDTMP
     fi
@@ -2057,7 +2058,7 @@ createVMs()
 # Wait for VMs to get into active state
 waitVMs()
 {
-  #waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" nova show
+  #waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" $NOVATIMEOUT nova show
   waitlistResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
   handleWaitErr NOVASTATS $NOVATIMEOUT nova show
 }
@@ -2269,8 +2270,9 @@ testlsandping()
       echo "ssh -i $1.pem $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ls" >> $LOGFILE
     fi
     # no user_data on JumpHosts
-    ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=12" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 4;
-    ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=20" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1; } || return 2
+    ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 8;
+    ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n "........"; sleep 16;
+    ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=20" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1; }; } || return 2
   else
     if test -n "$LOGFILE"; then
       echo "ssh -i $1.pem $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}[$4]" >> $LOGFILE
@@ -2278,10 +2280,10 @@ testlsandping()
     # Test whether user_data file injection worked
     if test -n "$BOOTALLATONCE"; then
       # no indiv user data per VM when mass booting ...
-      ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "o"; sleep 2;
+      ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "o"; sleep 4;
       ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || return 2
     else
-      ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "O"; sleep 2;
+      ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "O"; sleep 4;
       ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || return 2
     fi
   fi
@@ -2309,7 +2311,15 @@ EOT
     rm ${RPRE}wait
     if test -n "$LOGFILE"; then echo "ssh -i $1.pem $pport -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 cat /tmp/bcbench.txt" >> $LOGFILE; fi
     #sleep 10
-    BENCH=$(ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 "./${RPRE}wait /tmp/bcbench; cat /tmp/bcbench.txt 2>&1"; exit ${PIPESTATUS[0]})
+    BENCH=$(ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 "./${RPRE}wait /usr/bin/bc; { TIMEFORMAT=%R; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
+    # Handle GNU time output format
+    if echo "$BENCH" | grep elapsed >/dev/null 2>&1; then
+      BENCH=$(echo "$BENCH" | grep elapsed)
+      BENCH=$(echo "$BENCH" | sed 's/^.* \([0-9:\.]*\)elapsed.*$/\1/')
+      MIN=${BENCH%:*}
+      BENCH=${BENCH##*:}
+      BENCH=$((MIN*60+${BENCH%.*})).${BENCH##*.}
+    fi
     #RC=$?
   fi
   if test $RC = 0; then return 0; fi
@@ -2371,7 +2381,7 @@ testjhinet()
   if test -n "$BENCH"; then
      echo "Benchmark (4000digits pi): $BENCH s"
      echo "Benchmark (4000digits pi): $BENCH s" >> $LOGFILE
-     if test -n "$GRAFANA" != 0; then
+     if test -n "$GRAFANA"; then
        curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=4000pi,method=JHVM$JHNO duration=$BENCH,return_code=0 $(date +%s%N)" >/dev/null
      fi
      PITIME+=($BENCH)
