@@ -1890,11 +1890,15 @@ testLBs()
   local ERR=0
   echo -n "LBaaS2 "
   createResources 1 NETSTATS POOL LBAAS NONE "" id $NETTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol HTTP --lb-algorithm=ROUND_ROBIN --session-persistence type=HTTP_COOKIE --loadbalancer ${LBAASS[0]} # --wait
-  let ERR+=$?
+  RC=$?
+  let ERR+=$RC
+  if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   waitlistResources NETSTATS POOL NONE NONE "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-pool-list
   handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-pool-show
   createResources 1 NETSTATS LISTENER POOL LBAAS "" id $NETTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
-  let ERR+=$?
+  RC=$?
+  let ERR+=$RC
+  if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   waitResources NETSTATS LISTENER NONE NONE "ACTIVE" "NONONO" "provisioning_status" $NETTIMEOUT neutron lbaas-listener-show
   handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-listener-show
   # FIXME: We still get those occasional LB immutable errors -- how can we avoid this?
@@ -1921,7 +1925,6 @@ testLBs()
     RC=$?
     echo -n " $ANS"
     if test $RC != 0; then
-      let LBERRORS+=1
       let ERR+=1
       errwait $ERRWAIT
     fi
@@ -1932,6 +1935,7 @@ testLBs()
     if test -n "$EXITERR"; then exit 3; fi
   fi
   # TODO: With health monitors, we could now retry after killing a few instances' http server ...
+  LBERRORS+=$ERR
   return $ERR
 }
 
@@ -2559,6 +2563,7 @@ EOT
   pno=${pno%%,*}
   scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -i ${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
   rm ${RPRE}wait
+  echo -n "IPerf3 tests (${IPS[$NONET]}): "
   for VM in $(seq 0 $((NONETS-1))); do
     TGT=${IPS[$VM]}
     if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[0]} iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
@@ -2569,7 +2574,7 @@ EOT
     RECVBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_received.bits_per_second'))/1048576))
     HUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.host_total'))
     RUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.remote_total'))
-    echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL"
+    echo -en "${TGT}: $SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL\n "
     if test -n "$LOGFILE"; then echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
     BANDWIDTH+=($SENDBW $RECVBW)
     if test -n "$GRAFANA"; then
