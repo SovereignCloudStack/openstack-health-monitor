@@ -2011,7 +2011,7 @@ createVMsAll()
     # This only requires python3
     echo -e "packages:\n  - python3\n  - $IPERF3\nruncmd:\n  - mkdir -p /var/run/www/htdocs\n  - hostname > /var/run/www/htdocs/hostname\n  - cd /var/run/www/htdocs && python3 -m http.server 80 &" >> $UDTMP
     if [[ "$IMG" = "openSUSE"* ]]; then
-      echo -e "  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http targus-getdata1"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl status SuSEfirewall2 && systemctl restart SuSEfirewall2" >> $UDTMP
+      echo -e "  - sed -i 's/FW_SERVICES_EXT_TCP=\"\"/FW_SERVICES_EXT_TCP=\"http targus-getdata1\"/' /etc/sysconfig/SuSEfirewall2\n  - \"systemctl status SuSEfirewall2 && systemctl restart SuSEfirewall2\"" >> $UDTMP
     fi
     if test -n "$IPERF"; then
       echo -e "  - iperf3 -Ds" >> $UDTMP
