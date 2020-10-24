@@ -1898,6 +1898,7 @@ testLBs()
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   waitlistResources NETSTATS POOL NONE NONE "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-pool-list
   handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-pool-show
+  sleep 1
   createResources 1 NETSTATS LISTENER POOL LBAAS "" id $NETTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
   RC=$?
   let ERR+=$RC
@@ -1946,12 +1947,15 @@ cleanLBs()
 {
   echo -n "LBaaS2 "
   deleteResources NETSTATS MEMBER "" $NETTIMEOUT neutron lbaas-member-delete ${POOLS[0]}
+  # FIXME: Wait until they're gone
+  sleep 1
   echo -n " "
   deleteResources NETSTATS LISTENER "" $NETTIMEOUT neutron lbaas-listener-delete
-  echo -n " "
-  deleteResources NETSTATS POOL "" $NETTIMEOUT neutron lbaas-pool-delete
+  # Delete FIP first, so no sleep waiting for listener been gone
   echo -n " "
   deleteResources FIPSTATS LBFIP "" $NETTIMEOUT neutron floating-ip-delete
+  echo -n " "
+  deleteResources NETSTATS POOL "" $NETTIMEOUT neutron lbaas-pool-delete
 }
 
 waitJHVMs()
