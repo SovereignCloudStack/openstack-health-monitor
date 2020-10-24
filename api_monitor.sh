@@ -1921,14 +1921,16 @@ testLBs()
     RC=$?
     echo -n " $ANS"
     if test $RC != 0; then
-      sendalarm 2 "No response from LB $LBIP port 80" "$RC" 4
-      if test -n "$EXITERR"; then exit 3; fi
       let LBERRORS+=1
       let ERR+=1
       errwait $ERRWAIT
     fi
   done
   echo
+  if test $ERR != 0; then
+    sendalarm 2 "Errors connecting to LB $LBIP port 80" "$ERR" 4
+    if test -n "$EXITERR"; then exit 3; fi
+  fi
   # TODO: With health monitors, we could now retry after killing a few instances' http server ...
   return $ERR
 }
