@@ -884,6 +884,9 @@ createResources()
     if test $RC != 0; then echo -e "${YELLOW}ERROR: $RNM creation failed$NORM" 1>&2; return 1; fi
     if test -n "$ID" -a "$RNM" != "NONE"; then echo -n "$ID "; fi
     eval ${RNM}S+="($ID)"
+    # Workaround for loadbalancer member create
+    echo -n "$ST "
+    if test "$ST" = "PENDING_CREATE"; then sleep 1; fi
   done
   if test "$RNM" != "NONE"; then echo; fi
 }
@@ -1890,26 +1893,34 @@ testLBs()
   local ERR=0
   echo -n "LBaaS2 "
   createResources 1 NETSTATS POOL LBAAS NONE "" id $NETTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol HTTP --lb-algorithm=ROUND_ROBIN --session-persistence type=HTTP_COOKIE --loadbalancer ${LBAASS[0]} # --wait
-  let ERR+=$?
+  RC=$?
+  let ERR+=$RC
+  if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   waitlistResources NETSTATS POOL NONE NONE "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-pool-list
   handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-pool-show
   createResources 1 NETSTATS LISTENER POOL LBAAS "" id $NETTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
-  let ERR+=$?
+  RC=$?
+  let ERR+=$RC
+  if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   waitResources NETSTATS LISTENER NONE NONE "ACTIVE" "NONONO" "provisioning_status" $NETTIMEOUT neutron lbaas-listener-show
   handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-listener-show
-  createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
-  let ERR+=$?
-  # TODO: Implement health monitors?
+  # FIXME: We still get those occasional LB immutable errors -- how can we avoid this?
+  # For now push member creation after FIP allocation
   # Assign a FIP to the LB
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show ${LBAASS[0]} -f value -c vip_port_id
   let ERR+=$?
   LBPORT=$OSTACKRESP
-  echo -n " Attach FIP to LB port $LBPORT: "
+  echo -n "Attach FIP to LB port $LBPORT: "
   ostackcmd_tm FIPSTATS $FIPTIMEOUT neutron floating-ip-create --port $LBPORT $EXTNET
   let ERR+=$?
   LBIP=$(echo "$OSTACKRESP" | grep ' floating_ip_address ' | sed 's/^|[^|]*| *\([a-f0-9:\.]*\).*$/\1/')
   LBFIPS=( $(echo "$OSTACKRESP" | grep ' id ' | sed 's/^|[^|]*| *\([a-f0-9\-]*\).*$/\1/') )
   echo "${LBFIPS[0]}"
+  createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
+  let ERR+=$?
+  # TODO: Implement health monitors?
+  # FIXME: Do we need to wait for members?
+  sleep 1
   echo -n "Test LB at $LBIP:"
   # Access LB several times
   for i in $(seq 0 $NOVMS); do
@@ -1917,14 +1928,17 @@ testLBs()
     RC=$?
     echo -n " $ANS"
     if test $RC != 0; then
-      sendalarm 2 "No response from LB $LBIP port 80" "$RC" 4
-      if test -n "$EXITERR"; then exit 3; fi
-      let LBERRORS+=1
       let ERR+=1
       errwait $ERRWAIT
     fi
   done
   echo
+  if test $ERR != 0; then
+    sendalarm 2 "Errors connecting to LB $LBIP port 80" "$ERR" 4
+    if test -n "$EXITERR"; then exit 3; fi
+  fi
+  # TODO: With health monitors, we could now retry after killing a few instances' http server ...
+  LBERRORS+=$ERR
   return $ERR
 }
 
@@ -2000,7 +2014,7 @@ createVMsAll()
     # This only requires python3
     echo -e "packages:\n  - python3\n  - $IPERF3\nruncmd:\n  - mkdir -p /var/run/www/htdocs\n  - hostname > /var/run/www/htdocs/hostname\n  - cd /var/run/www/htdocs && python3 -m http.server 80 &" >> $UDTMP
     if [[ "$IMG" = "openSUSE"* ]]; then
-      echo -e "  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http targus-getdata1"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl status SuSEfirewall2 && systemctl restart SuSEfirewall2" >> $UDTMP
+      echo -e "  - sed -i 's/FW_SERVICES_EXT_TCP=\"\"/FW_SERVICES_EXT_TCP=\"http targus-getdata1\"/' /etc/sysconfig/SuSEfirewall2\n  - \"systemctl status SuSEfirewall2 && systemctl restart SuSEfirewall2\"" >> $UDTMP
     fi
     if test -n "$IPERF"; then
       echo -e "  - iperf3 -Ds" >> $UDTMP
@@ -2309,7 +2323,7 @@ EOT
     chmod +x ${RPRE}wait
     scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -i $1.pem $pport -p ${RPRE}wait ${USER}@$2: >/dev/null
     rm ${RPRE}wait
-    if test -n "$LOGFILE"; then echo "ssh -i $1.pem $pport -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 cat /tmp/bcbench.txt" >> $LOGFILE; fi
+    if test -n "$LOGFILE"; then echo "ssh -i $1.pem $pport -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 time echo 'scale=4000; 4*a(1)'" >> $LOGFILE; fi
     #sleep 10
     BENCH=$(ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 "./${RPRE}wait /usr/bin/bc; { TIMEFORMAT=%R; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
     # Handle GNU time output format
@@ -2379,6 +2393,7 @@ testjhinet()
      echo -e "$RED FAIL $ERR $NORM ($(($(date +%s)-$ST))s)"
   fi
   if test -n "$BENCH"; then
+     BENCH=$(printf "%.2f\n" $BENCH)
      echo "Benchmark (4000digits pi): $BENCH s"
      echo "Benchmark (4000digits pi): $BENCH s" >> $LOGFILE
      if test -n "$GRAFANA"; then
@@ -2552,6 +2567,7 @@ EOT
   pno=${pno%%,*}
   scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -i ${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
   rm ${RPRE}wait
+  echo -n "IPerf3 tests (${IPS[$NONET]}): "
   for VM in $(seq 0 $((NONETS-1))); do
     TGT=${IPS[$VM]}
     if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[0]} iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
@@ -2562,7 +2578,7 @@ EOT
     RECVBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_received.bits_per_second'))/1048576))
     HUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.host_total'))
     RUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.remote_total'))
-    echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL"
+    echo -en "${TGT}: $SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL\n "
     if test -n "$LOGFILE"; then echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
     BANDWIDTH+=($SENDBW $RECVBW)
     if test -n "$GRAFANA"; then
@@ -2570,6 +2586,7 @@ EOT
       curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=r$VM duration=$RECVBW,return_code=0 $(date +%s%N)" >/dev/null
     fi
   done
+  echo -en "\b"
 }
 
 # [-m] STATLIST [DIGITS [NAME [PCTILE]]]
@@ -2592,6 +2609,7 @@ stats()
   if test -z "${LIST[*]}"; then return; fi
   DIG=${2:-2}
   PCT=${4:-95}
+  # Sort list
   OLDIFS="$IFS"
   IFS=$'\n' SLIST=($(sort -n <<<"${LIST[*]}"))
   IFS="$OLDIFS"
@@ -2600,13 +2618,17 @@ stats()
   # Some easy stats, Min, Max, Med, Avg, 95% quantile ...
   MIN=${SLIST[0]}
   MAX=${SLIST[-1]}
+  # Median is the element in the middle (or half-way between two neighbors)
   MID=$(($NO/2))
   if test $(($NO%2)) = 1; then MED=${SLIST[$MID]};
   else MED=`math "%.${DIG}f" "(${SLIST[$MID]}+${SLIST[$(($MID-1))]})/2"`
   fi
+  # PCT percentile
   NFQ=$(scale=3; echo "(($NO-1)*$PCT)/100" | bc -l)
+  # Left and right neighbor, position in between (weight)
   NFQL=${NFQ%.*}; NFQR=$((NFQL+1)); NFQF=0.${NFQ#*.}
   #echo "DEBUG 95%: $NFQ $NFQL $NFR $NFQF"
+  # Weighted average
   if test $NO = 1; then NFP=${SLIST[$NFQL]}; else
     NFP=`math "%.${DIG}f" "${SLIST[$NFQL]}*(1-$NFQF)+${SLIST[$NFQR]}*$NFQF"`
   fi
@@ -3000,6 +3022,7 @@ declare -a WAITTIME
 declare -a PITIME
 declare -a BANDWIDTH
 
+declare -i CUMPINGRETRIES=0
 declare -i CUMPINGERRORS=0
 declare -i CUMLBERRORS=0
 declare -i CUMAPIERRORS=0
@@ -3070,6 +3093,11 @@ declare -a VOLUMES=()
 declare -a KEYPAIRS=()
 declare -a VMS=()
 declare -a JHVMS=()
+# LB
+declare -a LBAASS=()
+declare -a POOLS=()
+declare -a LISTENERS=()
+declare -a MEMBERS=()
 SNATROUTE=""
 
 # Main
@@ -3125,15 +3153,19 @@ elif test "$1" = "CONNTEST"; then
    fullconntest
    #if test $? != 0; then exit 4; fi
    if test $FPERR -gt 0; then
+     PINGERRORS+=$FPERR
      sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
      if test -n "$EXITERR"; then exit 4; fi
      # Error counting done by fullconntest already
      errwait $ERRWAIT
+   elif test $FPRETRY != 0; then
+     echo "Warning: Needed $FPRETRY ping retries"
    fi
    if test -n "$RESHUFFLE"; then
      reShuffle
      fullconntest
      if test $FPERR -gt 0; then
+       PINGERRORS+=$FPERR
        sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
        if test -n "$EXITERR"; then exit 4; fi
        # Error counting done by fullconntest already
@@ -3222,9 +3254,9 @@ else # test "$1" = "DEPLOY"; then
                let ERR+=$RC
                if test $RC -gt $NOAZS; then let VMERRORS+=$NOAZS; else let VMERRORS+=$RC; fi
              else
+              # loadbalancer
+              waitLBs
               if createFIPs; then
-               # loadbalancer
-               waitLBs
                LBERR=$?
                # No error handling here (but alarms are generated)
                waitVMs
@@ -3275,13 +3307,17 @@ else # test "$1" = "DEPLOY"; then
                   fullconntest
                   # Test for FPERR instead?
                   if test $FPERR -gt 0; then
+                    PINGERRORS+=$FPERR
                     sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
                     errwait $ERRWAIT
+                  elif test $FPRETRY != 0; then
+                   echo "Warning: Needed $FPRETRY ping retries"
                   fi
                   if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
                     reShuffle
                     fullconntest
                     if test $FPERR -gt 0; then
+                      PINGERRORS+=$FPERR
                       sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
                       errwait $ERRWAIT
                     fi
@@ -3365,6 +3401,7 @@ let CUMAPIERRORS+=$APIERRORS
 let CUMAPITIMEOUTS+=$APITIMEOUTS
 let CUMVMERRORS+=$VMERRORS
 let CUMLBERRORS+=$LBERRORS
+let CUMPINGRETRIES+=$FPRETRY
 let CUMPINGERRORS+=$PINGERRORS
 let CUMWAITERRORS+=$WAITERRORS
 let CUMCONNERRPRS+=$CONNERRORS
@@ -3387,7 +3424,8 @@ $CUMVMERRORS VM LOGIN ERRORS
 $CUMWAITERRORS VM TIMEOUT ERRORS
 $CUMAPIERRORS API ERRORS
 $CUMAPITIMEOUTS API TIMEOUTS
-$CUMPINGERRORS Ping failures
+$CUMPINGERRORS Ping FAILURES
+$CUMPINGRETRIES Ping retries
 $CONNTXT
 $LBTXT
 
@@ -3409,6 +3447,7 @@ $(allstats -m)" > Stats.$LASTDATA.$LASTTIME.$CDATE.$CTIME.psv
   CUMAPIERRORS=0
   CUMAPITIMEOUTS=0
   CUMPINGERRORS=0
+  CUMPINGRETRIES=0
   CUMWAITERRORS=0
   CUMCONNERRORS=0
   CUMAPICALLS=0
