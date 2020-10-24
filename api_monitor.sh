@@ -764,6 +764,30 @@ ostackcmd_id()
     sendalarm $RC "$*" "$RESP" $TIMEOUT
     errwait $ERRWAIT
   fi
+
+  # Retry if we have a HTTP 409
+  if test $RC = 1 -a -z "$NORETRY" && echo "$RESP" | grep '(HTTP 409)' >/dev/null 2>&1; then
+    sleep 5
+    LSTART=$(date +%s.%3N)
+    if test "$TIMEOUT" = "0"; then
+      RESP=$(${OSTACKCMD[@]} 2>&1)
+    else
+      RESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
+    fi
+    local RC=$?
+    local LEND=$(date +%s.%3N)
+    local TIM=$(math "%.2f" "$LEND-$LSTART")
+    if test -n "$GRAFANA"; then
+      # log time / rc to grafana
+      rc2grafana $RC
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)" >> grafana.log
+    fi
+    if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
+      sendalarm $RC "$*" "$RESP" $TIMEOUT
+      errwait $ERRWAIT
+    fi
+  fi
+
   STATUS=$(echo "$RESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
   if test -z "$STATUS"; then STATUS=$(echo "$RESP" | grep "^| *provisioning_status *|" | sed -e "s/^| *provisioning_status *| *\([^|]*\).*\$/\1/" -e 's/ *$//'); fi
   if test "$IDNM" = "DELETE"; then
@@ -823,6 +847,8 @@ ostackcmd_tm()
     # (This is why we do translation in the first place ...)
     curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)" >> grafana.log
   fi
+  # TODO: Implement retry for HTTP 409 similar to ostackcmd_id
+
   eval "${STATNM}+=( $TIM )"
   echo "$LSTART/$LEND/: ${OSTACKCMD[@]} => $OSTACKRESP" >> $LOGFILE
   return $RC
@@ -859,7 +885,6 @@ createResources()
   if test "$RNM" != "NONE"; then echo -n "New $RNM: "; fi
   local RC=0
   local TIRESP
-  # FIXME: Should we get a token once here and reuse it?
   for no in `seq 0 $(($QUANT-1))`; do
     local AZN=$(($no%$NOAZS))
     local VAZN=$(($no%$NOVAZS))
