@@ -1897,9 +1897,8 @@ testLBs()
   let ERR+=$?
   waitResources NETSTATS LISTENER NONE NONE "ACTIVE" "NONONO" "provisioning_status" $NETTIMEOUT neutron lbaas-listener-show
   handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-listener-show
-  createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
-  let ERR+=$?
-  # TODO: Implement health monitors?
+  # FIXME: We still get those occasional LB immutable errors -- how can we avoid this?
+  # For now push member creation after FIP allocation
   # Assign a FIP to the LB
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show ${LBAASS[0]} -f value -c vip_port_id
   let ERR+=$?
@@ -1910,6 +1909,9 @@ testLBs()
   LBIP=$(echo "$OSTACKRESP" | grep ' floating_ip_address ' | sed 's/^|[^|]*| *\([a-f0-9:\.]*\).*$/\1/')
   LBFIPS=( $(echo "$OSTACKRESP" | grep ' id ' | sed 's/^|[^|]*| *\([a-f0-9\-]*\).*$/\1/') )
   echo "${LBFIPS[0]}"
+  createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
+  let ERR+=$?
+  # TODO: Implement health monitors?
   echo -n "Test LB at $LBIP:"
   # Access LB several times
   for i in $(seq 0 $NOVMS); do
@@ -1925,6 +1927,7 @@ testLBs()
     fi
   done
   echo
+  # TODO: With health monitors, we could now retry, killing a few instances' http server
   return $ERR
 }
 
@@ -3222,9 +3225,9 @@ else # test "$1" = "DEPLOY"; then
                let ERR+=$RC
                if test $RC -gt $NOAZS; then let VMERRORS+=$NOAZS; else let VMERRORS+=$RC; fi
              else
+              # loadbalancer
+              waitLBs
               if createFIPs; then
-               # loadbalancer
-               waitLBs
                LBERR=$?
                # No error handling here (but alarms are generated)
                waitVMs
