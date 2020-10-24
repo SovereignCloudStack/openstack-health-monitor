@@ -97,7 +97,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.63
+VERSION=1.64
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -764,6 +764,30 @@ ostackcmd_id()
     sendalarm $RC "$*" "$RESP" $TIMEOUT
     errwait $ERRWAIT
   fi
+
+  # Retry if we have a HTTP 409
+  if test $RC = 1 -a -z "$NORETRY" && echo "$RESP" | grep '(HTTP 409)' >/dev/null 2>&1; then
+    sleep 5
+    LSTART=$(date +%s.%3N)
+    if test "$TIMEOUT" = "0"; then
+      RESP=$(${OSTACKCMD[@]} 2>&1)
+    else
+      RESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
+    fi
+    local RC=$?
+    local LEND=$(date +%s.%3N)
+    local TIM=$(math "%.2f" "$LEND-$LSTART")
+    if test -n "$GRAFANA"; then
+      # log time / rc to grafana
+      rc2grafana $RC
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)" >> grafana.log
+    fi
+    if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
+      sendalarm $RC "$*" "$RESP" $TIMEOUT
+      errwait $ERRWAIT
+    fi
+  fi
+
   STATUS=$(echo "$RESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
   if test -z "$STATUS"; then STATUS=$(echo "$RESP" | grep "^| *provisioning_status *|" | sed -e "s/^| *provisioning_status *| *\([^|]*\).*\$/\1/" -e 's/ *$//'); fi
   if test "$IDNM" = "DELETE"; then
@@ -823,6 +847,8 @@ ostackcmd_tm()
     # (This is why we do translation in the first place ...)
     curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$TIM,return_code=$GRC $(date +%s%N)" >> grafana.log
   fi
+  # TODO: Implement retry for HTTP 409 similar to ostackcmd_id
+
   eval "${STATNM}+=( $TIM )"
   echo "$LSTART/$LEND/: ${OSTACKCMD[@]} => $OSTACKRESP" >> $LOGFILE
   return $RC
@@ -859,7 +885,6 @@ createResources()
   if test "$RNM" != "NONE"; then echo -n "New $RNM: "; fi
   local RC=0
   local TIRESP
-  # FIXME: Should we get a token once here and reuse it?
   for no in `seq 0 $(($QUANT-1))`; do
     local AZN=$(($no%$NOAZS))
     local VAZN=$(($no%$NOVAZS))
@@ -1898,6 +1923,7 @@ testLBs()
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   waitlistResources NETSTATS POOL NONE NONE "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-pool-list
   handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-pool-show
+  sleep 1
   createResources 1 NETSTATS LISTENER POOL LBAAS "" id $NETTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
   RC=$?
   let ERR+=$RC
@@ -1946,12 +1972,15 @@ cleanLBs()
 {
   echo -n "LBaaS2 "
   deleteResources NETSTATS MEMBER "" $NETTIMEOUT neutron lbaas-member-delete ${POOLS[0]}
+  # FIXME: Wait until they're gone
+  sleep 1
   echo -n " "
   deleteResources NETSTATS LISTENER "" $NETTIMEOUT neutron lbaas-listener-delete
-  echo -n " "
-  deleteResources NETSTATS POOL "" $NETTIMEOUT neutron lbaas-pool-delete
+  # Delete FIP first, so no sleep waiting for listener been gone
   echo -n " "
   deleteResources FIPSTATS LBFIP "" $NETTIMEOUT neutron floating-ip-delete
+  echo -n " "
+  deleteResources NETSTATS POOL "" $NETTIMEOUT neutron lbaas-pool-delete
 }
 
 waitJHVMs()
@@ -3188,7 +3217,7 @@ elif test "$1" = "CONNTEST"; then
 else # test "$1" = "DEPLOY"; then
  if test "$REFRESHPRJ" != 0 && test $(($RUNS%$REFRESHPRJ)) == 0; then createnewprj; fi
  # Complete setup
- echo -e "$BOLD *** Start deployment $loop for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM ($TRIPLE)"
+ echo -e "$BOLD *** Start deployment $loop/$MAXITER for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM ($TRIPLE)"
  date
  unset THISRUNSUCCESS
  # Image IDs
