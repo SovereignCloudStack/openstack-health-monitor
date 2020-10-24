@@ -884,6 +884,9 @@ createResources()
     if test $RC != 0; then echo -e "${YELLOW}ERROR: $RNM creation failed$NORM" 1>&2; return 1; fi
     if test -n "$ID" -a "$RNM" != "NONE"; then echo -n "$ID "; fi
     eval ${RNM}S+="($ID)"
+    # Workaround for loadbalancer member create
+    echo -n "$ST "
+    if test "$ST" = "PENDING_CREATE"; then sleep 1; fi
   done
   if test "$RNM" != "NONE"; then echo; fi
 }
@@ -3090,6 +3093,11 @@ declare -a VOLUMES=()
 declare -a KEYPAIRS=()
 declare -a VMS=()
 declare -a JHVMS=()
+# LB
+declare -a LBAASS=()
+declare -a POOLS=()
+declare -a LISTENERS=()
+declare -a MEMBERS=()
 SNATROUTE=""
 
 # Main
