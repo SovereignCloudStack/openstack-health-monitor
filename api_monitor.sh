@@ -1912,6 +1912,8 @@ testLBs()
   createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   let ERR+=$?
   # TODO: Implement health monitors?
+  # FIXME: Do we need to wait for members?
+  sleep 1
   echo -n "Test LB at $LBIP:"
   # Access LB several times
   for i in $(seq 0 $NOVMS); do
@@ -1927,7 +1929,7 @@ testLBs()
     fi
   done
   echo
-  # TODO: With health monitors, we could now retry, killing a few instances' http server
+  # TODO: With health monitors, we could now retry after killing a few instances' http server ...
   return $ERR
 }
 
