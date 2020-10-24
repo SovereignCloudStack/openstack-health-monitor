@@ -1907,7 +1907,7 @@ testLBs()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show ${LBAASS[0]} -f value -c vip_port_id
   let ERR+=$?
   LBPORT=$OSTACKRESP
-  echo -n " Attach FIP to LB port $LBPORT: "
+  echo -n "Attach FIP to LB port $LBPORT: "
   ostackcmd_tm FIPSTATS $FIPTIMEOUT neutron floating-ip-create --port $LBPORT $EXTNET
   let ERR+=$?
   LBIP=$(echo "$OSTACKRESP" | grep ' floating_ip_address ' | sed 's/^|[^|]*| *\([a-f0-9:\.]*\).*$/\1/')
@@ -2320,7 +2320,7 @@ EOT
     chmod +x ${RPRE}wait
     scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -i $1.pem $pport -p ${RPRE}wait ${USER}@$2: >/dev/null
     rm ${RPRE}wait
-    if test -n "$LOGFILE"; then echo "ssh -i $1.pem $pport -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 cat /tmp/bcbench.txt" >> $LOGFILE; fi
+    if test -n "$LOGFILE"; then echo "ssh -i $1.pem $pport -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 time echo 'scale=4000; 4*a(1)'" >> $LOGFILE; fi
     #sleep 10
     BENCH=$(ssh -i $1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 "./${RPRE}wait /usr/bin/bc; { TIMEFORMAT=%R; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
     # Handle GNU time output format
@@ -2390,6 +2390,7 @@ testjhinet()
      echo -e "$RED FAIL $ERR $NORM ($(($(date +%s)-$ST))s)"
   fi
   if test -n "$BENCH"; then
+     BENCH=$(printf "%.2f\n" $BENCH)
      echo "Benchmark (4000digits pi): $BENCH s"
      echo "Benchmark (4000digits pi): $BENCH s" >> $LOGFILE
      if test -n "$GRAFANA"; then
@@ -2582,6 +2583,7 @@ EOT
       curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=r$VM duration=$RECVBW,return_code=0 $(date +%s%N)" >/dev/null
     fi
   done
+  echo -en "\b"
 }
 
 # [-m] STATLIST [DIGITS [NAME [PCTILE]]]
@@ -2604,6 +2606,7 @@ stats()
   if test -z "${LIST[*]}"; then return; fi
   DIG=${2:-2}
   PCT=${4:-95}
+  # Sort list
   OLDIFS="$IFS"
   IFS=$'\n' SLIST=($(sort -n <<<"${LIST[*]}"))
   IFS="$OLDIFS"
@@ -2612,13 +2615,17 @@ stats()
   # Some easy stats, Min, Max, Med, Avg, 95% quantile ...
   MIN=${SLIST[0]}
   MAX=${SLIST[-1]}
+  # Median is the element in the middle (or half-way between two neighbors)
   MID=$(($NO/2))
   if test $(($NO%2)) = 1; then MED=${SLIST[$MID]};
   else MED=`math "%.${DIG}f" "(${SLIST[$MID]}+${SLIST[$(($MID-1))]})/2"`
   fi
+  # PCT percentile
   NFQ=$(scale=3; echo "(($NO-1)*$PCT)/100" | bc -l)
+  # Left and right neighbor, position in between (weight)
   NFQL=${NFQ%.*}; NFQR=$((NFQL+1)); NFQF=0.${NFQ#*.}
   #echo "DEBUG 95%: $NFQ $NFQL $NFR $NFQF"
+  # Weighted average
   if test $NO = 1; then NFP=${SLIST[$NFQL]}; else
     NFP=`math "%.${DIG}f" "${SLIST[$NFQL]}*(1-$NFQF)+${SLIST[$NFQR]}*$NFQF"`
   fi
@@ -3012,6 +3019,7 @@ declare -a WAITTIME
 declare -a PITIME
 declare -a BANDWIDTH
 
+declare -i CUMPINGRETRIES=0
 declare -i CUMPINGERRORS=0
 declare -i CUMLBERRORS=0
 declare -i CUMAPIERRORS=0
@@ -3137,15 +3145,19 @@ elif test "$1" = "CONNTEST"; then
    fullconntest
    #if test $? != 0; then exit 4; fi
    if test $FPERR -gt 0; then
+     PINGERRORS+=$FPERR
      sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
      if test -n "$EXITERR"; then exit 4; fi
      # Error counting done by fullconntest already
      errwait $ERRWAIT
+   elif test $FPRETRY != 0; then
+     echo "Warning: Needed $FPRETRY ping retries"
    fi
    if test -n "$RESHUFFLE"; then
      reShuffle
      fullconntest
      if test $FPERR -gt 0; then
+       PINGERRORS+=$FPERR
        sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
        if test -n "$EXITERR"; then exit 4; fi
        # Error counting done by fullconntest already
@@ -3287,13 +3299,17 @@ else # test "$1" = "DEPLOY"; then
                   fullconntest
                   # Test for FPERR instead?
                   if test $FPERR -gt 0; then
+                    PINGERRORS+=$FPERR
                     sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
                     errwait $ERRWAIT
+                  elif test $FPRETRY != 0; then
+                   echo "Warning: Needed $FPRETRY ping retries"
                   fi
                   if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
                     reShuffle
                     fullconntest
                     if test $FPERR -gt 0; then
+                      PINGERRORS+=$FPERR
                       sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
                       errwait $ERRWAIT
                     fi
@@ -3377,6 +3393,7 @@ let CUMAPIERRORS+=$APIERRORS
 let CUMAPITIMEOUTS+=$APITIMEOUTS
 let CUMVMERRORS+=$VMERRORS
 let CUMLBERRORS+=$LBERRORS
+let CUMPINGRETRIES+=$FPRETRY
 let CUMPINGERRORS+=$PINGERRORS
 let CUMWAITERRORS+=$WAITERRORS
 let CUMCONNERRPRS+=$CONNERRORS
@@ -3399,7 +3416,8 @@ $CUMVMERRORS VM LOGIN ERRORS
 $CUMWAITERRORS VM TIMEOUT ERRORS
 $CUMAPIERRORS API ERRORS
 $CUMAPITIMEOUTS API TIMEOUTS
-$CUMPINGERRORS Ping failures
+$CUMPINGERRORS Ping FAILURES
+$CUMPINGRETRIES Ping retries
 $CONNTXT
 $LBTXT
 
@@ -3421,6 +3439,7 @@ $(allstats -m)" > Stats.$LASTDATA.$LASTTIME.$CDATE.$CTIME.psv
   CUMAPIERRORS=0
   CUMAPITIMEOUTS=0
   CUMPINGERRORS=0
+  CUMPINGRETRIES=0
   CUMWAITERRORS=0
   CUMCONNERRORS=0
   CUMAPICALLS=0
