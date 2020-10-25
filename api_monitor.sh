@@ -396,6 +396,12 @@ else
   VOLSTATCOL=1
 fi
 
+LBWAIT=""
+if test -n "$OPENSTACKCLIENT" -a -n "$LOADBALANCER"; then
+  openstack loadbalancer member create --help | grep -- --wait >/dev/null 2>&1
+  if test $? == 0; then LBWAIT="--wait"; fi
+fi
+
 # Sanity checks
 # Last subnet is for the JumpHosts, thus we have 63 /22 networks avail within 10.250/16
 if test ${NONETS} -gt 63; then
@@ -550,15 +556,16 @@ killin()
 NOVA_EP="${NOVA_EP:-novaURL}"
 CINDER_EP="${CINDER_EP:-cinderURL}"
 NEUTRON_EP="${NEUTRON_EP:-neutronURL}"
+OCTAVIA_EP="${NEUTRON_EP:-octaviaURL}"
 GLANCE_EP="${GLANCE_EP:-glanceURL}"
 OSTACKCMD=""; EP=""
 # Translate nova/cinder/neutron ... to openstack commands
 translate()
 {
   local DEFCMD=""
-  CMDS=(nova cinder neutron glance)
-  OSTDEFS=(server volume network image)
-  EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP)
+  CMDS=(nova cinder neutron glance octavia)
+  OSTDEFS=(server volume network image loadbalancer)
+  EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP $OCTAVIA_EP)
   for no in $(seq 0 $((${#CMDS[*]}-1))); do
     if test ${CMDS[$no]} == $1; then
       EP=${EPS[$no]}
@@ -654,17 +661,18 @@ translate()
       #OSTACKCMD=($OPST $C1 $CMD $ARGS)
       OSTACKCMD=($OPST $C1 $CMD $@)
     elif test "$C1" == "lbaas loadbalancer"; then
+      EP="$OCTAVIA_EP"
       OSTACKCMD=(openstack loadbalancer $CMD $@)
     elif test "$C1" == "lbaas pool"; then
-      #OSTACKCMD=(openstack loadbalancer pool $CMD --wait $@)
-      OSTACKCMD=(openstack loadbalancer pool $CMD $@)
+      EP="$OCTAVIA_EP"
+      OSTACKCMD=($OPST loadbalancer pool $CMD $LBWAIT $@)
     elif test "$C1" == "lbaas listener"; then
+      EP="$OCTAVIA_EP"
       ARGS=$(echo "$@" | sed 's/--loadbalancer //')
-      #OSTACKCMD=(openstack loadbalancer listener $CMD --wait $ARGS)
-      OSTACKCMD=(openstack loadbalancer listener $CMD $ARGS)
+      OSTACKCMD=($OPST loadbalancer listener $CMD $LBWAIT $ARGS)
     elif test "$C1" == "lbaas member"; then
-      #OSTACKCMD=(openstack loadbalancer member $CMD --wait $@)
-      OSTACKCMD=(openstack loadbalancer member $CMD $@)
+      EP="$OCTAVIA_EP"
+      OSTACKCMD=($OPST loadbalancer member $CMD $LBWAIT $@)
     fi
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
   fi
@@ -718,7 +726,9 @@ ostackcmd_search()
   local RC=$?
   local LEND=$(date +%s.%3N)
   ID=$(echo "$RESP" | grep "$SEARCH" | head -n1 | sed -e 's/^| *\([^ ]*\) *|.*$/\1/')
-  echo "$LSTART/$LEND/$SEARCH: ${OSTACKCMD[@]} => $RC $RESP $ID" >> $LOGFILE
+  STATUS=$(echo "$RESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
+  if test -z "$STATUS"; then STATUS=$(echo "$RESP" | grep "^| *provisioning_status *|" | sed -e "s/^| *provisioning_status *| *\([^|]*\).*\$/\1/" -e 's/ *$//'); fi
+  echo "$LSTART/$LEND/$SEARCH: ${OSTACKCMD[@]} => $RC ($ID:$STATUS) $RESP" >> $LOGFILE
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
     sendalarm $RC "$*" "$RESP" $TIMEOUT
     errwait $ERRWAIT
@@ -792,10 +802,10 @@ ostackcmd_id()
   if test -z "$STATUS"; then STATUS=$(echo "$RESP" | grep "^| *provisioning_status *|" | sed -e "s/^| *provisioning_status *| *\([^|]*\).*\$/\1/" -e 's/ *$//'); fi
   if test "$IDNM" = "DELETE"; then
     ID="$STATUS"
-    echo "$LSTART/$LEND/$ID/$STATUS: ${OSTACKCMD[@]} => $RC $RESP" >> $LOGFILE
+    echo "$LSTART/$LEND/$ID/$STATUS: ${OSTACKCMD[@]} => $RC ($STATUS) $RESP" >> $LOGFILE
   else
     ID=$(echo "$RESP" | grep "^| *$IDNM *|" | sed -e "s/^| *$IDNM *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
-    echo "$LSTART/$LEND/$ID/$STATUS: ${OSTACKCMD[@]} => $RC $RESP" >> $LOGFILE
+    echo "$LSTART/$LEND/$ID/$STATUS: ${OSTACKCMD[@]} => $RC ($ID:$STATUS) $RESP" >> $LOGFILE
     if test "$RC" != "0" -a -z "$IGNORE_ERRORS"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; return $RC; fi
   fi
   echo "$TIM $ID $STATUS"
@@ -850,7 +860,7 @@ ostackcmd_tm()
   # TODO: Implement retry for HTTP 409 similar to ostackcmd_id
 
   eval "${STATNM}+=( $TIM )"
-  echo "$LSTART/$LEND/: ${OSTACKCMD[@]} => $OSTACKRESP" >> $LOGFILE
+  echo "$LSTART/$LEND/: ${OSTACKCMD[@]} => $RC $OSTACKRESP" >> $LOGFILE
   return $RC
 }
 
@@ -970,6 +980,7 @@ deleteResources()
       eval ${STATNM}+="($TM)"
     fi
     unset LIST[-1]
+    if test "$ST" = "PENDING_DELETE"; then sleep 1; fi
   done
   if test -n "$IGNORE_ERRORS" -a $IGNERRS -gt 0; then echo -n " ($IGNERRS errors ignored) "; fi
   test $LN -gt 0 && echo
@@ -1923,7 +1934,7 @@ testLBs()
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   waitlistResources NETSTATS POOL NONE NONE "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-pool-list
   handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-pool-show
-  sleep 1
+  if test "$ST" != "ACTIVE"; then sleep 1; fi
   createResources 1 NETSTATS LISTENER POOL LBAAS "" id $NETTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
   RC=$?
   let ERR+=$RC
@@ -1945,8 +1956,7 @@ testLBs()
   createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   let ERR+=$?
   # TODO: Implement health monitors?
-  # FIXME: Do we need to wait for members?
-  sleep 1
+  if test "$ST" != "ACTIVE"; then sleep 1; fi
   echo -n "Test LB at $LBIP:"
   # Access LB several times
   for i in $(seq 0 $NOVMS); do
@@ -1973,7 +1983,7 @@ cleanLBs()
   echo -n "LBaaS2 "
   deleteResources NETSTATS MEMBER "" $NETTIMEOUT neutron lbaas-member-delete ${POOLS[0]}
   # FIXME: Wait until they're gone
-  sleep 1
+  if test "$ST" = "PENDING_DELETE"; then sleep 1; fi
   echo -n " "
   deleteResources NETSTATS LISTENER "" $NETTIMEOUT neutron lbaas-listener-delete
   # Delete FIP first, so no sleep waiting for listener been gone
@@ -2596,7 +2606,7 @@ EOT
   pno=${pno%%,*}
   scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -i ${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
   rm ${RPRE}wait
-  echo -n "IPerf3 tests (${IPS[$NONET]}): "
+  echo -n "IPerf3 tests (${IPS[$NONETS]}): "
   for VM in $(seq 0 $((NONETS-1))); do
     TGT=${IPS[$VM]}
     if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[0]} iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
@@ -2930,6 +2940,8 @@ waitnetgone()
 
 # Token retrieval and catalog ...
 
+# We could override PUBLIC here to use admin or internal endpoints
+PUBLIC=${PUBLIC:-public}
 # Args: Name (implicit: OSTACKRESP)
 getPublicEP()
 {
@@ -2945,7 +2957,7 @@ getPublicEP()
     done < <(echo -e $EPS)
   fi
   if test -n "$OS_REGION_NAME"; then EPS2=$(echo "$EPS2" | grep "$OS_REGION_NAME"); fi
-  EPS=$(echo "$EPS2" | grep public)
+  EPS=$(echo "$EPS2" | grep $PUBLIC)
   echo "${EPS##*|}"
 }
 
@@ -2958,7 +2970,9 @@ getToken()
   if test -z "$CINDER_EP"; then CINDER_EP=$(getPublicEP cinderv2); fi
   GLANCE_EP=$(getPublicEP glance)
   NEUTRON_EP=$(getPublicEP neutron)
-  #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP"
+  OCTAVIA_EP=$(getPublicEP octavia)
+  if test -z "$OCTAVIA_EP"; then OCTAVIA_EP="$NEUTRON_EP"; fi
+  #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP"
   ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
   TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')
   #echo "TOKEN: {SHA1}$(echo $TOKEN | sha1sum)"
