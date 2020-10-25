@@ -2606,7 +2606,7 @@ EOT
   pno=${pno%%,*}
   scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -i ${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
   rm ${RPRE}wait
-  echo -n "IPerf3 tests (${IPS[$NONET]}): "
+  echo -n "IPerf3 tests (${IPS[$NONETS]}): "
   for VM in $(seq 0 $((NONETS-1))); do
     TGT=${IPS[$VM]}
     if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -i ${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[0]} iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
