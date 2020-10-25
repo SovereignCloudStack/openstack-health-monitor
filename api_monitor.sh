@@ -396,6 +396,12 @@ else
   VOLSTATCOL=1
 fi
 
+LBWAIT=""
+if test -n "$OPENSTACKCLIENT" -a -n "$LOADBALANCER"; then
+  openstack loadbalancer member create --help | grep -- --wait >/dev/null 2>&1
+  if test $? == 0; then LBWAIT="--wait"; fi
+fi
+
 # Sanity checks
 # Last subnet is for the JumpHosts, thus we have 63 /22 networks avail within 10.250/16
 if test ${NONETS} -gt 63; then
@@ -550,15 +556,16 @@ killin()
 NOVA_EP="${NOVA_EP:-novaURL}"
 CINDER_EP="${CINDER_EP:-cinderURL}"
 NEUTRON_EP="${NEUTRON_EP:-neutronURL}"
+OCTAVIA_EP="${NEUTRON_EP:-octaviaURL}"
 GLANCE_EP="${GLANCE_EP:-glanceURL}"
 OSTACKCMD=""; EP=""
 # Translate nova/cinder/neutron ... to openstack commands
 translate()
 {
   local DEFCMD=""
-  CMDS=(nova cinder neutron glance)
-  OSTDEFS=(server volume network image)
-  EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP)
+  CMDS=(nova cinder neutron glance octavia)
+  OSTDEFS=(server volume network image loadbalancer)
+  EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP $OCTAVIA_EP)
   for no in $(seq 0 $((${#CMDS[*]}-1))); do
     if test ${CMDS[$no]} == $1; then
       EP=${EPS[$no]}
@@ -654,17 +661,18 @@ translate()
       #OSTACKCMD=($OPST $C1 $CMD $ARGS)
       OSTACKCMD=($OPST $C1 $CMD $@)
     elif test "$C1" == "lbaas loadbalancer"; then
+      EP="$OCTAVIA_EP"
       OSTACKCMD=(openstack loadbalancer $CMD $@)
     elif test "$C1" == "lbaas pool"; then
-      #OSTACKCMD=(openstack loadbalancer pool $CMD --wait $@)
-      OSTACKCMD=(openstack loadbalancer pool $CMD $@)
+      EP="$OCTAVIA_EP"
+      OSTACKCMD=(openstack loadbalancer pool $CMD $LBWAIT $@)
     elif test "$C1" == "lbaas listener"; then
+      EP="$OCTAVIA_EP"
       ARGS=$(echo "$@" | sed 's/--loadbalancer //')
-      #OSTACKCMD=(openstack loadbalancer listener $CMD --wait $ARGS)
-      OSTACKCMD=(openstack loadbalancer listener $CMD $ARGS)
+      OSTACKCMD=(openstack loadbalancer listener $CMD $LBWAIT $ARGS)
     elif test "$C1" == "lbaas member"; then
-      #OSTACKCMD=(openstack loadbalancer member $CMD --wait $@)
-      OSTACKCMD=(openstack loadbalancer member $CMD $@)
+      EP="$OCTAVIA_EP"
+      OSTACKCMD=(openstack loadbalancer member $CMD $LBWAIT $@)
     fi
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
   fi
@@ -2930,6 +2938,8 @@ waitnetgone()
 
 # Token retrieval and catalog ...
 
+# We could override PUBLIC here to use admin or internal endpoints
+PUBLIC=${PUBLIC:-public}
 # Args: Name (implicit: OSTACKRESP)
 getPublicEP()
 {
@@ -2945,7 +2955,7 @@ getPublicEP()
     done < <(echo -e $EPS)
   fi
   if test -n "$OS_REGION_NAME"; then EPS2=$(echo "$EPS2" | grep "$OS_REGION_NAME"); fi
-  EPS=$(echo "$EPS2" | grep public)
+  EPS=$(echo "$EPS2" | grep $PUBLIC)
   echo "${EPS##*|}"
 }
 
@@ -2958,7 +2968,9 @@ getToken()
   if test -z "$CINDER_EP"; then CINDER_EP=$(getPublicEP cinderv2); fi
   GLANCE_EP=$(getPublicEP glance)
   NEUTRON_EP=$(getPublicEP neutron)
-  #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP"
+  OCTAVIA_EP=$(getPublicEP octavia)
+  if test -z "$OCTAVIA_EP"; then OCTAVIA_EP="$NEUTRON_EP"; fi
+  #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP"
   ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
   TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')
   #echo "TOKEN: {SHA1}$(echo $TOKEN | sha1sum)"
