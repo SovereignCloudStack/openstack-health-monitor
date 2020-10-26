@@ -2165,6 +2165,14 @@ setmetaVMs()
   for no in `seq 0 $(($NOVMS-1))`; do
     echo -n "${VMS[$no]} "
     ostackcmd_tm NOVASTATS $NOVATIMEOUT nova meta ${VMS[$no]} set deployment=$CFTEST server=$no || return 1
+    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${VMS[$no]}
+    STATUS=$(echo "$OSTACKRESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
+    if test -z "$STATUS"; then STATUS=$(echo "$OSTACKRESP" | grep "^| *provisioning_status *|" | sed -e "s/^| *provisioning_status *| *\([^|]*\).*\$/\1/" -e 's/ *$//'); fi
+    echo -n "$STATUS "
+    if test "$STATUS" != "ACTIVE"; then
+      sendalarm 2 "VM $NO in wrong state $STATUS" "${VMS[$NO]}" 1
+      if test -n "$LOGFILE"; then echo "VM $NO ${VMS[$NO]} is in wrong state $STATUS" >> $LOGFILE; fi
+    fi
   done
   echo
 }
