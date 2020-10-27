@@ -2282,6 +2282,7 @@ wait222()
       let waiterr+=$skip
       continue
     fi
+    declare -i vmno=0
     # Now test VMs behind JH
     for red in ${REDIRS[$JHNO]}; do
       local verr=0
@@ -2296,12 +2297,26 @@ wait222()
         sleep 2
         let ctr+=1
       done
-      if [ $ctr -ge $MAXWAIT ]; then echo -ne " $RED timeout $NORM"; let waiterr+=1; verr=1; fi
+      if [ $ctr -ge $MAXWAIT ]; then
+        echo -ne " $RED timeout $NORM"
+        let waiterr+=1; verr=1;
+        # Calc no
+        no=$((vmno*NOAZS+JHNO))
+        ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${VMS[$no]}
+        STATUS=$(echo "$OSTACKRESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
+        if test -z "$STATUS"; then STATUS=$(echo "$OSTACKRESP" | grep "^| *provisioning_status *|" | sed -e "s/^| *provisioning_status *| *\([^|]*\).*\$/\1/" -e 's/ *$//'); fi
+        echo -n "$STATUS "
+        if test "$STATUS" != "ACTIVE"; then
+          sendalarm 2 "VM $no in wrong state $STATUS" "${VMS[$no]}" 1
+          if test -n "$LOGFILE"; then echo "VM $no ${VMS[$no]} is in wrong state $STATUS" >> $LOGFILE; fi
+        fi
+      fi
       MAXWAIT=42
       if test -n "$GRAFANA"; then
         TIM=$(($(date +%s)-$ST))
         curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=VM$JHNO:$pno duration=$TIM,return_code=$verr $(date +%s%N)" >> grafana.log
       fi
+      let vmno+=1
     done
     MAXWAIT=60
   done
