@@ -50,9 +50,10 @@ Description of the flow
    d) do some property changes to VMs
 - after everything is complete, we wait for the VMs to be up
 - we ping them, log in via ssh and see whether they can ping to the outside world (quad9)
-- NOT YET: attach an additional disk
-- NOT YET: attach an additional NIC
-- NOT YET: Load-Balancer
+- a full cross connectivity check (can each VM ping each other?) with -C
+- we create a loadbalancer and check accessing all VMs as members (RR) with -L
+- attach additional NICs and test (options -2, -3, -4)
+- NOT YET: attach additional disks to running VMs
  
 - Finally, we clean up ev'thing in reverse order
    (We have kept track of resources to clean up.
@@ -66,7 +67,8 @@ networks, subnets, and virtual IP, security groups and floating IPs,
 volume creation from image, deletion after VM destruction,
 VM creation from bootable volume (and from image if -d is given,)
 Metadata service (without it ssh key injection fails of course),
-Images (we use openSUSE for the jumphost for SNAT/port-fwd and CentOS7 by dflt for VMs),
+Images (openSUSE OTC, upstream, CentOS and Ubuntu work),
+Loadbalancer (-L),
 Waiting for volumes and VMs,
 Destroying all of these resources again
 
@@ -86,12 +88,11 @@ Completed (use option -O (not used for volume create)).
 Prerequisites
 -------------
 - Working python-XXXclient tools (openstack, glance, neutron, nova, cinder)
-- `OS_` environment variables set to run openstack CLI commands
+- `OS_` environment variables set to run openstack CLI commands (or OS_CLOUD with clouds.yaml/secure.yaml)
 - otc.sh from otc-tools (only if using optional SMN -m and project creation -p)
 - sendmail (only if email notification is requested)
 - jq (for JSON processing)
-- python2 or 3 for math used to calc statistics
-- SUSE image with SNAT/port-fwd (SuSEfirewall2-snat pkg) for the JumpHosts
+- bc and python2 or 3 for math used to calc statistics
 - Any image for the VMs that allows login as user DEFLTUSER (linux) with injected key
   (If we use -2/-3/-4, we also need a SUSE image to have the cloud-multiroute pkg in there.)
 
@@ -100,7 +101,10 @@ Usage
 Use `api_monitor.sh -h` to get a list of the command line options.
 
 ```
+Running api_monitor.sh v1.65 on host os152-kurt.otc.t-systems.com
+Using APIMonitor_442_ prefix for resrcs on gx-scs (nova nova)
 Usage: api_monitor.sh [options]
+ --debug Use set -x to print every line executed
  -n N   number of VMs to create (beyond #AZ JumpHosts, def: 12)
  -N N   number of networks/subnets/jumphosts to create (def: # AZs)
  -l LOGFILE record all command in LOGFILE
@@ -129,6 +133,10 @@ Usage: api_monitor.sh [options]
  -O     like -o, but use token_endpoint auth (after getting token)
  -x     assume eXclusive project, clean all floating IPs found
  -I     dIsassociate floating IPs before deleting them
+ -L     create Loadbalancer (LBaaSv2/octavia) and test it
+ -b     run a simple compute benchmark
+ -B     run iperf3
+ -t     long Timeouts (2x, multiple times for 3x, 4x, ...)
  -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test
  -3     Create 2ndary subnets, attach, test, reshuffle and retest
  -4     Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest
@@ -137,6 +145,12 @@ Or: api_monitor.sh [-f] CLEANUP XXX to clean up all resources with prefix XXX
         Option -f forces the deletion
 Or: api_monitor.sh [Options] CONNTEST XXX for full conn test for existing env XXX
         Options: [-2/3/4] [-o/O] [-i N] [-e ADR] [-E] [-w/W/V N] [-l LOGFILE]
+You need to have the OS_ variables set to allow OpenStack CLI tools to work.
+You can override defaults by exporting the environment variables AZS, VAZS, RPRE,
+ PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,
+ ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES[],
+ NAMESERVER.
+Typically, you should configure [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER.
 ```
 
 
