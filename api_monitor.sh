@@ -3108,6 +3108,7 @@ declare -i SUCCRUNS=0
 
 LASTDATE=$(date +%Y-%m-%d)
 LASTTIME=$(date +%H:%M:%S)
+TESTTIME=0
 
 # Declare empty router list outside of loop
 # so we can reuse (option -r N).
