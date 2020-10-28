@@ -97,7 +97,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.64
+VERSION=1.65
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -2448,16 +2448,16 @@ EOT
     for JHNO in $(seq 0 $(($NOAZS-1))); do
       scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -i ${KEYPAIRS[0]}.pem -p ${RPRE}wait ${USER}@${FLOATS[$JHNO]}: >/dev/null
       if test -n "$LOGFILE"; then echo "ssh -i ${KEYPAIRS[0]}.pem -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@${FLOATS[$JHNO]} time echo 'scale=4000; 4*a(1)'" >> $LOGFILE; fi
-      BENCH=$(ssh -i ${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait /usr/bin/bc; sync; { TIMEFORMAT=%R; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
+      BENCH=$(ssh -i ${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait /usr/bin/bc; sync; { TIMEFORMAT=%2U; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
       # Handle GNU time output format
-      if echo "$BENCH" | grep elapsed >/dev/null 2>&1; then
-        BENCH=$(echo "$BENCH" | grep elapsed)
-        BENCH=$(echo "$BENCH" | sed 's/^.* \([0-9:\.]*\)elapsed.*$/\1/')
+      if echo "$BENCH" | grep user >/dev/null 2>&1; then
+        BENCH=$(echo "$BENCH" | grep user)
+        BENCH=$(echo "$BENCH" | sed 's/^.* \([0-9:\.]*\)user.*$/\1/')
         MIN=${BENCH%:*}
         BENCH=${BENCH##*:}
         BENCH=$((MIN*60+${BENCH%.*})).${BENCH##*.}
+        BENCH=$(printf "%.2f\n" $BENCH)
       fi
-      BENCH=$(printf "%.2f\n" $BENCH)
       echo -n " $BENCH s"
       if test -n "$LOGFILE"; then echo -n " $BENCH s" >> $LOGFILE; fi
       if test -n "$GRAFANA"; then
@@ -3353,6 +3353,7 @@ else # test "$1" = "DEPLOY"; then
                  # FIXME: Shouldn't we abort here?
                  echo "${BOLD}Aborting this deployment due to non-functional JH, clean up now ...${NORM}"
                  sleep 1
+                 MSTOP=$(date +%s)
                else
                 # Test normal hosts
                 #setPortForward
@@ -3403,7 +3404,8 @@ else # test "$1" = "DEPLOY"; then
                 WAITTIME+=($(($MSTOP-$WSTART)))
                 # Test load balancer
                 if test -n "$LOADBALANCER" -a $LBERR = 0; then testLBs; fi
-                echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), DELETE AGAIN $NORM"
+                TESTTIME=$(($(date +%s)-$MSTOP))
+                echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), TESTS DONE (${TESTTIME}s), DELETE AGAIN $NORM"
                 let SUCCRUNS+=1
                 THISRUNSUCCESS=1
                 if test $SUCCWAIT -ge 0; then sleep $SUCCWAIT; else echo -n "Hit enter to continue ..."; read ANS; fi
@@ -3412,9 +3414,9 @@ else # test "$1" = "DEPLOY"; then
                   getToken
                   TOKENSTAMP=$(date +%s)
                 fi
-                if test -n "$LOADBALANCER" -a $LBERR = 0; then cleanLBs; fi
                 # Subtract waiting time (5s here)
                 MSTART=$(($MSTART+$(date +%s)-$MSTOP))
+                if test -n "$LOADBALANCER" -a $LBERR = 0; then cleanLBs; fi
                fi
                # TODO: Detach and delete disks again
               fi; deleteFIPs
@@ -3443,7 +3445,7 @@ else # test "$1" = "DEPLOY"; then
  if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0; then deleteRouters; fi
  #echo "${NETSTATS[*]}"
  echo -e "$BOLD *** Cleanup complete *** $NORM"
- THISRUNTIME=$(($(date +%s)-$MSTART))
+ THISRUNTIME=$(($(date +%s)-$MSTART+$TESTTIME))
  # Only account successful runs for total runtime stats
  if test -n "$THISRUNSUCCESS"; then
    TOTTIME+=($THISRUNTIME)
@@ -3486,15 +3488,15 @@ if test -z "$OS_PROJECT_NAME"; then OPRJ="$OS_CLOUD"; else OPRJ="$OS_PROJECT_NAM
 
 CDATE=$(date +%Y-%m-%d)
 CTIME=$(date +%H:%M:%S)
-if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn Errors"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
-if test -n "$LOADBALANCER"; then LBTXT="$CUMLBERRORS LB Errors"; LBST="|$CUMLBERRORS"; else LBTXT=""; LBST=""; fi
+if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn ERRORS"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
+if test -n "$LOADBALANCER"; then LBTXT="$CUMLBERRORS LB ERRORS"; LBST="|$CUMLBERRORS"; else LBTXT=""; LBST=""; fi
 if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXITER; then
   sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
-$RPRE $VERSION on $HOSTNAME testing $STRIPLE:
+$RPRE $VERSION on $HOSTNAME testing $STRIPLE ($JHIMG/$IMG):
 
 $RUNS deployments ($SUCCRUNS successful, $CUMVMS/$(($RUNS*($NOAZS+$NOVMS))) VMs, $CUMAPICALLS CLI calls)
-$CUMVMERRORS VM LOGIN ERRORS
-$CUMWAITERRORS VM TIMEOUT ERRORS
+$CUMVMERRORS VM Login ERRORS
+$CUMWAITERRORS VM Timeout ERRORS
 $CUMAPIERRORS API ERRORS
 $CUMAPITIMEOUTS API TIMEOUTS
 $CUMPINGERRORS Ping FAILURES
