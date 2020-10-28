@@ -71,13 +71,12 @@
 #
 # Future enhancements:
 # - dynamically attach an additional disk
-# - dynamically attach an additional NIC (we do this already with -2/-3/-4)
 # - test DNS (designate)
 # - test object storage (swift/s3)
 #
 # Optimization possibilities:
 # - DONE: Cache token and reuse when creating a large number of resources in a loop
-#   Use option -O (not used for volume create and image and LB stuff)
+#   Use option -O (not used for volume create, LB create and image stuff)
 #
 # Prerequisites:
 # - Working python-XXXclient tools (openstack, glance, neutron, nova, cinder)
@@ -3108,6 +3107,7 @@ declare -i SUCCRUNS=0
 
 LASTDATE=$(date +%Y-%m-%d)
 LASTTIME=$(date +%H:%M:%S)
+TESTTIME=0
 
 # Declare empty router list outside of loop
 # so we can reuse (option -r N).
