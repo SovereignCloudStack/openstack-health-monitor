@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.66
+VERSION=1.67
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -216,6 +216,9 @@ declare -i APITIMEOUTS=0
 declare -i APICALLS=0
 declare -i TOTERR=0
 
+declare -a ALARMBUFFER=()
+declare -i BUFFEREDALARMS=0
+
 # Nothing to change below here
 BOLD="\e[0;1m"
 REV="\e[0;3m"
@@ -236,6 +239,8 @@ usage()
   echo " -n N   number of VMs to create (beyond #AZ JumpHosts, def: 12)"
   echo " -N N   number of networks/subnets/jumphosts to create (def: # AZs)"
   echo " -l LOGFILE record all command in LOGFILE"
+  echo " -a N   send at most N alarms per iteration (first plus N-1 summarized)"
+  echo " -R     send recovery email after a completely successful iteration and alarms before"
   echo " -e ADR sets eMail address for notes/alarms (assumes working MTA)"
   echo "         second -e splits eMails; notes go to first, alarms to second eMail"
   echo " -E     exit on error (for CONNTEST)"
@@ -298,6 +303,8 @@ while test -n "$1"; do
     "-e") if test -z "$EMAIL"; then EMAIL="$2"; else EMAIL2="$2"; fi; shift;;
     "-m") if test -z "$SMNID"; then SMNID="$2"; else SMNID2="$2"; fi; shift;;
     "-q") NOALARM=1;;
+    "-a") MAXALARMS=$2; shift;;
+    "-R") SENDRECOVERY=1;;
     "-i") MAXITER=$2; shift;;
     "-g") ADDVMVOLSIZE=$2; shift;;
     "-G") ADDJHVOLSIZE=$2; shift;;
@@ -422,7 +429,7 @@ fi
 # $2 => invoked command
 # $3 => command output
 # $4 => timeout (for rc=137)
-sendalarm()
+reallysendalarm()
 {
   local PRE RES RM URN TOMSG
   local RECEIVER_LIST RECEIVER
@@ -487,6 +494,48 @@ $2
 $3
 $TOMSG" | otc.sh notifications publish $RECEIVER "$PRE from $HOSTNAME/$ALARMPRE"
   done
+}
+
+# Alarm notification wrapper.
+# $1 => return code
+# $2 => invoked command
+# $3 => command output
+# $4 => timeout (for rc=137)
+sendalarm()
+{
+  LASTERRITER=$loop
+  if test -z "$MAXALARMS" || test $((SENTALARMS+1)) -lt $MAXALARMS; then
+    let SENTALARMS+=1
+    reallysendalarm "$@"
+  else
+    ALARMBUFFER[$BUFFEREDALARMS]="$1~$2~$3 ~$4"
+    echo "Debug: Buffered ${ALARMBUFFER[*]}"
+    let BUFFEREDALARMS+=1
+  fi
+}
+
+sendbufferedalarms()
+{
+  if test -z "$ALARMBUFFER"; then return; fi
+  echo "Debug: Buffered ${ALARMBUFFER[*]}"
+  CMDOUT=""
+  for no in $(seq 0 $((BUFFEREDALARMS-1)) ); do
+    IFS="~" read RC CMD OUT TO <(echo ${ALARMBUFFER[$no]})
+    CMDOUT=$(echo -e "${CMDOUT}Error $no from $CMD => $RC\n $OUT (timeout $TO)\n")
+  done
+  reallysendalarm "$BUFFEREDALARMS" "Deferred alarms" "$CMDOUT" $BUFFEREDALARMS
+  let SENTALARMS+=1
+  BUFFEREDALARMS=0
+}
+
+sendrecoveryalarm()
+{
+  if test $VMERRORS -gt 0 -o $WAITERRORS -gt 0 -o $APIERRORS -gt 0 -o $APITIMEOUTS -gt 0 -o $THISRUNTIME -gt $MAXCYC; then LASTERRITER=$loop; return; fi
+  if test $((LASTERRITER+1)) = $loop; then
+    loop=$LASTERRITER
+    sendalarm 0 "Successful iteration" "Cloud seems to have recovered (or never was systematically broken)" $THISRUNTIME
+    let loop+=1
+  fi
 }
 
 rc2bin()
@@ -3110,6 +3159,7 @@ declare -i SUCCRUNS=0
 LASTDATE=$(date +%Y-%m-%d)
 LASTTIME=$(date +%H:%M:%S)
 TESTTIME=0
+LASTERRITER=-2
 
 # Declare empty router list outside of loop
 # so we can reuse (option -r N).
@@ -3173,6 +3223,10 @@ declare -a LISTENERS=()
 declare -a MEMBERS=()
 declare -a HEALTHMONS=()
 SNATROUTE=""
+
+declare -a ALARMBUFFER=()
+declare -i SENTALARMS=0
+declare -i BUFFEREDALARMS=0
 
 # Main
 MSTART=$(date +%s)
@@ -3467,6 +3521,8 @@ else # test "$1" = "DEPLOY"; then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME (max $MAXCYC)" $MAXCYC
     #waiterr $WAITERR
  fi
+ sendbufferedalarms
+ sendrecoveryalarm
  allstats
  if test -n "$FULLCONN"; then CONNTXT="$CONNERRORS Conn Errors, "; else CONNTXT=""; fi
  if test -n "$LOADBALANCER"; then LBTXT="$LBERRORS LB Errors, "; else LBTXT=""; fi
