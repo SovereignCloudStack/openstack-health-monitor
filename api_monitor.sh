@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.65
+VERSION=1.66
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -430,15 +430,15 @@ sendalarm()
   if test $1 = 0; then
     PRE="Note"
     RES=""
-    echo -e "$BOLD$PRE on $ALARMPRE/${RPRE%_} on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$BOLD$PRE on $ALARMPRE/${RPRE%_}/$((loop+1)) on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   elif test $1 -gt 128; then
     PRE="TIMEOUT $4"
     RES=" => $1"
-    echo -e "$RED$PRE on $ALARMPRE/${RPRE%_} on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$RED$PRE on $ALARMPRE/${RPRE%_}/$((loop+1)) on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   else
     PRE="ALARM $1"
     RES=" => $1"
-    echo -e "$RED$PRE on $ALARMPRE/${RPRE%_} on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$RED$PRE on $ALARMPRE/${RPRE%_}/$((loop+1)) on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   fi
   TOMSG=""
   if test "$4" != "0" -a $1 != 0 -a $1 != 1; then
@@ -460,12 +460,12 @@ sendalarm()
   do
     echo "From: ${RPRE%_} $HOSTNAME <$FROM>
 To: $RECEIVER
-Subject: $PRE on $ALARMPRE: $2
+Subject: $PRE on $ALARMPRE/$((loop+1)): $2
 Date: $(date -R)
 
 $PRE on $STRIPLE
 
-${RPRE%_} on $HOSTNAME:
+${RPRE%_}/$((loop+1)) on $HOSTNAME:
 $2
 $3
 $TOMSG" | /usr/sbin/sendmail -t -f $FROM
@@ -482,7 +482,7 @@ $TOMSG" | /usr/sbin/sendmail -t -f $FROM
   for RECEIVER in "${RECEIVER_LIST[@]}"
   do
     echo "$PRE on $STRIPLE: $DATE
-${RPRE%_} on $HOSTNAME:
+${RPRE%_}/$((loop+1)) on $HOSTNAME:
 $2
 $3
 $TOMSG" | otc.sh notifications publish $RECEIVER "$PRE from $HOSTNAME/$ALARMPRE"
@@ -3198,7 +3198,7 @@ if test "$1" = "CLEANUP"; then
 elif test "$1" = "CONNTEST"; then
   if test -n "$2"; then RPRE=$2; if test ${RPRE%_} == ${RPRE}; then RPRE=${RPRE}_; fi; fi
   while test $loop != $MAXITER; do
-   echo -e "$BOLD *** Start connectivity test for $RPRE *** $NORM"
+   echo -e "$BOLD *** Start connectivity test for $RPRE ($((loop+1))/$MAXITER) *** $NORM"
    # Only collect resource on e. 10th iteration
    if test "$(($loop%10))" == 0; then collectRes; else echo " Reuse known resources ..."; sleep 2; fi
    if test -z "${VMS[*]}"; then echo "No VMs found"; exit 1; fi
@@ -3262,7 +3262,7 @@ elif test "$1" = "CONNTEST"; then
 else # test "$1" = "DEPLOY"; then
  if test "$REFRESHPRJ" != 0 && test $(($RUNS%$REFRESHPRJ)) == 0; then createnewprj; fi
  # Complete setup
- echo -e "$BOLD *** Start deployment $loop/$MAXITER for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM ($TRIPLE)"
+ echo -e "$BOLD *** Start deployment $((loop+1))/$MAXITER for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM ($TRIPLE)"
  date
  unset THISRUNSUCCESS
  # Image IDs
@@ -3470,7 +3470,7 @@ else # test "$1" = "DEPLOY"; then
  allstats
  if test -n "$FULLCONN"; then CONNTXT="$CONNERRORS Conn Errors, "; else CONNTXT=""; fi
  if test -n "$LOADBALANCER"; then LBTXT="$LBERRORS LB Errors, "; else LBTXT=""; fi
- echo "This run: Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS CLI calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, ${CONNTXT}${LBTXT}$(date +'%Y-%m-%d %H:%M:%S %Z')"
+ echo "This run ($((loop+1))/$MAXITER): Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS CLI calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, ${CONNTXT}${LBTXT}$(date +'%Y-%m-%d %H:%M:%S %Z')"
 #else
 #  usage
 fi
