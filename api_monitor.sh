@@ -21,7 +21,9 @@
 # - Align sendalarm with Grafana database entries
 #
 # (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017-7/2017
-# License: CC-BY-SA (2.0)
+# (c) Kurt Garloff <kurt@garloff.de>, 2019
+# (c) Kurt Garloff <scs@garloff.de>, 2020
+# License: CC-BY-SA (4.0)
 #
 # General approach:
 # - create router (VPC)
