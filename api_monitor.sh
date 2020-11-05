@@ -431,21 +431,23 @@ fi
 # $4 => timeout (for rc=137)
 reallysendalarm()
 {
-  local PRE RES RM URN TOMSG
+  local KIND RES RM URN TOMSG
   local RECEIVER_LIST RECEIVER
   DATE=$(date)
-  if test $1 = 0; then
-    PRE="Note"
+  SRPRE=${RPRE%_}
+  SRPREL=${RPRE%_}/$((loop+1))
+  if test $1 = 0 -o $1 -lt 0; then
+    KIND="Note"
     RES=""
-    echo -e "$BOLD$PRE on $ALARMPRE/${RPRE%_}/$((loop+1)) on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$BOLD$PRE on $ALARMPRE/$SRPREL on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   elif test $1 -gt 128; then
-    PRE="TIMEOUT $4"
+    KIND="TIMEOUT $4"
     RES=" => $1"
-    echo -e "$RED$PRE on $ALARMPRE/${RPRE%_}/$((loop+1)) on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$RED$PRE on $ALARMPRE/$SRPREL on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   else
-    PRE="ALARM $1"
+    KIND="ALARM $1"
     RES=" => $1"
-    echo -e "$RED$PRE on $ALARMPRE/${RPRE%_}/$((loop+1)) on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$RED$PRE on $ALARMPRE/$SRPREL on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   fi
   TOMSG=""
   if test "$4" != "0" -a $1 != 0 -a $1 != 1; then
@@ -465,14 +467,14 @@ reallysendalarm()
   FROM="${FROM:-$LOGNAME@$FQDN}"
   for RECEIVER in "${RECEIVER_LIST[@]}"
   do
-    echo "From: ${RPRE%_} $HOSTNAME <$FROM>
+  echo "From: $SRPREL $HOSTNAME <$FROM>
 To: $RECEIVER
-Subject: $PRE on $ALARMPRE/$((loop+1)): $2
+Subject: $ALARMPRE/$SRPREL: $KIND $2
 Date: $(date -R)
 
-$PRE on $STRIPLE
+$KIND on $STRIPLE
 
-${RPRE%_}/$((loop+1)) on $HOSTNAME:
+$SRPREL on $HOSTNAME:
 $2
 $3
 $TOMSG" | /usr/sbin/sendmail -t -f $FROM
@@ -488,11 +490,12 @@ $TOMSG" | /usr/sbin/sendmail -t -f $FROM
   fi
   for RECEIVER in "${RECEIVER_LIST[@]}"
   do
-    echo "$PRE on $STRIPLE: $DATE
-${RPRE%_}/$((loop+1)) on $HOSTNAME:
+    echo "$STRIPLE/${SRPREL}: $KIND $2
+${SRPREL#APIMonitor_} on $HOSTNAME:
 $2
 $3
-$TOMSG" | otc.sh notifications publish $RECEIVER "$PRE from $HOSTNAME/$ALARMPRE"
+$TOMSG
+$DATE" | otc.sh notifications publish $RECEIVER "$HOSTNAME/$ALARMPRE/${SRPREL#APIMonitor_}: $KIND"
   done
 }
 
@@ -508,8 +511,9 @@ sendalarm()
     let SENTALARMS+=1
     reallysendalarm "$@"
   else
-    ALARMBUFFER[$BUFFEREDALARMS]="$1~$2~$3 ~$4"
-    echo "Debug: Buffered ${ALARMBUFFER[*]}"
+    ALARMBUFFER[$BUFFEREDALARMS]="Error $((BUFFEREDALARMS+1)): $2 => $1\n $3"
+    if test -n "$4" -a "$4" != "0"; then ALARMBUFFER[$BUFFEREDALAMRS]="${ALARMBUFFER[$BUFFEREDALARMS]} (timeout $4)"; fi
+    #echo "Debug: Buffered ${ALARMBUFFER[*]}"
     let BUFFEREDALARMS+=1
   fi
 }
@@ -517,13 +521,12 @@ sendalarm()
 sendbufferedalarms()
 {
   if test -z "$ALARMBUFFER"; then return; fi
-  echo "Debug: Buffered ${ALARMBUFFER[*]}"
+  #echo "Debug: Buffered ${ALARMBUFFER[*]}"
   CMDOUT=""
   for no in $(seq 0 $((BUFFEREDALARMS-1)) ); do
-    IFS="~" read RC CMD OUT TO <(echo ${ALARMBUFFER[$no]})
-    CMDOUT=$(echo -e "${CMDOUT}Error $no from $CMD => $RC\n $OUT (timeout $TO)\n")
+    CMDOUT=$(echo -e "${CMDOUT}${ALARMBUFFER[$no]}\n\n")
   done
-  reallysendalarm "$BUFFEREDALARMS" "Deferred alarms" "$CMDOUT" $BUFFEREDALARMS
+  reallysendalarm $BUFFEREDALARMS "Deferred alarms" "$CMDOUT" 0
   let SENTALARMS+=1
   BUFFEREDALARMS=0
 }
@@ -533,7 +536,7 @@ sendrecoveryalarm()
   if test $VMERRORS -gt 0 -o $WAITERRORS -gt 0 -o $APIERRORS -gt 0 -o $APITIMEOUTS -gt 0 -o $THISRUNTIME -gt $MAXCYC; then LASTERRITER=$loop; return; fi
   if test $((LASTERRITER+1)) = $loop; then
     loop=$LASTERRITER
-    sendalarm 0 "Successful iteration" "Cloud seems to have recovered (or never was systematically broken)" $THISRUNTIME
+    sendalarm -1 "Successful iteration" "Cloud seems to have recovered (or never was systematically broken)" $THISRUNTIME
     let loop+=1
   fi
 }
@@ -3549,7 +3552,7 @@ CTIME=$(date +%H:%M:%S)
 if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn ERRORS"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
 if test -n "$LOADBALANCER"; then LBTXT="$CUMLBERRORS LB ERRORS"; LBST="|$CUMLBERRORS"; else LBTXT=""; LBST=""; fi
 if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXITER; then
-  sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
+  reallysendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $HOSTNAME testing $STRIPLE ($JHIMG/$IMG):
 
 $RUNS deployments ($SUCCRUNS successful, $CUMVMS/$(($RUNS*($NOAZS+$NOVMS))) VMs, $CUMAPICALLS CLI calls)
