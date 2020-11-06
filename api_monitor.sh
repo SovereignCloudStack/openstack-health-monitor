@@ -980,8 +980,8 @@ createResources()
     if test $RC != 0; then echo -e "${YELLOW}ERROR: $RNM creation failed$NORM" 1>&2; return 1; fi
     local SCOL=""
     if test "$STATE" == "ACTIVE" -o "$STATE" == "UP"; then SCOL="$GREEN"
-    elif "$STATE" == "BUILD" -o "${STATE:0:7}" == "PENDING"; then SCOL="$YELLOW"
-    elif "${STATE:0:5}" == "ERROR"; then SCOL="$RED"
+    elif test "$STATE" == "BUILD" -o "${STATE:0:7}" == "PENDING"; then SCOL="$YELLOW"
+    elif test "${STATE:0:5}" == "ERROR"; then SCOL="$RED"
     fi
     if test -n "$ID" -a "$RNM" != "NONE"; then echo -n "$ID $SCOL$STATE$NORM "; fi
     eval ${RNM}S+="($ID)"
