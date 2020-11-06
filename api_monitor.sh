@@ -971,7 +971,12 @@ createResources()
     # Workaround for teuto.net
     if test "$1" = "cinder" && [[ $OS_AUTH_URL == *teutostack* ]]; then echo -en " ${RED}+5s${NORM} " 1>&2; sleep 5; fi
     if test $RC != 0; then echo -e "${YELLOW}ERROR: $RNM creation failed$NORM" 1>&2; return 1; fi
-    if test -n "$ID" -a "$RNM" != "NONE"; then echo -n "$ID $STATE "; fi
+    local SCOL=""
+    if test "$STATE" == "ACTIVE" -o "$STATE" == "UP"; then SCOL="$GREEN"
+    elif test "$STATE" == "BUILD" -o "${STATE:0:7}" == "PENDING"; then SCOL="$YELLOW"
+    elif test "${STATE:0:5}" == "ERROR"; then SCOL="$RED"
+    fi
+    if test -n "$ID" -a "$RNM" != "NONE"; then echo -n "$ID $SCOL$STATE$NORM "; fi
     eval ${RNM}S+="($ID)"
     # Workaround for loadbalancer member create
     if test "$STATE" = "PENDING_CREATE"; then sleep 1; fi
