@@ -983,7 +983,7 @@ createResources()
     elif test "$STATE" == "BUILD" -o "${STATE:0:7}" == "PENDING"; then SCOL="$YELLOW"
     elif test "${STATE:0:5}" == "ERROR"; then SCOL="$RED"
     fi
-    if test -n "$ID" -a "$RNM" != "NONE"; then echo -n "$ID $SCOL$STATE$NORM "; fi
+    if test -n "$ID" -a "$RNM" != "NONE"; then echo -en "$ID $SCOL$STATE$NORM "; fi
     eval ${RNM}S+="($ID)"
     # Workaround for loadbalancer member create
     if test "$STATE" = "PENDING_CREATE"; then sleep 1; fi
