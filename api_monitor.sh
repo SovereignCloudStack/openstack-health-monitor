@@ -107,13 +107,15 @@ if test "$1" == "--debug"; then set -x; shift; fi
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
 
 # User settings
+#export TZ=UTC
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
 if test -z "$PINGTARGET"; then PINGTARGET=dns.quad9.net; fi
 if test -z "$PINGTARGET2"; then PINGTARGET2=google-public-dns-b.google.com; fi
 
 # Prefix for test resources
 FORCEDEL=NONONO
-if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
+STARTDATE=$(date +%s)
+if test -z "$RPRE"; then RPRE="APIMonitor_${STARTDATE}_"; fi
 if test "$RPRE" == "${RPRE%_}"; then echo "Need trailing _ for prefix RPRE"; exit 1; fi
 SHORT_DOMAIN="${OS_USER_DOMAIN_NAME##*OTC*00000000001000}"
 SHPRJ="${OS_PROJECT_NAME%_Project}"
@@ -431,21 +433,23 @@ fi
 # $4 => timeout (for rc=137)
 reallysendalarm()
 {
-  local PRE RES RM URN TOMSG
+  local KIND RES RM URN TOMSG
   local RECEIVER_LIST RECEIVER
   DATE=$(date)
-  if test $1 = 0; then
-    PRE="Note"
+  SRPRE=${RPRE%_}
+  SRPREL=${RPRE%_}/$((loop+1))
+  if test $1 = 0 -o $1 -lt 0; then
+    KIND="Note"
     RES=""
-    echo -e "$BOLD$PRE on $ALARMPRE/${RPRE%_}/$((loop+1)) on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$BOLD$PRE on $ALARMPRE/$SRPREL on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   elif test $1 -gt 128; then
-    PRE="TIMEOUT $4"
+    KIND="TIMEOUT $4"
     RES=" => $1"
-    echo -e "$RED$PRE on $ALARMPRE/${RPRE%_}/$((loop+1)) on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$RED$PRE on $ALARMPRE/$SRPREL on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   else
-    PRE="ALARM $1"
+    KIND="ALARM $1"
     RES=" => $1"
-    echo -e "$RED$PRE on $ALARMPRE/${RPRE%_}/$((loop+1)) on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
+    echo -e "$RED$PRE on $ALARMPRE/$SRPREL on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
   fi
   TOMSG=""
   if test "$4" != "0" -a $1 != 0 -a $1 != 1; then
@@ -465,14 +469,14 @@ reallysendalarm()
   FROM="${FROM:-$LOGNAME@$FQDN}"
   for RECEIVER in "${RECEIVER_LIST[@]}"
   do
-    echo "From: ${RPRE%_} $HOSTNAME <$FROM>
+  echo "From: $SRPREL $HOSTNAME <$FROM>
 To: $RECEIVER
-Subject: $PRE on $ALARMPRE/$((loop+1)): $2
+Subject: $ALARMPRE/$SRPREL: $KIND $2
 Date: $(date -R)
 
-$PRE on $STRIPLE
+$KIND on $STRIPLE
 
-${RPRE%_}/$((loop+1)) on $HOSTNAME:
+$SRPREL on $HOSTNAME:
 $2
 $3
 $TOMSG" | /usr/sbin/sendmail -t -f $FROM
@@ -488,11 +492,12 @@ $TOMSG" | /usr/sbin/sendmail -t -f $FROM
   fi
   for RECEIVER in "${RECEIVER_LIST[@]}"
   do
-    echo "$PRE on $STRIPLE: $DATE
-${RPRE%_}/$((loop+1)) on $HOSTNAME:
+    echo "$STRIPLE/${SRPREL}: $KIND $2
+${SRPREL#APIMonitor_} on $HOSTNAME:
 $2
 $3
-$TOMSG" | otc.sh notifications publish $RECEIVER "$PRE from $HOSTNAME/$ALARMPRE"
+$TOMSG
+$DATE" | otc.sh notifications publish $RECEIVER "$HOSTNAME/$ALARMPRE/${SRPREL#APIMonitor_}: $KIND"
   done
 }
 
@@ -508,8 +513,10 @@ sendalarm()
     let SENTALARMS+=1
     reallysendalarm "$@"
   else
-    ALARMBUFFER[$BUFFEREDALARMS]="$1~$2~$3 ~$4"
-    echo "Debug: Buffered ${ALARMBUFFER[*]}"
+    TO=""
+    if test -n "$4" -a "$4" != "0"; then TO=" (timeout $4)"; fi
+    ALARMBUFFER[$BUFFEREDALARMS]="Error $((BUFFEREDALARMS+1)): $2 => $1\n $3$TO\n"
+    echo -e "${YELLOW}Deferred error $((BUFFEREDALARMS+1)): $2 => $1\n $3$TO${NORM}"
     let BUFFEREDALARMS+=1
   fi
 }
@@ -517,13 +524,13 @@ sendalarm()
 sendbufferedalarms()
 {
   if test -z "$ALARMBUFFER"; then return; fi
-  echo "Debug: Buffered ${ALARMBUFFER[*]}"
+  #echo "Debug: Buffered ${ALARMBUFFER[*]}"
   CMDOUT=""
   for no in $(seq 0 $((BUFFEREDALARMS-1)) ); do
-    IFS="~" read RC CMD OUT TO <(echo ${ALARMBUFFER[$no]})
-    CMDOUT=$(echo -e "${CMDOUT}Error $no from $CMD => $RC\n $OUT (timeout $TO)\n")
+    CMDOUT="${CMDOUT}${ALARMBUFFER[$no]}\n"
   done
-  reallysendalarm "$BUFFEREDALARMS" "Deferred alarms" "$CMDOUT" $BUFFEREDALARMS
+  CMDOUT=$(echo -e "$CMDOUT")
+  reallysendalarm $BUFFEREDALARMS "Deferred alarms" "$CMDOUT" 0
   let SENTALARMS+=1
   BUFFEREDALARMS=0
 }
@@ -533,7 +540,7 @@ sendrecoveryalarm()
   if test $VMERRORS -gt 0 -o $WAITERRORS -gt 0 -o $APIERRORS -gt 0 -o $APITIMEOUTS -gt 0 -o $THISRUNTIME -gt $MAXCYC; then LASTERRITER=$loop; return; fi
   if test $((LASTERRITER+1)) = $loop; then
     loop=$LASTERRITER
-    sendalarm 0 "Successful iteration" "Cloud seems to have recovered (or never was systematically broken)" $THISRUNTIME
+    sendalarm -1 "Successful iteration $((loop+1))" "Cloud seems to have recovered (or never was *systematically* broken)" $THISRUNTIME
     let loop+=1
   fi
 }
@@ -971,7 +978,12 @@ createResources()
     # Workaround for teuto.net
     if test "$1" = "cinder" && [[ $OS_AUTH_URL == *teutostack* ]]; then echo -en " ${RED}+5s${NORM} " 1>&2; sleep 5; fi
     if test $RC != 0; then echo -e "${YELLOW}ERROR: $RNM creation failed$NORM" 1>&2; return 1; fi
-    if test -n "$ID" -a "$RNM" != "NONE"; then echo -n "$ID $STATE "; fi
+    local SCOL=""
+    if test "$STATE" == "ACTIVE" -o "$STATE" == "UP"; then SCOL="$GREEN"
+    elif "$STATE" == "BUILD" -o "${STATE:0:7}" == "PENDING"; then SCOL="$YELLOW"
+    elif "${STATE:0:5}" == "ERROR"; then SCOL="$RED"
+    fi
+    if test -n "$ID" -a "$RNM" != "NONE"; then echo -n "$ID $SCOL$STATE$NORM "; fi
     eval ${RNM}S+="($ID)"
     # Workaround for loadbalancer member create
     if test "$STATE" = "PENDING_CREATE"; then sleep 1; fi
@@ -2357,7 +2369,7 @@ wait222()
         if test -z "$STATUS"; then STATUS=$(echo "$OSTACKRESP" | grep "^| *provisioning_status *|" | sed -e "s/^| *provisioning_status *| *\([^|]*\).*\$/\1/" -e 's/ *$//'); fi
         echo -n "$STATUS "
         if test "$STATUS" != "ACTIVE"; then
-          sendalarm 2 "VM $no in wrong state $STATUS" "${VMS[$no]}" 1
+          sendalarm 2 "VM $no in wrong state $STATUS" "${VMS[$no]}" 0
           if test -n "$LOGFILE"; then echo "VM $no ${VMS[$no]} is in wrong state $STATUS" >> $LOGFILE; fi
         fi
       fi
@@ -3549,7 +3561,7 @@ CTIME=$(date +%H:%M:%S)
 if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn ERRORS"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
 if test -n "$LOADBALANCER"; then LBTXT="$CUMLBERRORS LB ERRORS"; LBST="|$CUMLBERRORS"; else LBTXT=""; LBST=""; fi
 if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXITER; then
-  sendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
+  reallysendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $HOSTNAME testing $STRIPLE ($JHIMG/$IMG):
 
 $RUNS deployments ($SUCCRUNS successful, $CUMVMS/$(($RUNS*($NOAZS+$NOVMS))) VMs, $CUMAPICALLS CLI calls)
