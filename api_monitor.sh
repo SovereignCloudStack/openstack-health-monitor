@@ -511,9 +511,10 @@ sendalarm()
     let SENTALARMS+=1
     reallysendalarm "$@"
   else
-    ALARMBUFFER[$BUFFEREDALARMS]="Error $((BUFFEREDALARMS+1)): $2 => $1\n $3"
-    if test -n "$4" -a "$4" != "0"; then ALARMBUFFER[$BUFFEREDALAMRS]="${ALARMBUFFER[$BUFFEREDALARMS]} (timeout $4)"; fi
-    #echo "Debug: Buffered ${ALARMBUFFER[*]}"
+    TO=""
+    if test -n "$4" -a "$4" != "0"; then TO=" (timeout $4)"; fi
+    ALARMBUFFER[$BUFFEREDALARMS]="Error $((BUFFEREDALARMS+1)): $2 => $1\n $3$TO"
+    echo -e "${YELLOW}Deferred error $((BUFFEREDALARMS+1)): $2 => $1\n $3$TO${NORM}"
     let BUFFEREDALARMS+=1
   fi
 }
@@ -524,7 +525,7 @@ sendbufferedalarms()
   #echo "Debug: Buffered ${ALARMBUFFER[*]}"
   CMDOUT=""
   for no in $(seq 0 $((BUFFEREDALARMS-1)) ); do
-    CMDOUT=$(echo -e "${CMDOUT}${ALARMBUFFER[$no]}\n\n")
+    CMDOUT=$(echo -e "($no)${CMDOUT}${ALARMBUFFER[$no]}\n\n")
   done
   reallysendalarm $BUFFEREDALARMS "Deferred alarms" "$CMDOUT" 0
   let SENTALARMS+=1
@@ -536,7 +537,7 @@ sendrecoveryalarm()
   if test $VMERRORS -gt 0 -o $WAITERRORS -gt 0 -o $APIERRORS -gt 0 -o $APITIMEOUTS -gt 0 -o $THISRUNTIME -gt $MAXCYC; then LASTERRITER=$loop; return; fi
   if test $((LASTERRITER+1)) = $loop; then
     loop=$LASTERRITER
-    sendalarm -1 "Successful iteration" "Cloud seems to have recovered (or never was systematically broken)" $THISRUNTIME
+    sendalarm -1 "Successful iteration $((loop+1))" "Cloud seems to have recovered (or never was *systematically* broken)" $THISRUNTIME
     let loop+=1
   fi
 }
