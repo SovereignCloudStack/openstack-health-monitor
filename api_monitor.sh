@@ -540,7 +540,7 @@ sendrecoveryalarm()
   if test $VMERRORS -gt 0 -o $WAITERRORS -gt 0 -o $APIERRORS -gt 0 -o $APITIMEOUTS -gt 0 -o $THISRUNTIME -gt $MAXCYC; then LASTERRITER=$loop; return; fi
   if test $((LASTERRITER+1)) = $loop; then
     loop=$LASTERRITER
-    sendalarm -1 "Successful iteration $((loop+1))" "Cloud seems to have recovered (or never was *systematically* broken)" $THISRUNTIME
+    sendalarm -1 "Successful iteration $((loop+2))" "Cloud seems to have recovered (or never was *systematically* broken)" $THISRUNTIME
     let loop+=1
   fi
 }
@@ -925,6 +925,18 @@ ostackcmd_tm()
   return $RC
 }
 
+SCOL=""
+# Set SCOL according to state in $1
+state2col()
+{
+    SCOL=""
+    local STA="$1"
+    if test "$STA" == "ACTIVE" -o "$STA" == "active" -o "$STA" == "UP"; then SCOL="$GREEN"
+    elif test "$STA" == "BUILD" -o "${STA:0:7}" == "PENDING" -o "$STA" == "creating" -o "$STA" == "downloading" -o "$STA" == "DOWN"; then SCOL="$YELLOW"
+    elif test "${STA:0:5}" == "ERROR" -o "${STA:0:5}" == "error"; then SCOL="$RED"
+    fi
+}
+
 STATE=""
 # Create a number of resources and keep track of them
 # $1 => quantity of resources
@@ -975,14 +987,10 @@ createResources()
     read TM ID STATE <<<"$TIRESP"
     if test $RC == 0; then eval ${STATNM}+="($TM)"; fi
     let ctr+=1
+    state2col "$STATE"
     # Workaround for teuto.net
     if test "$1" = "cinder" && [[ $OS_AUTH_URL == *teutostack* ]]; then echo -en " ${RED}+5s${NORM} " 1>&2; sleep 5; fi
     if test $RC != 0; then echo -e "${YELLOW}ERROR: $RNM creation failed$NORM" 1>&2; return 1; fi
-    local SCOL=""
-    if test "$STATE" == "ACTIVE" -o "$STATE" == "UP"; then SCOL="$GREEN"
-    elif test "$STATE" == "BUILD" -o "${STATE:0:7}" == "PENDING"; then SCOL="$YELLOW"
-    elif test "${STATE:0:5}" == "ERROR"; then SCOL="$RED"
-    fi
     if test -n "$ID" -a "$RNM" != "NONE"; then echo -en "$ID $SCOL$STATE$NORM "; fi
     eval ${RNM}S+="($ID)"
     # Workaround for loadbalancer member create
@@ -1078,7 +1086,6 @@ colstat()
   fi
   return 0
 }
-
 
 # Wait for resources reaching a desired state
 # $1 => name of timing statistics array

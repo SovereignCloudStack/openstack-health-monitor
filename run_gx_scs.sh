@@ -4,13 +4,15 @@
 # Options for the images: my openSUSE 15.2 (linux), Ubuntu 20.04 (ubuntu),
 #  openSUSE Leap 15.2 (opensuse), CentOS 8 (centos)
 # You can freely mix ...
-#export JHIMG="Ubuntu 20.04"
-export JHIMG="openSUSE 15.2"
+export JHIMG="Ubuntu 20.04"
+#export JHIMG="openSUSE 15.2"
 #export ADDJHVOLSIZE=2
-#export IMG="Ubuntu 20.04"
-export IMG="openSUSE Leap 15.2"
+export IMG="Ubuntu 20.04"
+#export IMG="openSUSE 15.2"
 #export IMG="CentOS 8"
-export DEFLTUSER=opensuse
+# DEFLTUSER from image_original_user property
+#export DEFLTUSER=opensuse
+#export DEFLTUSER=ubuntu
 #export JHDEFLTUSER=ubuntu
 # You can use a filter when listing images (because your catalog is huge)
 #export JHIMGFILT="--property-filter os_version=openSUSE-15.0"
@@ -58,5 +60,5 @@ done
 
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
 #exec api_monitor.sh -o -C -D -N 2 -n 8 -s -e sender@domain.org -l APIMon_$$.log "$@"
-exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -e scs@garloff.de -l APIMon_$$.log "$@"
+exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -a 2 -R -e scs@garloff.de -l APIMon_$$.log "$@"
 
