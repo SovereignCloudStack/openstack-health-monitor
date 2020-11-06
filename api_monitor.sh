@@ -107,13 +107,15 @@ if test "$1" == "--debug"; then set -x; shift; fi
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
 
 # User settings
+#export TZ=UTC
 #if test -z "$PINGTARGET"; then PINGTARGET=f-ed2-i.F.DE.NET.DTAG.DE; fi
 if test -z "$PINGTARGET"; then PINGTARGET=dns.quad9.net; fi
 if test -z "$PINGTARGET2"; then PINGTARGET2=google-public-dns-b.google.com; fi
 
 # Prefix for test resources
 FORCEDEL=NONONO
-if test -z "$RPRE"; then RPRE="APIMonitor_$$_"; fi
+STARTDATE=$(date +%s)
+if test -z "$RPRE"; then RPRE="APIMonitor_${STARTDATE}_"; fi
 if test "$RPRE" == "${RPRE%_}"; then echo "Need trailing _ for prefix RPRE"; exit 1; fi
 SHORT_DOMAIN="${OS_USER_DOMAIN_NAME##*OTC*00000000001000}"
 SHPRJ="${OS_PROJECT_NAME%_Project}"
@@ -513,7 +515,7 @@ sendalarm()
   else
     TO=""
     if test -n "$4" -a "$4" != "0"; then TO=" (timeout $4)"; fi
-    ALARMBUFFER[$BUFFEREDALARMS]="Error $((BUFFEREDALARMS+1)): $2 => $1\n $3$TO"
+    ALARMBUFFER[$BUFFEREDALARMS]="Error $((BUFFEREDALARMS+1)): $2 => $1\n $3$TO\n"
     echo -e "${YELLOW}Deferred error $((BUFFEREDALARMS+1)): $2 => $1\n $3$TO${NORM}"
     let BUFFEREDALARMS+=1
   fi
@@ -525,8 +527,9 @@ sendbufferedalarms()
   #echo "Debug: Buffered ${ALARMBUFFER[*]}"
   CMDOUT=""
   for no in $(seq 0 $((BUFFEREDALARMS-1)) ); do
-    CMDOUT=$(echo -e "($no)${CMDOUT}${ALARMBUFFER[$no]}\n\n")
+    CMDOUT="${CMDOUT}${ALARMBUFFER[$no]}\n"
   done
+  CMDOUT=$(echo -e "$CMDOUT")
   reallysendalarm $BUFFEREDALARMS "Deferred alarms" "$CMDOUT" 0
   let SENTALARMS+=1
   BUFFEREDALARMS=0
@@ -975,7 +978,12 @@ createResources()
     # Workaround for teuto.net
     if test "$1" = "cinder" && [[ $OS_AUTH_URL == *teutostack* ]]; then echo -en " ${RED}+5s${NORM} " 1>&2; sleep 5; fi
     if test $RC != 0; then echo -e "${YELLOW}ERROR: $RNM creation failed$NORM" 1>&2; return 1; fi
-    if test -n "$ID" -a "$RNM" != "NONE"; then echo -n "$ID $STATE "; fi
+    local SCOL=""
+    if test "$STATE" == "ACTIVE" -o "$STATE" == "UP"; then SCOL="$GREEN"
+    elif "$STATE" == "BUILD" -o "${STATE:0:7}" == "PENDING"; then SCOL="$YELLOW"
+    elif "${STATE:0:5}" == "ERROR"; then SCOL="$RED"
+    fi
+    if test -n "$ID" -a "$RNM" != "NONE"; then echo -n "$ID $SCOL$STATE$NORM "; fi
     eval ${RNM}S+="($ID)"
     # Workaround for loadbalancer member create
     if test "$STATE" = "PENDING_CREATE"; then sleep 1; fi
@@ -2361,7 +2369,7 @@ wait222()
         if test -z "$STATUS"; then STATUS=$(echo "$OSTACKRESP" | grep "^| *provisioning_status *|" | sed -e "s/^| *provisioning_status *| *\([^|]*\).*\$/\1/" -e 's/ *$//'); fi
         echo -n "$STATUS "
         if test "$STATUS" != "ACTIVE"; then
-          sendalarm 2 "VM $no in wrong state $STATUS" "${VMS[$no]}" 1
+          sendalarm 2 "VM $no in wrong state $STATUS" "${VMS[$no]}" 0
           if test -n "$LOGFILE"; then echo "VM $no ${VMS[$no]} is in wrong state $STATUS" >> $LOGFILE; fi
         fi
       fi
