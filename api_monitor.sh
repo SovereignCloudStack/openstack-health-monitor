@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.67
+VERSION=1.68
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -3570,6 +3570,7 @@ CTIME=$(date +%H:%M:%S)
 if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn ERRORS"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
 if test -n "$LOADBALANCER"; then LBTXT="$CUMLBERRORS LB ERRORS"; LBST="|$CUMLBERRORS"; else LBTXT=""; LBST=""; fi
 if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXITER; then
+  if test -n "$ROUTERS"; then deleteRouters; fi
   reallysendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $HOSTNAME testing $STRIPLE ($JHIMG/$IMG):
 
@@ -3628,6 +3629,17 @@ fi
 # Clean up residuals, if any
 if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0; then waitnetgone; fi
 #waitnetgone
+if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE"; then
+  LASTDATE="$CDATE"
+  STARTDATE=$(date +%s)
+  if test "$LOGFILE" == "${RPRE%_}.log"; then
+    RPRE="APIMonitor_${STARTDATE}_"
+    LOGFILE="${RPRE%_}.log"
+  else
+    RPRE="APIMonitor_${STARTDATE}_"
+  fi
+  echo "Using new $RPRE prefix for resrcs on $TRIPLE (${AZS[*]})"
+fi
 let loop+=1
 done
 rm -f ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old ${RPRE}user_data_JH.yaml ${RPRE}user_data_VM.yaml
