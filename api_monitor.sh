@@ -796,6 +796,7 @@ ostackcmd_search()
   local TIM=$(math "%.2f" "$LEND-$LSTART")
   if test "$RC" != "0"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; return $RC; fi
   if test -z "$ID"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP => $SEARCH not found$NORM" 1>&2; return $RC; fi
+  if test "${TIM%.*}" -gt 10; then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; fi
   echo "$TIM $ID $STATUS"
   return $RC
 }
@@ -868,6 +869,7 @@ ostackcmd_id()
     echo "$LSTART/$LEND/$ID/$STATUS: ${OSTACKCMD[@]} => $RC ($ID:$STATUS) $RESP" >> $LOGFILE
     if test "$RC" != "0" -a -z "$IGNORE_ERRORS"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; return $RC; fi
   fi
+  if test "${TIM%.*}" -gt 10; then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; fi
   echo "$TIM $ID $STATUS"
   return $RC
 }
@@ -921,6 +923,7 @@ ostackcmd_tm()
 
   eval "${STATNM}+=( $TIM )"
   echo "$LSTART/$LEND/: ${OSTACKCMD[@]} => $RC $OSTACKRESP" >> $LOGFILE
+  if test "${TIM%.*}" -gt 10; then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $OSTACKRESP$NORM" 1>&2; fi
   return $RC
 }
 
