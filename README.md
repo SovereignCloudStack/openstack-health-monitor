@@ -101,13 +101,13 @@ Usage
 Use `api_monitor.sh -h` to get a list of the command line options.
 
 ```
-Running api_monitor.sh v1.65 on host os152-kurt.otc.t-systems.com
-Using APIMonitor_442_ prefix for resrcs on gx-scs (nova nova)
 Usage: api_monitor.sh [options]
  --debug Use set -x to print every line executed
  -n N   number of VMs to create (beyond #AZ JumpHosts, def: 12)
  -N N   number of networks/subnets/jumphosts to create (def: # AZs)
  -l LOGFILE record all command in LOGFILE
+ -a N   send at most N alarms per iteration (first plus N-1 summarized)
+ -R     send recovery email after a completely successful iteration and alarms before
  -e ADR sets eMail address for notes/alarms (assumes working MTA)
          second -e splits eMails; notes go to first, alarms to second eMail
  -E     exit on error (for CONNTEST)
