@@ -211,8 +211,7 @@ fi
 ADDJHVOLSIZE=${ADDJHVOLSIZE:-0}
 ADDVMVOLSIZE=${ADDVMVOLSIZE:-0}
 
-DATE=`date +%s`
-LOGFILE=$RPRE$DATE.log
+LOGFILE=${RPRE%_}.log
 declare -i APIERRORS=0
 declare -i APITIMEOUTS=0
 declare -i APICALLS=0
@@ -285,7 +284,7 @@ usage()
   echo " PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,"
   echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES[],"
   echo " NAMESERVER."
-  echo "Typically, you should configure [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER."
+  echo "Typically, you should configure [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER."
   exit 0
 }
 
