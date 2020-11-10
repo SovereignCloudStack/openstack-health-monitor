@@ -3624,16 +3624,21 @@ $(allstats -m)" > Stats.$LASTDATA.$LASTTIME.$CDATE.$CTIME.psv
   VMDSTATS=()
   TOTTIME=()
   WAITTIME=()
+  STATSENT=1
 fi
 
 # Clean up residuals, if any
 if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0; then waitnetgone; fi
 #waitnetgone
-if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE"; then
-  LASTDATE="$CDATE"
+if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a -n "$SENDSTATS" -a "$STATSENT" == "1"; then
+  unset STATSENT
+  #LASTDATE="$CDATE"
   STARTDATE=$(date +%s)
   if test "$LOGFILE" == "${RPRE%_}.log"; then
     RPRE="APIMonitor_${STARTDATE}_"
+    gzip "$LOGFILE"
+    # s3 put
+    # swift upload
     LOGFILE="${RPRE%_}.log"
   else
     RPRE="APIMonitor_${STARTDATE}_"
