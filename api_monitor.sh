@@ -3647,6 +3647,11 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a -n "$SENDSTATS" -a "$STATSENT" 
 fi
 let loop+=1
 done
+if test -n "$LOGFILE"; then
+  gzip "$LOGFILE"
+  # s3 put
+  # swift upload
+fi
 rm -f ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old ${RPRE}user_data_JH.yaml ${RPRE}user_data_VM.yaml
 if test "$REFRESHPRJ" != 0; then cleanprj; fi
 
