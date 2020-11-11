@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.67
+VERSION=1.69
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -247,7 +247,7 @@ usage()
   echo " -E     exit on error (for CONNTEST)"
   echo " -m URN sets notes/alarms by SMN (pass URN of queue)"
   echo "         second -m splits notifications; notes to first, alarms to second URN"
-  echo " -s     sends stats as well once per day, not just alarms"
+  echo " -s [SH] sends stats as well once per day (or every SH hours), not just alarms"
   echo " -S [NM] sends stats to grafana via local telegraf http_listener (def for NM=api-monitoring)"
   echo " -q     do not send any alarms"
   echo " -d     boot Directly from image (not via volume)"
@@ -283,7 +283,7 @@ usage()
   echo "You can override defaults by exporting the environment variables AZS, VAZS, RPRE,"
   echo " PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,"
   echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES[],"
-  echo " NAMESERVER."
+  echo " NAMESERVER, SWIFTCONTAINER."
   echo "Typically, you should configure [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER."
   exit 0
 }
@@ -295,7 +295,8 @@ while test -n "$1"; do
     "-N") NONETS=$2; shift;;
     "-l") LOGFILE=$2; shift;;
     "help"|"-h"|"--help") usage;;
-    "-s") SENDSTATS=1;;
+    "-s") SENDSTATS=1
+          if test -n "$2" -a "$2" != "CLEANUP" -a "$2" != "DEPLOY" -a "${2:0:1}" != "-"; then SENDSTATHR="$2"; shift; fi;;
     "-S") GRAFANA=1;
           if test -n "$2" -a "$2" != "CLEANUP" -a "$2" != "DEPLOY" -a "${2:0:1}" != "-"; then GRAFANANM="$2"; shift; fi;;
     "-P") unset MANUALPORTSETUP;;
@@ -565,7 +566,8 @@ updAPIerr()
 declare -i EXITED=0
 exithandler()
 {
-  loop=$(($MAXITER-1))
+  #loop=$(($MAXITER-1))
+  INTERRUPTED=1
   if test "$EXITED" = "0"; then
     echo -e "\n${REV}SIGINT received, exiting after this iteration$NORM"
   elif test "$EXITED" = "1"; then
@@ -611,17 +613,19 @@ killin()
 
 NOVA_EP="${NOVA_EP:-novaURL}"
 CINDER_EP="${CINDER_EP:-cinderURL}"
+#OCTAVIA_EP="${NEUTRON_EP:-octaviaURL}"
+OCTAVIA_EP="${OCTAVIA_EP:${NEUTRON_EP:-octaviaURL}}"
 NEUTRON_EP="${NEUTRON_EP:-neutronURL}"
-OCTAVIA_EP="${NEUTRON_EP:-octaviaURL}"
 GLANCE_EP="${GLANCE_EP:-glanceURL}"
+SWIFT_EP="${SWITF_EP:-swiftURL}"
 OSTACKCMD=""; EP=""
 # Translate nova/cinder/neutron ... to openstack commands
 translate()
 {
   local DEFCMD=""
-  CMDS=(nova cinder neutron glance octavia)
-  OSTDEFS=(server volume network image loadbalancer)
-  EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP $OCTAVIA_EP)
+  CMDS=(nova cinder neutron glance octavia swift)
+  OSTDEFS=(server volume network image loadbalancer object)
+  EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP $OCTAVIA_EP $SWIFT_EP)
   for no in $(seq 0 $((${#CMDS[*]}-1))); do
     if test ${CMDS[$no]} == $1; then
       EP=${EPS[$no]}
@@ -664,6 +668,8 @@ translate()
       # nova meta ${VMS[$no]} set deployment=$CFTEST server=$no
       ARGS=$(echo "$@" | sed -e 's@set @@' -e 's@\([a-zA-Z_0-9]*=[^ ]*\)@--property \1@g')
       OSTACKCMD=($OPST $DEFCMD set $ARGS)
+    elif test "$DEFCMD" == "object" -a "$CMD" == "upload"; then
+      OSTACKCMD=($OPST $DEFCMD create "$@")
     fi
   else
     C1=${1%-*}
@@ -796,6 +802,7 @@ ostackcmd_search()
   local TIM=$(math "%.2f" "$LEND-$LSTART")
   if test "$RC" != "0"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; return $RC; fi
   if test -z "$ID"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP => $SEARCH not found$NORM" 1>&2; return $RC; fi
+  if test "${TIM%.*}" -gt 10; then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; fi
   echo "$TIM $ID $STATUS"
   return $RC
 }
@@ -868,6 +875,7 @@ ostackcmd_id()
     echo "$LSTART/$LEND/$ID/$STATUS: ${OSTACKCMD[@]} => $RC ($ID:$STATUS) $RESP" >> $LOGFILE
     if test "$RC" != "0" -a -z "$IGNORE_ERRORS"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; return $RC; fi
   fi
+  if test "${TIM%.*}" -gt 10; then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; fi
   echo "$TIM $ID $STATUS"
   return $RC
 }
@@ -921,6 +929,7 @@ ostackcmd_tm()
 
   eval "${STATNM}+=( $TIM )"
   echo "$LSTART/$LEND/: ${OSTACKCMD[@]} => $RC $OSTACKRESP" >> $LOGFILE
+  if test "${TIM%.*}" -gt 10; then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $OSTACKRESP$NORM" 1>&2; fi
   return $RC
 }
 
@@ -2526,7 +2535,7 @@ EOT
         BENCH=$((MIN*60+${BENCH%.*})).${BENCH##*.}
         BENCH=$(printf "%.2f\n" $BENCH)
       fi
-      echo -n " $BENCH s"
+      echo -en "${BOLD} $BENCH s${NORM}"
       if test -n "$LOGFILE"; then echo -n " $BENCH s" >> $LOGFILE; fi
       if test -n "$GRAFANA"; then
         curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=4000pi,method=JHVM$JHNO duration=$BENCH,return_code=0 $(date +%s%N)" >/dev/null
@@ -2713,7 +2722,7 @@ EOT
     RECVBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_received.bits_per_second'))/1048576))
     HUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.host_total'))
     RUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.remote_total'))
-    echo -en "${TGT}: $SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL\n "
+    echo -en "${TGT}: ${BOLD}$SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL${NORM}\n "
     if test -n "$LOGFILE"; then echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
     BANDWIDTH+=($SENDBW $RECVBW)
     if test -n "$GRAFANA"; then
@@ -3067,6 +3076,7 @@ getToken()
   GLANCE_EP=$(getPublicEP glance)
   NEUTRON_EP=$(getPublicEP neutron)
   OCTAVIA_EP=$(getPublicEP octavia)
+  SWIFT_EP=$(getPublicEP swift)
   if test -z "$OCTAVIA_EP"; then OCTAVIA_EP="$NEUTRON_EP"; fi
   #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP"
   ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
@@ -3098,6 +3108,47 @@ createnewprj()
   otc.sh iam createproject $OS_PROJECT_NAME >/dev/null
   echo -e "${REV}Note: Created project $OS_PROJECT_NAME ($?)$NORM"
   sleep 10
+}
+
+# Compress logfile and upload
+# $1: file to compress and upload
+compress_and_upload()
+{
+  local SZ=$(stat -c %s "$1") || return
+  if test $SZ -gt 1000; then
+    COMP=gzip; EXT=.gz
+    if test $SZ -gt 1000000; then COMP=xz; EXT=.xz; fi
+    $COMP "$1"
+  fi
+  if test -n "$SWIFTCONTAINER"; then
+    LOGFILE=".$LOGFILE.swift"
+    RESP=$(ostackcmd_id etag $CINDERTIMEOUT swift upload "$SWIFTCONTAINER" "$1$EXT")
+    if test $? = 0; then rm "$1$EXT"; fi
+    LOGFILE="${LOGFILE%.swift}"
+    LOGFILE="${LOGFILE#.}"
+  elif test -n "$S3BUCKET"; then
+    MTYPE=$(file -i "$1$EXT")
+    if test -n "$MTYPE"; then MTYPE="contentType=$MTYPE"; fi
+    s3 put "$S3CONTAINER/$1$EXT" fileName="$1$EXT" $MTYPE
+    if test $? = 0; then rm "$1$EXT"; fi
+  fi
+}
+
+# return true(0) if we should send a stats update
+cycle_mon()
+{
+  # If we're not into sending stats, don't look further
+  if test -z "$SENDSTATS"; then return 1; fi
+  NOW=$(date +%s)
+  HRS=$(((NOW-STARTDATE)/3600))
+  if test -n "$SENDSTATHR"; then
+    # Every $SENDSTATHR mode
+    if test $HRS -ge $SENDSTATHR; then return 0; else return 1; fi
+  else
+    # Every new calendar day
+    if test "$CDATE" != "$LASTDATE"; then return 0; else return 1; fi
+  fi
+  return 1
 }
 
 # Allow for many recipients
@@ -3196,7 +3247,7 @@ fi
 
 
 # MAIN LOOP
-while test $loop != $MAXITER; do
+while test $loop != $MAXITER -a -z "$INTERRUPTED"; do
 
 declare -i PINGERRORS=0
 declare -i APIERRORS=0
@@ -3269,7 +3320,7 @@ if test "$1" = "CLEANUP"; then
   exit 0
 elif test "$1" = "CONNTEST"; then
   if test -n "$2"; then RPRE=$2; if test ${RPRE%_} == ${RPRE}; then RPRE=${RPRE}_; fi; fi
-  while test $loop != $MAXITER; do
+  while test $loop != $MAXITER -a -z "$INTERRUPTED"; do
    echo -e "$BOLD *** Start connectivity test for $RPRE ($((loop+1))/$MAXITER) *** $NORM"
    # Only collect resource on e. 10th iteration
    if test "$(($loop%10))" == 0; then collectRes; else echo " Reuse known resources ..."; sleep 2; fi
@@ -3516,7 +3567,7 @@ else # test "$1" = "DEPLOY"; then
   fi; deleteNets
  fi
  # We may recycle the router
- if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0; then deleteRouters; fi
+ if test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED" -o $((($loop+1)%$ROUTERITER)) == 0; then deleteRouters; fi
  #echo "${NETSTATS[*]}"
  echo -e "$BOLD *** Cleanup complete *** $NORM"
  THISRUNTIME=$(($(date +%s)-$MSTART+$TESTTIME))
@@ -3566,7 +3617,8 @@ CDATE=$(date +%Y-%m-%d)
 CTIME=$(date +%H:%M:%S)
 if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn ERRORS"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
 if test -n "$LOADBALANCER"; then LBTXT="$CUMLBERRORS LB ERRORS"; LBST="|$CUMLBERRORS"; else LBTXT=""; LBST=""; fi
-if test -n "$SENDSTATS" -a "$CDATE" != "$LASTDATE" || test $(($loop+1)) == $MAXITER; then
+if cycle_mon || test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED"; then
+  if test -n "$ROUTERS"; then deleteRouters; fi
   reallysendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $HOSTNAME testing $STRIPLE ($JHIMG/$IMG):
 
@@ -3592,7 +3644,8 @@ $(allstats -m)
 #STAT: $LASTDATE|$LASTTIME|$CDATE|$CTIME
 #RUN: $RUNS|$CUMVMS|$CUMAPICALLS
 #ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS$CONNST
-$(allstats -m)" > Stats.$LASTDATA.$LASTTIME.$CDATE.$CTIME.psv
+$(allstats -m)" > Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv
+  compress_and_upload Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv
   TOTERR+=$(($CUMVMERRORS+$CUMAPIERRORS+$CUMAPITIMEOUTS+$CUMPINGERRORS+$CUMWAITERRORS+$CUMCONNERRORS))
   CUMVMERRORS=0
   CUMAPIERRORS=0
@@ -3620,13 +3673,34 @@ $(allstats -m)" > Stats.$LASTDATA.$LASTTIME.$CDATE.$CTIME.psv
   VMDSTATS=()
   TOTTIME=()
   WAITTIME=()
+  STATSENT=1
 fi
 
 # Clean up residuals, if any
-if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0; then waitnetgone; fi
+if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0 -o -n "$INTERRUPTED"; then waitnetgone; fi
 #waitnetgone
+if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
+  unset STATSENT
+  #LASTDATE="$CDATE"
+  STARTDATE=$(date +%s)
+  rm -f ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old ${RPRE}user_data_JH.yaml ${RPRE}user_data_VM.yaml
+  if test "$LOGFILE" == "${RPRE%_}.log"; then
+    RPRE="APIMonitor_${STARTDATE}_"
+    compress_and_upload "$LOGFILE"
+    LOGFILE="${RPRE%_}.log"
+  else
+    RPRE="APIMonitor_${STARTDATE}_"
+  fi
+  if test $(($loop+1)) != $MAXITER -a -z "$INTERRUPTED"; then 
+    echo "Using new $RPRE prefix for resrcs on $TRIPLE (${AZS[*]})"
+    #loop=-1
+  fi
+fi
 let loop+=1
 done
+#if test -n "$LOGFILE"; then
+#  compress_and_upload "$LOGFILE"
+#fi
 rm -f ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old ${RPRE}user_data_JH.yaml ${RPRE}user_data_VM.yaml
 if test "$REFRESHPRJ" != 0; then cleanprj; fi
 
