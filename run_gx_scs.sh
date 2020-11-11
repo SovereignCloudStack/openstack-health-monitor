@@ -19,8 +19,8 @@ export IMG="Ubuntu 20.04"
 #export IMGFILT="--property-filter os_version=openSUSE-15.0"
 # ECP flavors
 #if test $OS_REGION_NAME == Kna1; then
-export JHFLAVOR=1C-2GB-20GB
-export FLAVOR=1C-2GB-20GB
+export JHFLAVOR=1C-1GB-20GB
+export FLAVOR=1C-0.5GB-20GB
 #else
 #export JHFLAVOR=1C-1GB-10GB
 #export FLAVOR=1C-1GB-10GB
@@ -29,6 +29,8 @@ export FLAVOR=1C-2GB-20GB
 export FROM=kurt@garloff.de
 # Only use one AZ
 export AZS="nova"
+# Upload (compressed) logfiles and stats to container
+export SWIFTCONTAINER=OS-HM-Logfiles
 
 # Assume OS_ parameters have already been sourced from some .openrc file
 
