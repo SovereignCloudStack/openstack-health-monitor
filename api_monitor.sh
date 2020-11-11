@@ -3689,7 +3689,10 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   else
     RPRE="APIMonitor_${STARTDATE}_"
   fi
-  echo "Using new $RPRE prefix for resrcs on $TRIPLE (${AZS[*]})"
+  if test $(($loop+1)) != $MAXITER -a -z "$INTERRUPTED"; then 
+    echo "Using new $RPRE prefix for resrcs on $TRIPLE (${AZS[*]})"
+    #loop=-1
+  fi
 fi
 let loop+=1
 done
