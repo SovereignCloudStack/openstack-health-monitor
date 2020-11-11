@@ -113,7 +113,7 @@ Usage: api_monitor.sh [options]
  -E     exit on error (for CONNTEST)
  -m URN sets notes/alarms by SMN (pass URN of queue)
          second -m splits notifications; notes to first, alarms to second URN
- -s     sends stats as well once per day, not just alarms
+ -s [SH] sends stats as well once per day (or every SH hours), not just alarms
  -S [NM] sends stats to grafana via local telegraf http_listener (def for NM=api-monitoring)
  -q     do not send any alarms
  -d     boot Directly from image (not via volume)
@@ -149,7 +149,7 @@ You need to have the OS_ variables set to allow OpenStack CLI tools to work.
 You can override defaults by exporting the environment variables AZS, VAZS, RPRE,
  PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,
  ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES[],
- NAMESERVER.
+ NAMESERVER, SWIFTCONTAINER.
 Typically, you should configure [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER.
 ```
 
