@@ -3141,7 +3141,7 @@ cycle_mon()
   # If we're not into sending stats, don't look further
   if test -z "$SENDSTATS"; then return 1; fi
   NOW=$(date +%s)
-  HRS=$(((NOW-STARTDATE)/3600))
+  HRS=$(((NOW-STARTDATE+200)/3600))
   if test -n "$SENDSTATHR"; then
     # Every $SENDSTATHR mode
     if test $HRS -ge $SENDSTATHR; then return 0; else return 1; fi
