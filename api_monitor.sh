@@ -3115,6 +3115,7 @@ createnewprj()
 compress_and_upload()
 {
   local SZ=$(stat -c %s "$1") || return
+  local COMP EXT RESP
   if test $SZ -gt 1000; then
     COMP=gzip; EXT=.gz
     if test $SZ -gt 1000000; then COMP=xz; EXT=.xz; fi
