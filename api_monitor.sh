@@ -157,7 +157,7 @@ VMERRWAIT=2
 unset DISASSOC
 
 # API timeouts
-NETTIMEOUT=24
+NETTIMEOUT=20
 FIPTIMEOUT=32
 NOVATIMEOUT=28
 NOVABOOTTIMEOUT=48
@@ -282,7 +282,7 @@ usage()
   echo "You need to have the OS_ variables set to allow OpenStack CLI tools to work."
   echo "You can override defaults by exporting the environment variables AZS, VAZS, RPRE,"
   echo " PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,"
-  echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES[],"
+  echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES,"
   echo " NAMESERVER, SWIFTCONTAINER."
   echo "Typically, you should configure [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER."
   exit 0
@@ -2008,7 +2008,7 @@ testLBs()
 {
   local ERR=0
   echo -n "LBaaS2 "
-  createResources 1 NETSTATS POOL LBAAS NONE "" id $NETTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol HTTP --lb-algorithm=ROUND_ROBIN --session-persistence type=HTTP_COOKIE --loadbalancer ${LBAASS[0]} # --wait
+  createResources 1 NETSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol HTTP --lb-algorithm=ROUND_ROBIN --session-persistence type=HTTP_COOKIE --loadbalancer ${LBAASS[0]} # --wait
   RC=$?
   let ERR+=$RC
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
@@ -2017,7 +2017,7 @@ testLBs()
     handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-pool-show
   fi
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
-  createResources 1 NETSTATS LISTENER POOL LBAAS "" id $NETTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
+  createResources 1 NETSTATS LISTENER POOL LBAAS "" id $FIPTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
   RC=$?
   let ERR+=$RC
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
@@ -2037,11 +2037,11 @@ testLBs()
   LBIP=$(echo "$OSTACKRESP" | grep ' floating_ip_address ' | sed 's/^|[^|]*| *\([a-f0-9:\.]*\).*$/\1/')
   LBFIPS=( $(echo "$OSTACKRESP" | grep ' id ' | sed 's/^|[^|]*| *\([a-f0-9\-]*\).*$/\1/') )
   echo "${LBFIPS[0]}"
-  createResources $NOVMS NETSTATS MEMBER IP POOL "" id $NETTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
+  createResources $NOVMS NETSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   let ERR+=$?
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
   # TODO: Implement health monitors?
-  createResources 1 NETSTATS HEALTHMON POOL NONE "" id $NETTIMEOUT neutron lbaas-healthmonitor-create --name "${RPRE}HealthMon_0" --delay 3 --timeout 2 --max-retries 1 --type HTTP --url-path /hostname --pool ${POOLS[0]}
+  createResources 1 NETSTATS HEALTHMON POOL NONE "" id $FIPTIMEOUT neutron lbaas-healthmonitor-create --name "${RPRE}HealthMon_0" --delay 3 --timeout 2 --max-retries 1 --type HTTP --url-path /hostname --pool ${POOLS[0]}
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
   echo -n "Test LB at $LBIP:"
   # Access LB NOVMS times (RR -> each server gets one request)
@@ -3155,6 +3155,12 @@ cycle_mon()
 # Allow for many recipients
 parse_notification_addresses()
 {
+  # Bash can't pass arrays via env, so allow for simple lists to initialize array
+  ALARM_EMAIL_ADDRESSES=($ALARM_EMAIL_ADDRESSES)
+  NOTE_EMAIL_ADDRESSES=($NOTE_EMAIL_ADDRESSES)
+  ALARM_MOBILE_NUMBERS=($ALARM_MOBILE_NUMBERS)
+  NOTE_MOBILE_NUMBERS=($NOTE_MOBILE_NUMBERS)
+
   # Parses from Environment
   # API_MONITOR_ALARM_EMAIL_[0-9]+         # email address
   # API_MONITOR_NOTE_EMAIL_[0-9]+          # email address
@@ -3246,6 +3252,9 @@ if test -n "$OPENSTACKTOKEN"; then
   let DEFTIMEOUT-=2
 fi
 
+
+echo " Send alarms to ${ALARM_EMAIL_ADDRESSES[@]} ${ALARM_MOBILE_NUMBERS[@]}"
+echo " Send  notes to ${NOTE_EMAIL_ADDRESSES[@]} ${NOTE_MOBILE_NUMBERS[@]}"
 
 # MAIN LOOP
 while test $loop != $MAXITER -a -z "$INTERRUPTED"; do
@@ -3646,7 +3655,9 @@ $(allstats -m)
 #RUN: $RUNS|$CUMVMS|$CUMAPICALLS
 #ERRORS: $CUMVMERRORS|$CUMWAITERRORS|$CUMAPIERRORS|$APITIMEOUTS|$CUMPINGERRORS$CONNST
 $(allstats -m)" > Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv
+
   compress_and_upload Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv
+  # Reset counters ...
   TOTERR+=$(($CUMVMERRORS+$CUMAPIERRORS+$CUMAPITIMEOUTS+$CUMPINGERRORS+$CUMWAITERRORS+$CUMCONNERRORS))
   CUMVMERRORS=0
   CUMAPIERRORS=0
