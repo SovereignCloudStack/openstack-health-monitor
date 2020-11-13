@@ -1986,14 +1986,14 @@ else
 createLBs()
 {
   if test -n "$LOADBALANCER"; then
-    createResources 1 NETSTATS LBAAS JHNET NONE LBSTIME id $NETTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0"
+    createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0"
   fi
 }
 
 deleteLBs()
 {
   if test -n "$LBAASS"; then
-    deleteResources NETSTATS LBAAS "" $NETTIMEOUT neutron lbaas-loadbalancer-delete
+    deleteResources LBSTATS LBAAS "" $FIPTIMEOUT neutron lbaas-loadbalancer-delete
   fi
 }
 
@@ -2001,35 +2001,35 @@ waitLBs()
 {
   #echo "Wait for LBs ${LBAASS[*]} ..."
   #waitResources NETSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NA" "provisioning_status" $NETTIMEOUT neutron lbaas-loadbalancer-show
-  waitlistResources NETSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
-  handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show
+  waitlistResources LBSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
+  handleWaitErr LBSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show
 }
 
 testLBs()
 {
   local ERR=0
   echo -n "LBaaS2 "
-  createResources 1 NETSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol HTTP --lb-algorithm=ROUND_ROBIN --session-persistence type=HTTP_COOKIE --loadbalancer ${LBAASS[0]} # --wait
+  createResources 1 LBSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol HTTP --lb-algorithm=ROUND_ROBIN --session-persistence type=HTTP_COOKIE --loadbalancer ${LBAASS[0]} # --wait
   RC=$?
   let ERR+=$RC
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test -z "$LBWAIT"; then
-    waitlistResources NETSTATS POOL NONE NONE "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-pool-list
-    handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-pool-show
+    waitlistResources LBSTATS POOL NONE NONE "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-pool-list
+    handleWaitErr LBSTATS $NETTIMEOUT neutron lbaas-pool-show
   fi
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
-  createResources 1 NETSTATS LISTENER POOL LBAAS "" id $FIPTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
+  createResources 1 LBSTATS LISTENER POOL LBAAS "" id $FIPTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
   RC=$?
   let ERR+=$RC
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test -z "$LBWAIT"; then
-    waitResources NETSTATS LISTENER NONE NONE "ACTIVE" "NONONO" "provisioning_status" $NETTIMEOUT neutron lbaas-listener-show
-    handleWaitErr NETSTATS $NETTIMEOUT neutron lbaas-listener-show
+    waitResources LBSTATS LISTENER NONE NONE "ACTIVE" "NONONO" "provisioning_status" $NETTIMEOUT neutron lbaas-listener-show
+    handleWaitErr LBSTATS $NETTIMEOUT neutron lbaas-listener-show
   fi
   # FIXME: We still get those occasional LB immutable errors -- how can we avoid this?
   # For now push member creation after FIP allocation
   # Assign a FIP to the LB
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show ${LBAASS[0]} -f value -c vip_port_id
+  ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show ${LBAASS[0]} -f value -c vip_port_id
   let ERR+=$?
   LBPORT=$OSTACKRESP
   echo -n "Attach FIP to LB port $LBPORT: "
@@ -2038,11 +2038,11 @@ testLBs()
   LBIP=$(echo "$OSTACKRESP" | grep ' floating_ip_address ' | sed 's/^|[^|]*| *\([a-f0-9:\.]*\).*$/\1/')
   LBFIPS=( $(echo "$OSTACKRESP" | grep ' id ' | sed 's/^|[^|]*| *\([a-f0-9\-]*\).*$/\1/') )
   echo "${LBFIPS[0]}"
-  createResources $NOVMS NETSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
+  createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   let ERR+=$?
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
   # TODO: Implement health monitors?
-  createResources 1 NETSTATS HEALTHMON POOL NONE "" id $FIPTIMEOUT neutron lbaas-healthmonitor-create --name "${RPRE}HealthMon_0" --delay 3 --timeout 2 --max-retries 1 --type HTTP --url-path /hostname --pool ${POOLS[0]}
+  createResources 1 LBSTATS HEALTHMON POOL NONE "" id $FIPTIMEOUT neutron lbaas-healthmonitor-create --name "${RPRE}HealthMon_0" --delay 3 --timeout 2 --max-retries 1 --type HTTP --url-path /hostname --pool ${POOLS[0]}
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
   echo -n "Test LB at $LBIP:"
   # Access LB NOVMS times (RR -> each server gets one request)
@@ -2069,19 +2069,19 @@ cleanLBs()
 {
   if test -z "$LBAASS"; then return; fi
   echo -n "LBaaS2 "
-  deleteResources NETSTATS HEALTHMON "" $NETTIMEOUT neutron lbaas-healthmonitor-delete
+  deleteResources LBSTATS HEALTHMON "" $FIPTIMEOUT neutron lbaas-healthmonitor-delete
   if test "$STATE" = "PENDING_DELETE"; then sleep 1; fi
   echo -n " "
-  deleteResources NETSTATS MEMBER "" $NETTIMEOUT neutron lbaas-member-delete ${POOLS[0]}
+  deleteResources LBSTATS MEMBER "" $FIPTIMEOUT neutron lbaas-member-delete ${POOLS[0]}
   # FIXME: Wait until they're gone
   if test "$STATE" = "PENDING_DELETE"; then sleep 1; fi
   echo -n " "
-  deleteResources NETSTATS LISTENER "" $NETTIMEOUT neutron lbaas-listener-delete
+  deleteResources LBSTATS LISTENER "" $FIPTIMEOUT neutron lbaas-listener-delete
   # Delete FIP first, so no sleep waiting for listener been gone
   echo -n " "
-  deleteResources FIPSTATS LBFIP "" $NETTIMEOUT neutron floating-ip-delete
+  deleteResources FIPSTATS LBFIP "" $FIPTIMEOUT neutron floating-ip-delete
   echo -n " "
-  deleteResources NETSTATS POOL "" $NETTIMEOUT neutron lbaas-pool-delete
+  deleteResources LBSTATS POOL "" $FIPTIMEOUT neutron lbaas-pool-delete
 }
 
 waitJHVMs()
@@ -2793,6 +2793,9 @@ allstats()
 {
  stats $1 NETSTATS   2 "Neutron CLI Stats "
  stats $1 FIPSTATS   2 "Neutron FIP Stats "
+ if test -n "$LOADBALANCER"; then
+   stats $1 LBSTATS    2 "LB CLI Stats      "
+ fi
  stats $1 NOVASTATS  2 "Nova CLI Stats    "
  stats $1 NOVABSTATS 2 "Nova Boot Stats   "
  stats $1 VMCSTATS   0 "VM Creation Stats "
@@ -3203,6 +3206,7 @@ declare -i loop=0
 # API performance neutron, cinder, nova
 declare -a NETSTATS
 declare -a FIPSTATS
+declare -a LBSTATS
 declare -a VOLSTATS
 declare -a NOVASTATS
 declare -a KEYSTONESTATS
@@ -3677,6 +3681,7 @@ $(allstats -m)" > Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv
   # Reset stats
   NETSTATS=()
   FIPSTATS=()
+  LBSTATS=()
   VOLSTATS=()
   NOVASTATS=()
   NOVABSTATS=()
@@ -3719,6 +3724,6 @@ done
 #  compress_and_upload "$LOGFILE"
 #fi
 rm -f ${RPRE}Keypair_JH.pem ${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old ${RPRE}user_data_JH.yaml ${RPRE}user_data_VM.yaml
-if test "$REFRESHPRJ" != 0; then cleanprj; fi
+IF TEst "$REFRESHPRJ" != 0; then cleanprj; fi
 
 exit $TOTERR
