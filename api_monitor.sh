@@ -622,7 +622,7 @@ OSTACKCMD=""; EP=""
 # Translate nova/cinder/neutron ... to openstack commands
 translate()
 {
-  local DEFCMD=""
+  local no DEFCMD=""
   CMDS=(nova cinder neutron glance octavia swift)
   OSTDEFS=(server volume network image loadbalancer object)
   EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP $OCTAVIA_EP $SWIFT_EP)
@@ -630,6 +630,7 @@ translate()
     if test ${CMDS[$no]} == $1; then
       EP=${EPS[$no]}
       DEFCMD=${OSTDEFS[$no]}
+      break
     fi
   done
   OSTACKCMD=("$@")
@@ -963,7 +964,7 @@ STATE=""
 # NUMBER STATNM RSRCNM OTHRSRC MORERSRC STIME IDNM COMMAND
 createResources()
 {
-  local ctr
+  local ctr no
   declare -i ctr=0
   local QUANT=$1; local STATNM=$2; local RNM=$3
   local ORNM=$4; local MRNM=$5
@@ -2378,14 +2379,14 @@ wait222()
         echo -ne " $RED timeout $NORM"
         let waiterr+=1; verr=1;
         # Calc no
-        no=$((vmno*NOAZS+JHNO))
-        ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${VMS[$no]}
+        vno=$((vmno*NOAZS+JHNO))
+        ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${VMS[$vno]}
         STATUS=$(echo "$OSTACKRESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
         if test -z "$STATUS"; then STATUS=$(echo "$OSTACKRESP" | grep "^| *provisioning_status *|" | sed -e "s/^| *provisioning_status *| *\([^|]*\).*\$/\1/" -e 's/ *$//'); fi
         echo -n "$STATUS "
         if test "$STATUS" != "ACTIVE"; then
-          sendalarm 2 "VM $no in wrong state $STATUS" "${VMS[$no]}" 0
-          if test -n "$LOGFILE"; then echo "VM $no ${VMS[$no]} is in wrong state $STATUS" >> $LOGFILE; fi
+          sendalarm 2 "VM $vno in wrong state $STATUS" "${VMS[$vno]}" 0
+          if test -n "$LOGFILE"; then echo "VM $vno ${VMS[$vno]} is in wrong state $STATUS" >> $LOGFILE; fi
         fi
       fi
       MAXWAIT=42
@@ -3543,6 +3544,7 @@ else # test "$1" = "DEPLOY"; then
                 echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), TESTS DONE (${TESTTIME}s), DELETE AGAIN $NORM"
                 let SUCCRUNS+=1
                 THISRUNSUCCESS=1
+		sleep 1
                 if test $SUCCWAIT -ge 0; then sleep $SUCCWAIT; else echo -n "Hit enter to continue ..."; read ANS; fi
                 # Refresh token if needed
                 if test -n "$TOKENSTAMP" && test $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then
@@ -3709,6 +3711,9 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   fi
 fi
 let loop+=1
+echo -n "Hit ^C now to interrupt ..."
+sleep 5
+echo
 done
 #if test -n "$LOGFILE"; then
 #  compress_and_upload "$LOGFILE"
