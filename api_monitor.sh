@@ -3549,7 +3549,8 @@ else # test "$1" = "DEPLOY"; then
                 let SUCCRUNS+=1
                 THISRUNSUCCESS=1
 		sleep 1
-                if test $SUCCWAIT -ge 0; then sleep $SUCCWAIT; else echo -n "Hit enter to continue ..."; read ANS; fi
+                if test $SUCCWAIT -ge 0; then echo -n "Sleep ..."; sleep $SUCCWAIT; echo; 
+		else echo -n "Hit enter to continue ..."; read ANS; fi
                 # Refresh token if needed
                 if test -n "$TOKENSTAMP" && test $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then
                   getToken
