@@ -2385,8 +2385,9 @@ wait222()
         if test -z "$STATUS"; then STATUS=$(echo "$OSTACKRESP" | grep "^| *provisioning_status *|" | sed -e "s/^| *provisioning_status *| *\([^|]*\).*\$/\1/" -e 's/ *$//'); fi
         echo -n "$STATUS "
         if test "$STATUS" != "ACTIVE"; then
-          sendalarm 2 "VM $vno in wrong state $STATUS" "${VMS[$vno]}" 0
-          if test -n "$LOGFILE"; then echo "VM $vno ${VMS[$vno]} is in wrong state $STATUS" >> $LOGFILE; fi
+          sendalarm 2 "VM $vno ${VMS[$vno]} in wrong state $STATUS" "openstack server show ${VMS[$vno]}
+$OSTACKRESP" 0
+          if test -n "$LOGFILE"; then echo "VM $vno ${VMS[$vno]} in wrong state $STATUS" >> $LOGFILE; fi
         fi
       fi
       MAXWAIT=42
@@ -3549,7 +3550,7 @@ else # test "$1" = "DEPLOY"; then
                 let SUCCRUNS+=1
                 THISRUNSUCCESS=1
 		sleep 1
-                if test $SUCCWAIT -ge 0; then echo -n "Sleep ..."; sleep $SUCCWAIT; echo; 
+                if test $SUCCWAIT -ge 0; then echo -n "Sleep ..."; sleep $SUCCWAIT; echo;
 		else echo -n "Hit enter to continue ..."; read ANS; fi
                 # Refresh token if needed
                 if test -n "$TOKENSTAMP" && test $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then
