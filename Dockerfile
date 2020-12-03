@@ -7,7 +7,6 @@ ARG USER_ID=1000
 ARG GROUP_ID=1000
 
 COPY files/requirements.txt /requirements.txt
-COPY run.sh /run.sh
 COPY api_monitor.sh /api_monitor.sh
 
 # hadolint ignore=DL3018
@@ -44,4 +43,5 @@ USER dragon
 WORKDIR /configuration
 VOLUME ["/configuration"]
 
-CMD ["/run.sh"]
+CMD ["/api_monitor.sh"]
+ENTRYPOINT ["/api_monitor.sh"]
