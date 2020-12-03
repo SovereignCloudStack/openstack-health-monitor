@@ -3,8 +3,8 @@ FROM python:${PYTHON_VERSION}-alpine
 
 ARG VERSION=victoria
 
-ARG USER_ID=1000
-ARG GROUP_ID=1000
+ARG USER_ID=45000
+ARG GROUP_ID=45000
 
 COPY files/requirements.txt /requirements.txt
 COPY api_monitor.sh /api_monitor.sh
