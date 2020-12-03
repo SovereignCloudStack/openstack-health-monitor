@@ -36,14 +36,14 @@ RUN apk add --no-cache \
     && openstack complete > /osc.bash_completion \
     && addgroup -g $GROUP_ID dragon \
     && adduser -D -u $USER_ID -G dragon dragon \
-    && mkdir /configuration /logs \
-    && chown -R dragon: /configuration /logs \
+    && mkdir /configuration /data \
+    && chown -R dragon: /configuration /data \
     && chmod +x /api_monitor.sh
 
 USER dragon
 
 WORKDIR /configuration
-VOLUME ["/configuration", "/logs"]
+VOLUME ["/configuration", "/data"]
 
 CMD ["/api_monitor.sh"]
 ENTRYPOINT ["/api_monitor.sh"]
