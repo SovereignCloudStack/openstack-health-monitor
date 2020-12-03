@@ -1,0 +1,12 @@
+keystoneauth-oidc
+python-cinderclient
+python-designateclient
+python-glanceclient
+python-heatclient
+python-keystoneclient
+python-manilaclient
+python-neutronclient
+python-novaclient
+python-octaviaclient
+python-openstackclient
+python-swiftclient

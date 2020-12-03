@@ -1,0 +1,23 @@
+---
+name: Check docker syntax
+
+on:  # yamllint disable-line rule:truthy
+  push:
+    paths:
+      - Dockerfile
+      - .github/workflows/check-docker-syntax.yml
+  pull_request:
+    paths:
+      - Dockerfile
+      - .github/workflows/check-docker-syntax.yml
+
+jobs:
+  check-docker-syntax:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v1
+      - uses: reviewdog/action-hadolint@v1
+        with:
+          hadolint_flags: --config .github/hadolint.yml
