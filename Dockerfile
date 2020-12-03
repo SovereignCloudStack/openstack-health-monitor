@@ -33,9 +33,8 @@ RUN apk add --no-cache \
       /requirements.txt \
       /packages.txt \
     && apk del .build-deps \
-    && openstack complete > /osc.bash_completion
-
-RUN addgroup -g $GROUP_ID dragon \
+    && openstack complete > /osc.bash_completion \
+    && addgroup -g $GROUP_ID dragon \
     && adduser -D -u $USER_ID -G dragon dragon \
     && mkdir /configuration \
     && chown -R dragon: /configuration
