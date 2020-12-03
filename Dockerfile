@@ -12,6 +12,7 @@ COPY api_monitor.sh /api_monitor.sh
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
       bash \
+      iputils \
       jq \
       libstdc++ \
     && apk add --no-cache --virtual .build-deps \
