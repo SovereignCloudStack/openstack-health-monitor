@@ -1,5 +1,4 @@
-api_monitor.sh
-==============
+# OpenStack Health Monitor
 
 This is a test script for testing the reliability and performance of OpenStack API.
 It works by doing a real scenario test: Setting up a real environment
@@ -8,26 +7,26 @@ With routers, nets, jumphosts, disks, VMs, ...
 We collect statistics on API call performance as well as on resource creation times.
 Failures are noted and alarms are generated.
 
-Status
-------
+## Status
+
 - Errors not yet handled everywhere
 - Live Volume and NIC attachment not yet implemented
 - Log too verbose for permament operation ...
 - Script allows to create multiple nets/subnets independent from no of AZs, which may need more testing.
 - Done: Convert from neutron/cinder/nova/... to openstack (-o / -O)
 
-TODO
-----
+## TODO
+
 - Align sendalarm with Grafana database entries
 
-Copyright
----------
+## Copyright
+
 (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017-7/2017
 
 License: CC-BY-SA (2.0)
 
-Description of the flow
------------------------
+## Description of the flow
+
 - create router (VPC)
 - create 1+$NONETS (1+2) nets -- $NONETS is normally the # of AZs
 - create 1+$NONETS subnets
@@ -60,8 +59,8 @@ Description of the flow
     We can also identify them by name, which helps if we got interrupted, or
     some cleanup action failed.)
 
-Coverage
---------
+## Coverage
+
 So we end up testing: Router, incl. default route (for SNAT instance),
 networks, subnets, and virtual IP, security groups and floating IPs,
 volume creation from image, deletion after VM destruction,
@@ -72,21 +71,21 @@ Loadbalancer (-L),
 Waiting for volumes and VMs,
 Destroying all of these resources again
 
-Alarming and reporting
-----------------------
+## Alarming and reporting
+
 We do some statistics on the duration of the steps (min, avg, median, 95% quantile, max).
 We of course also note any errors and timeouts and report these, optionally sending email of SMN alarms.
 
-Runtime
--------
+## Runtime
+
 This takes rather long, as typical API calls take b/w 1 and 2s on OpenStack (including the round trip to keystone for the token).
 
 Optimization possibilities:
 Cache token and reuse when creating a large number of resources in a loop. 
 Completed (use option -O (not used for volume create)).
 
-Prerequisites
--------------
+## Prerequisites
+
 - Working python-XXXclient tools (openstack, glance, neutron, nova, cinder)
 - `OS_` environment variables set to run openstack CLI commands (or OS_CLOUD with clouds.yaml/secure.yaml)
 - otc.sh from otc-tools (only if using optional SMN -m and project creation -p)
@@ -96,8 +95,8 @@ Prerequisites
 - Any image for the VMs that allows login as user DEFLTUSER (linux) with injected key
   (If we use -2/-3/-4, we also need a SUSE image to have the cloud-multiroute pkg in there.)
 
-Usage
------
+## Usage
+
 Use `api_monitor.sh -h` to get a list of the command line options.
 
 ```
@@ -153,9 +152,8 @@ You can override defaults by exporting the environment variables AZS, VAZS, RPRE
 Typically, you should configure [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER.
 ```
 
+## Examples
 
-Examples
---------
 Run 100 loops deploying (and deleting) 2+8 VMs (including nets, volumes etc.),
 with daily statistics sent to SMN...API-Notes and Alarms to SMN...APIMonitor:
 
