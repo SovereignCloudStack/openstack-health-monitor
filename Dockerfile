@@ -11,7 +11,8 @@ COPY api_monitor.sh /api_monitor.sh
 
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
-      dumb-init \
+      bash \
+      jq \
       libstdc++ \
     && apk add --no-cache --virtual .build-deps \
       build-base \
@@ -36,7 +37,8 @@ RUN apk add --no-cache \
     && addgroup -g $GROUP_ID dragon \
     && adduser -D -u $USER_ID -G dragon dragon \
     && mkdir /configuration \
-    && chown -R dragon: /configuration
+    && chown -R dragon: /configuration \
+    && chmod +x /api_monitor.sh
 
 USER dragon
 
