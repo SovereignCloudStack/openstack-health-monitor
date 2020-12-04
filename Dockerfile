@@ -15,6 +15,7 @@ RUN apk add --no-cache \
       iputils \
       jq \
       libstdc++ \
+      openssh-client \
     && apk add --no-cache --virtual .build-deps \
       build-base \
       libffi-dev \
