@@ -16,6 +16,7 @@ RUN apk add --no-cache \
       jq \
       libstdc++ \
       openssh-client \
+      curl \
     && apk add --no-cache --virtual .build-deps \
       build-base \
       libffi-dev \
