@@ -31,6 +31,7 @@ RUN apk add --no-cache \
          grep -q "$package" /requirements/upper-constraints.txt && \
          echo "$package" >> /packages.txt || true; \
        done < /requirements.txt \
+    && pip3 install --upgrade pip \
     && pip3 --no-cache-dir install -c /requirements/upper-constraints.txt -r /packages.txt \
     && rm -rf /requirements \
       /requirements.txt \
