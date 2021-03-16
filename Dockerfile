@@ -9,6 +9,7 @@ ARG GROUP_ID=45000
 COPY files/requirements.txt /requirements.txt
 COPY api_monitor.sh /api_monitor.sh
 
+ENV CRYPTOGRAPHY_DONT_BUILD_RUST 1
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
       bash \
