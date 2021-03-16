@@ -533,7 +533,8 @@ sendbufferedalarms()
   done
   CMDOUT=$(echo -e "$CMDOUT")
   reallysendalarm $BUFFEREDALARMS "Deferred alarms" "$CMDOUT" 0
-  let SENTALARMS+=1
+  #let SENTALARMS+=1
+  SENTALARMS=0
   BUFFEREDALARMS=0
 }
 
@@ -2041,10 +2042,13 @@ testLBs()
   LBFIPS=( $(echo "$OSTACKRESP" | grep ' id ' | sed 's/^|[^|]*| *\([a-f0-9\-]*\).*$/\1/') )
   echo "${LBFIPS[0]}"
   createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
-  let ERR+=$?
+  RC=$?
+  let ERR+=$RC
+  if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
   # TODO: Implement health monitors?
   createResources 1 LBSTATS HEALTHMON POOL NONE "" id $FIPTIMEOUT neutron lbaas-healthmonitor-create --name "${RPRE}HealthMon_0" --delay 3 --timeout 2 --max-retries 1 --type HTTP --url-path /hostname --pool ${POOLS[0]}
+  let ERR+=$?
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
   echo -n "Test LB at $LBIP:"
   # Access LB NOVMS times (RR -> each server gets one request)

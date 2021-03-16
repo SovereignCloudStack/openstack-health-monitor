@@ -33,8 +33,16 @@ export AZS="nova"
 export SWIFTCONTAINER=OS-HM-Logfiles
 
 # Assume OS_ parameters have already been sourced from some .openrc file
+# export OS_CLOUD=gx-scs-healthmgr
 
 export EMAIL_PARAM=${EMAIL_PARAM:-"scs@garloff.de"}
+
+# Notifications & Alarms (pass as list, arrays can't be exported)
+ALARM_EMAIL_ADDRESSES="scs@garloff.de"
+NOTE_EMAIL_ADDRESSES="scs@garloff.de"
+#ALARM_EMAIL_ADDRESSES="scs@garloff.de scs-monitoring@plusserver.com"
+#NOTE_EMAIL_ADDRESSES="scs@garloff.de"
+export ALARM_EMAIL_ADDRESSES NOTE_EMAIL_ADDRESSES
 
 # Terminate early on auth error
 openstack server list >/dev/null
@@ -62,5 +70,5 @@ done
 
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
 #exec api_monitor.sh -o -C -D -N 2 -n 8 -s -e sender@domain.org "$@"
-exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -a 2 -R -e scs@garloff.de "$@"
+exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -a 2 -R "$@"
 
