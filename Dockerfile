@@ -9,6 +9,7 @@ ARG GROUP_ID=45000
 COPY files/requirements.txt /requirements.txt
 COPY api_monitor.sh /api_monitor.sh
 
+ENV CRYPTOGRAPHY_DONT_BUILD_RUST 1
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
       bash \
@@ -17,7 +18,6 @@ RUN apk add --no-cache \
       libstdc++ \
       openssh-client \
       curl \
-      rust \
     && apk add --no-cache --virtual .build-deps \
       build-base \
       libffi-dev \
@@ -32,7 +32,6 @@ RUN apk add --no-cache \
          grep -q "$package" /requirements/upper-constraints.txt && \
          echo "$package" >> /packages.txt || true; \
        done < /requirements.txt \
-    && pip3 install --upgrade pip \
     && pip3 --no-cache-dir install -c /requirements/upper-constraints.txt -r /packages.txt \
     && rm -rf /requirements \
       /requirements.txt \
