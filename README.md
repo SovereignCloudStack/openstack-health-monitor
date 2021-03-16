@@ -17,7 +17,7 @@ Failures are noted and alarms are generated.
 
 ## TODO
 
-- Align sendalarm with Grafana database entries
+- Align sendalarm with telegraf database entries
 
 ## Copyright
 
