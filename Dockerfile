@@ -17,6 +17,7 @@ RUN apk add --no-cache \
       libstdc++ \
       openssh-client \
       curl \
+      rust \
     && apk add --no-cache --virtual .build-deps \
       build-base \
       libffi-dev \
