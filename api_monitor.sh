@@ -3543,8 +3543,8 @@ else # test "$1" = "DEPLOY"; then
                       errwait $ERRWAIT
                     fi
                   fi
-                  #MSTOP=$(date +%s)
 		  if test -n "$IPERF"; then iperf3test; fi
+                  #MSTOP=$(date +%s)
                 fi
                 # TODO: Create disk ... and attach to JH VMs ... and test access
                 # TODO: Attach additional net interfaces to JHs ... and test IP addr
@@ -3621,7 +3621,7 @@ else # test "$1" = "DEPLOY"; then
  allstats
  if test -n "$FULLCONN"; then CONNTXT="$CONNERRORS Conn Errors, "; else CONNTXT=""; fi
  if test -n "$LOADBALANCER"; then LBTXT="$LBERRORS LB Errors, "; else LBTXT=""; fi
- echo "This run ($((loop+1))/$MAXITER): Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS CLI calls: $(($(date +%s)-$MSTART))s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, ${CONNTXT}${LBTXT}$(date +'%Y-%m-%d %H:%M:%S %Z')"
+ echo "This run ($((loop+1))/$MAXITER): Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS CLI calls: $(($(date +%s)-$MSTART))+${TESTTIME}s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, ${CONNTXT}${LBTXT}$(date +'%Y-%m-%d %H:%M:%S %Z')"
 #else
 #  usage
 fi
