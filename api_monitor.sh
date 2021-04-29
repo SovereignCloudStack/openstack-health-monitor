@@ -2566,21 +2566,37 @@ testsnat()
   declare -i FAIL=0
   for JHNO in $(seq 0 $(($NOAZS-1))); do
     declare -i no=$JHNO
+    declare -i jno=0
     for red in ${REDIRS[$JHNO]}; do
       pno=${red#*tcp,}
       pno=${pno%%,*}
       testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
       RC=$?
-      let no+=$NOAZS
+      if test $RC != 0; then
+        ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${VMS[$no]}
+      fi
       if test $RC == 2; then
         ERRJH[$JHNO]="${ERRJH[$JHNO]}$red "
+	ERR="${ERR}ssh VM_${JHNO}_${jno} $red ($no) ping $PINGTARGET || ping $PINGTARGET2; "
+	ERR="${ERR}openstack server show ${VMS[$no]}
+$OSTACKRESP
+"
       elif test $RC == 1; then
         let PINGERRORS+=1
-        ERR="${ERR}ssh VM$JHNO $red ping $PINGTARGET || ping $PINGTARGET2; "
+	ERR="${ERR}ssh VM_${JHNO}_${jno} $red ($no) ping $PINGTARGET || ping $PINGTARGET2; "
+	ERR="${ERR}openstack server show ${VMS[$no]}
+$OSTACKRESP
+"
       fi
+      let no+=$NOAZS
+      let jno+=1
     done
   done
-  if test ${#ERRJH[*]} != 0; then echo -e "$RED $ERR $NORM"; ERR=""; sleep 12; fi
+  if test ${#ERRJH[*]} != 0; then
+    echo -e "$RED $ERR $NORM"
+    #ERR=""
+    sleep 12
+  fi
   # Process errors: Retry
   # FIXME: Is it actually worth retrying? Does it really improve the results?
   for JHNO in $(seq 0 $(($NOAZS-1))); do
@@ -2590,14 +2606,14 @@ testsnat()
       pno=${pno%%,*}
       testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
       RC=$?
-      let no+=$NOAZS
       if test $RC == 2; then
         let FAIL+=2
-        ERR="${ERR}(2)ssh VM$JHNO $red ls; "
+	ERR="${ERR}(2)ssh VM_${JHNO} $red ls; "
       elif test $RC == 1; then
         let PINGERRORS+=1
-        ERR="${ERR}(2)ssh VM$JHNO $red ping $PINGTARGET || ping $PINGTARGET2; "
+	ERR="${ERR}(2)ssh VM_${JHNO} $red ping $PINGTARGET || ping $PINGTARGET2; "
       fi
+      let no+=$NOAZS
     done
   done
   if test -n "$ERR"; then echo -e "$RED $ERR ($FAIL) $NORM"; fi
