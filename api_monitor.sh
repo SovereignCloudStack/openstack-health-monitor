@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.69
+VERSION=1.70
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -158,7 +158,7 @@ unset DISASSOC
 
 # API timeouts
 NETTIMEOUT=20
-FIPTIMEOUT=32
+FIPTIMEOUT=36
 NOVATIMEOUT=28
 NOVABOOTTIMEOUT=48
 CINDERTIMEOUT=32
@@ -1019,6 +1019,8 @@ createResources()
 # $5- > openstack command to be called
 # The UUID from the resource list ($2) is appended to the command.
 #
+# The resource array ($2) will be modified and the delete items (all) be removed from it
+#
 # STATNM RSRCNM DTIME COMMAND
 deleteResources()
 {
@@ -1074,6 +1076,9 @@ deleteResources()
     echo "Store failed dels in REM${RNM}S for later re-cleanup: ${FAILDEL[*]}"
     eval "REM${RNM}S=(${FAILDEL[*]})"
   fi
+  # FIXME: We could try to look for a delete suffix in the command before doing this ...
+  # FIXME: This will always be empty ...
+  eval "${RNM}S=(${LIST[*]})"
   return $ERR
 }
 
@@ -1472,12 +1477,18 @@ deleteRIfaces()
   if test -z "${ROUTERS[0]}"; then return 0; fi
   echo -en "Delete Router Interfaces ...\n "
   if test -n "$SECONDNET"; then
+    local ORIGSECONDSUBNETS=(${SECONDSUBNETS[*]})
     deleteResources NETSTATS SECONDSUBNET "" $FIPTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
     echo -n " "
+    SECONDSUBNETS=(${ORIGSECONDSUBNETS[*]})
   fi
+  local ORIGSUBNETS=(${SUBNETS[*]})
   deleteResources NETSTATS SUBNET "" $FIPTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
+  SUBNETS=(${ORIGSUBNETS[*]})
   if test -n "$JHSUBNETS"; then echo -n " "; fi
+  local ORIGJHSUBNETS=(${JHSUBNETS[*]})
   deleteResources NETSTATS JHSUBNET "" $FIPTIMEOUT neutron router-interface-delete ${ROUTERS[0]}
+  JHSUBNETS=(${ORIGJHSUBNETS[*]})
 }
 
 # Setup security groups with their rulesets
@@ -1769,6 +1780,7 @@ deleteFIPs()
   if test -n "$DISASSOC"; then
     # osTicket #361989: We suddenly need to disassociate before we can delete. Bug?
     deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-disassociate
+    FIPS=(${OLDFIPS[*]})
   fi
   deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
   # Extra treatment: Try again to avoid leftover FIPs
@@ -2106,7 +2118,9 @@ deleteJHVMs()
   # Note: We meanwhile abort for broken JHs, so this is no longer needed.
   #waitlistResources NOVASTATS JHVM "" JVMSTIME "ACTIVE" "ERROR" 2 $NOVATIMEOUT nova list
   JVMSTIME=()
+  local ORIGJHVMS=(${JHVMS[*]})
   deleteResources NOVABSTATS JHVM JVMSTIME $NOVATIMEOUT nova delete
+  JHVMS=(${ORIGJHVMS[*]})
 }
 
 waitdelJHVMs()
@@ -2230,7 +2244,9 @@ deleteVMs()
     fi
     for vm in $(seq 0 $((${#VMS[*]}-1))); do VMSTIME[$vm]=$DT; done
   else
+    local ORIGVMS=(${VMS[*]})
     deleteResources NOVABSTATS VM VMSTIME $NOVABOOTTIMEOUT nova delete
+    VMS=(${ORIGVMS[*]})
   fi
 }
 
@@ -3149,7 +3165,7 @@ compress_and_upload()
     $COMP "$1"
   fi
   if test -n "$SWIFTCONTAINER"; then
-    LOGFILE=".$LOGFILE.swift"
+    LOGFILE="${LOGFILE%/*}/.${LOGFILE##*/}.swift"
     RESP=$(ostackcmd_id etag $CINDERTIMEOUT swift upload "$SWIFTCONTAINER" "$1$EXT")
     if test $? = 0; then rm "$1$EXT"; fi
     LOGFILE="${LOGFILE%.swift}"
