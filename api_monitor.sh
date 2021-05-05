@@ -3530,7 +3530,7 @@ else # test "$1" = "DEPLOY"; then
                  sendalarm $RC "$ERR" "" 70
                  errwait $VMERRWAIT
                  # FIXME: Shouldn't we abort here?
-                 echo "${BOLD}Aborting this deployment due to non-functional JH, clean up now ...${NORM}"
+                 echo -e "${BOLD}Aborting this deployment due to non-functional JH, clean up now ...${NORM}"
                  sleep 1
                  MSTOP=$(date +%s)
                else
