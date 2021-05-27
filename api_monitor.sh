@@ -728,7 +728,13 @@ translate()
       OSTACKCMD=($OPST $C1 $CMD $@)
     elif test "$C1" == "lbaas loadbalancer"; then
       EP="$OCTAVIA_EP"
-      OSTACKCMD=(openstack loadbalancer $CMD $@)
+      # FIXME: Don't use octaviaclient-2.2
+      if test "$iNEW_OCTAVIA" = "1"; then
+	ARGS=$(echo "$@" | sed -e 's/\-\-vip\-network\-id/--vip_network_id/g')
+      else
+	ARGS=$(echo "$@")
+      fi
+      OSTACKCMD=(openstack loadbalancer $CMD $ARGS)
     elif test "$C1" == "lbaas pool"; then
       EP="$OCTAVIA_EP"
       OSTACKCMD=($OPST loadbalancer pool $CMD $LBWAIT $@)
