@@ -3734,6 +3734,8 @@ $(allstats -m)" > $DATADIR/Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv
   VMDSTATS=()
   TOTTIME=()
   WAITTIME=()
+  PITIME=()
+  BANDWIDTH=()
   STATSENT=1
 fi
 
