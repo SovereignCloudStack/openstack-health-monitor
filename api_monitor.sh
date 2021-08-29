@@ -2014,7 +2014,7 @@ createLBs()
 deleteLBs()
 {
   if test -n "$LBAASS"; then
-    deleteResources LBSTATS LBAAS "" $FIPTIMEOUT neutron lbaas-loadbalancer-delete
+    deleteResources LBSTATS LBAAS "" $FIPTIMEOUT neutron lbaas-loadbalancer-delete --cascade
   fi
 }
 
