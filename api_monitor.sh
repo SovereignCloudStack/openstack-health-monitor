@@ -157,8 +157,8 @@ VMERRWAIT=2
 unset DISASSOC
 
 # API timeouts
-NETTIMEOUT=24
-FIPTIMEOUT=38
+NETTIMEOUT=26
+FIPTIMEOUT=36
 NOVATIMEOUT=28
 NOVABOOTTIMEOUT=48
 CINDERTIMEOUT=32
@@ -3291,15 +3291,15 @@ LASTERRITER=-2
 # so we can reuse (option -r N).
 declare -a ROUTERS=()
 
-# We save roundtrips to keystone, so be 2s more aggressive with timeouts
-if test -n "$OPENSTACKTOKEN"; then
-  let NETTIMEOUT-=2
-  let FIPTIMEOUT-=2
-  let NOVATIMEOUT-=2
-  let NOVABOOTTIMEOUT-=2
-  let CINDERTIMEOUT-=2
-  let GLANCETIMEOUT-=2
-  let DEFTIMEOUT-=2
+# We have roundtrips to keystone, if we don't cache the token, so add 2s to the timeouts
+if test -z "$OPENSTACKTOKEN"; then
+  let NETTIMEOUT+=2
+  let FIPTIMEOUT+=2
+  let NOVATIMEOUT+=2
+  let NOVABOOTTIMEOUT+=2
+  let CINDERTIMEOUT+=2
+  let GLANCETIMEOUT+=2
+  let DEFTIMEOUT+=2
 fi
 
 
@@ -3644,6 +3644,7 @@ else # test "$1" = "DEPLOY"; then
    if test -n "$BOOTALLATONCE"; then CON=416; NFACT=16; FACT=24; else CON=400; NFACT=16; FACT=36; fi
  fi
  MAXCYC=$(($CON+($FACT+$NFACT/2)*$NOAZS+$NFACT*$NONETS+$FACT*$NOVMS))
+ MINCYC=$(($MAXCYC/6))
  if test -n "$SECONDNET"; then let MAXCYC+=$(($NFACT*$NONETS+$NFACT*$NOVMS)); fi
  if test -n "$RESHUFFLE"; then let MAXCYC+=$((2*$NFACT*$NOVMS)); fi
  if test -n "$FULLCONN"; then let MAXCYC+=$(($NOVMS*$NOVMS/10)); fi
@@ -3767,6 +3768,10 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
 fi
 let loop+=1
 echo -n "Hit ^C now to interrupt ..."
+if test $THISRUNTIME -lt $MINCYC; then
+  echo -n " extra sleep for $(($MINCYC-$THISRUNTIME))s ..."
+  sleep $(($MINCYC-$THISRUNTIME))
+fi
 sleep 5
 echo
 done
