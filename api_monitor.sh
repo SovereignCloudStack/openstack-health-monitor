@@ -650,7 +650,8 @@ translate()
   if test -n "$OPENSTACKTOKEN" -a "$DEFCMD" != "image"; then OPST=myopenstack; else OPST=openstack; fi
   shift
   CMD=${1##*-}
-  if test $ORIGCMD == neutron && test $CMD == create -o $CMD == list; then
+  # External nets are not managed by us and thus not tagged; ports created via nova are neither
+  if test $ORIGCMD == neutron && test $CMD == create -o $CMD == list && test "$1" != "net-external-list" -a "$1" != "port-list"; then
     MYTAG="$TAGARG"
   fi
   if test "$CMD" == "$1"; then
