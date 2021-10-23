@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.71
+VERSION=1.72
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -2996,7 +2996,11 @@ cleanup()
   # NOTE: This will find FIPs from other APIMon jobs in the same tenant also
   #  maybe we should use findFIPs
   translate neutron floatingip-list
-  FIPS=( $(${OSTACKCMD[@]} | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  if test "$TAG" == "1"; then
+    FIPS=( $(${OSTACKCMD[@]} | grep '^| [0-9a-f]\{8\}\-' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  else
+    FIPS=( $(${OSTACKCMD[@]} | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  fi
   deleteFIPs
   JHVMS=( $(findres ${RPRE}VM_JH nova list) )
   deleteJHVMs
@@ -3380,7 +3384,8 @@ fi
 # Debugging: Start with volume step
 if test "$1" = "CLEANUP"; then
   if test -n "$2"; then RPRE=$2; if test ${RPRE%_} == ${RPRE}; then RPRE=${RPRE}_; fi; fi
-  echo -e "$BOLD *** Start cleanup $RPRE *** $NORM"
+  if test "$TAG" == "1"; then TAGARG="--tag ${RPRE%_}"; fi
+  echo -e "$BOLD *** Start cleanup $RPRE $TAGARG *** $NORM"
   #SECONDNET=1
   cleanup
   echo -e "$BOLD *** Cleanup complete *** $NORM"
@@ -3453,7 +3458,7 @@ elif test "$1" = "CONNTEST"; then
 else # test "$1" = "DEPLOY"; then
  if test "$REFRESHPRJ" != 0 && test $(($RUNS%$REFRESHPRJ)) == 0; then createnewprj; fi
  # Complete setup
- echo -e "$BOLD *** Start deployment $((loop+1))/$MAXITER for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM ($TRIPLE)"
+ echo -e "$BOLD *** Start deployment $((loop+1))/$MAXITER for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM ($TRIPLE) $TAGARG"
  date
  unset THISRUNSUCCESS
  # Image IDs
