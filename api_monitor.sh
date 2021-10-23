@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.71
+VERSION=1.72
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -273,6 +273,7 @@ usage()
   echo " -b     run a simple compute benchmark"
   echo " -B     run iperf3"
   echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
+  echo " -T     assign tags to resources; use to clean up floating IPs"
   echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test"
   echo " -3     Create 2ndary subnets, attach, test, reshuffle and retest"
   echo " -4     Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest"
@@ -328,6 +329,7 @@ while test -n "$1"; do
     "-b") BCBENCH=1;;
     "-B") IPERF=1;;
     "-t") let TIMEOUTFACT+=1;;
+    "-T") TAG=1; TAGARG="--tag ${RPRE%_}";;
     "-R") SECONDRECREATE=1;;
     "-2") SECONDNET=1;;
     "-3") SECONDNET=1; RESHUFFLE=1;;
@@ -626,6 +628,8 @@ OSTACKCMD=""; EP=""
 translate()
 {
   local no DEFCMD=""
+  unset MYTAG
+  ORIGCMD="$1"
   CMDS=(nova cinder neutron glance octavia swift)
   OSTDEFS=(server volume network image loadbalancer object)
   EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP $OCTAVIA_EP $SWIFT_EP)
@@ -646,10 +650,14 @@ translate()
   if test -n "$OPENSTACKTOKEN" -a "$DEFCMD" != "image"; then OPST=myopenstack; else OPST=openstack; fi
   shift
   CMD=${1##*-}
+  # External nets are not managed by us and thus not tagged; ports created via nova are neither
+  if test $ORIGCMD == neutron && test $CMD == create -o $CMD == list && test "$1" != "net-external-list" -a "$1" != "port-list"; then
+    MYTAG="$TAGARG"
+  fi
   if test "$CMD" == "$1"; then
     # No '-'
     shift
-    OSTACKCMD=($OPST $DEFCMD $CMD "$@")
+    OSTACKCMD=($OPST $DEFCMD $CMD $MYTAG "$@")
     if test "$DEFCMD" == "volume" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed -e 's/\-\-image\-id/--image/' -e 's/\-\-name \([^ ]*\) *\([0-9]*\) *$/--size \2 \1/')
       #OSTACKCMD=($OPST $DEFCMD $CMD $ARGS)
@@ -682,19 +690,19 @@ translate()
     if test "$C1" == "keypair" -a "$CMD" == "add"; then CMD="create"; fi
     C1=${C1//-/ }
     shift
-    #OSTACKCMD=($OPST $C1 $CMD "$@")
-    OSTACKCMD=($OPST $C1 $CMD "${@//--property-filter/--property}")
+    #OSTACKCMD=($OPST $C1 $CMD $MYTAG "$@")
+    OSTACKCMD=($OPST $C1 $CMD $MYTAG "${@//--property-filter/--property}")
     if test "$C1" == "subnet" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed -e 's@\-\-disable-dhcp@--no-dhcp@' -e 's@\-\-name \([^ ]*\) *\([^ ]*\) *\([^ ]*\)@--network \2 --subnet-range \3 \1@')
-      OSTACKCMD=($OPST $C1 $CMD ${ARGS})
+      OSTACKCMD=($OPST $C1 $CMD $MYTAG ${ARGS})
     elif test "$C1" == "floating ip" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed 's@\-\-port\-id@--port@')
-      OSTACKCMD=($OPST $C1 $CMD ${ARGS})
+      OSTACKCMD=($OPST $C1 $CMD $MYTAG ${ARGS})
     elif test "$C1" == "net external"; then
-      OSTACKCMD=($OPST network $CMD --external "$@")
+      OSTACKCMD=($OPST network $CMD $MYTAG --external "$@")
     elif test "$C1" == "port" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed -e 's@subnet_id=@subnet=@g' -e 's@\-\-name \([^ ]*\) *\([^ ]*\)@--network \2 \1@')
-      OSTACKCMD=($OPST $C1 $CMD ${ARGS})
+      OSTACKCMD=($OPST $C1 $CMD $MYTAG ${ARGS})
     elif test "$C1" == "port" -a "$CMD" == "update"; then
       # --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1)
       ARGS=$(echo "$@" | sed -e 's@\-\-allowed-address-pairs type=dict list=true@@' -e 's@ip_address=\([^ ]*\)@--allowed-address ip-address=\1@g')
@@ -2988,7 +2996,11 @@ cleanup()
   # NOTE: This will find FIPs from other APIMon jobs in the same tenant also
   #  maybe we should use findFIPs
   translate neutron floatingip-list
-  FIPS=( $(${OSTACKCMD[@]} | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  if test "$TAG" == "1"; then
+    FIPS=( $(${OSTACKCMD[@]} | grep '^| [0-9a-f]\{8\}\-' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  else
+    FIPS=( $(${OSTACKCMD[@]} | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+  fi
   deleteFIPs
   JHVMS=( $(findres ${RPRE}VM_JH nova list) )
   deleteJHVMs
@@ -3372,7 +3384,8 @@ fi
 # Debugging: Start with volume step
 if test "$1" = "CLEANUP"; then
   if test -n "$2"; then RPRE=$2; if test ${RPRE%_} == ${RPRE}; then RPRE=${RPRE}_; fi; fi
-  echo -e "$BOLD *** Start cleanup $RPRE *** $NORM"
+  if test "$TAG" == "1"; then TAGARG="--tag ${RPRE%_}"; fi
+  echo -e "$BOLD *** Start cleanup $RPRE $TAGARG *** $NORM"
   #SECONDNET=1
   cleanup
   echo -e "$BOLD *** Cleanup complete *** $NORM"
@@ -3445,7 +3458,7 @@ elif test "$1" = "CONNTEST"; then
 else # test "$1" = "DEPLOY"; then
  if test "$REFRESHPRJ" != 0 && test $(($RUNS%$REFRESHPRJ)) == 0; then createnewprj; fi
  # Complete setup
- echo -e "$BOLD *** Start deployment $((loop+1))/$MAXITER for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM ($TRIPLE)"
+ echo -e "$BOLD *** Start deployment $((loop+1))/$MAXITER for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM ($TRIPLE) $TAGARG"
  date
  unset THISRUNSUCCESS
  # Image IDs

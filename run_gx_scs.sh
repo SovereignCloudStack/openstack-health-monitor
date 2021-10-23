@@ -31,6 +31,8 @@ export FROM=kurt@garloff.de
 export AZS="nova"
 # Upload (compressed) logfiles and stats to container
 export SWIFTCONTAINER=OS-HM-Logfiles
+# NAMESERVER
+export NAMESERVER=8.8.8.8
 
 # Assume OS_ parameters have already been sourced from some .openrc file
 # export OS_CLOUD=gx-scs-healthmgr
@@ -47,6 +49,14 @@ export ALARM_EMAIL_ADDRESSES NOTE_EMAIL_ADDRESSES
 # Terminate early on auth error
 openstack server list >/dev/null
 
+# Find Floating IPs
+FIPLIST=""
+FIPS=$(openstack floating ip list -f value -c ID)
+for fip in $FIPS; do
+	FIP=$(openstack floating ip show $fip | grep -o "APIMonitor_[0-9]*")
+	if test -n "$FIP"; then FIPLIST="${FIPLIST}${FIP}_
+"; fi
+done
 # Cleanup previous interrupted runs
 SERVERS=$(openstack server  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 VOLUMES=$(openstack volume  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
@@ -54,21 +64,22 @@ NETWORK=$(openstack network list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 LOADBAL=$(openstack loadbalancer list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 ROUTERS=$(openstack router  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 SECGRPS=$(openstack security group list | grep -o "APIMonitor_[0-9]*_" | sort -u)
-TOCLEAN=$(echo "$SERVERS
+TOCLEAN=$(echo "$FIPLIST
+$SERVERS
 $VOLUMES
 $NETWORK
 $LOADBAL
 $ROUTERS
 $SECGRPS
-" | sort -u)
+" | grep -v '^$' | sort -u)
 for ENV in $TOCLEAN; do
   echo "******************************"
   echo "CLEAN $ENV"
-  bash ./api_monitor.sh -o -q -c CLEANUP $ENV
+  bash ./api_monitor.sh -o -T -q -c CLEANUP $ENV
   echo "******************************"
 done
 
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
 #exec api_monitor.sh -o -C -D -N 2 -n 8 -s -e sender@domain.org "$@"
-exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -a 2 -R "$@"
+exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -a 2 -T -R "$@"
 
