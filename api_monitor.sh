@@ -3393,6 +3393,7 @@ if test "$1" = "CLEANUP"; then
   exit 0
 elif test "$1" = "CONNTEST"; then
   if test -n "$2"; then RPRE=$2; if test ${RPRE%_} == ${RPRE}; then RPRE=${RPRE}_; fi; fi
+  if test "$TAG" == "1"; then TAGARG="--tag ${RPRE%_}"; fi
   while test $loop != $MAXITER -a -z "$INTERRUPTED"; do
    echo -e "$BOLD *** Start connectivity test for $RPRE ($((loop+1))/$MAXITER) *** $NORM"
    # Only collect resource on e. 10th iteration
@@ -3774,6 +3775,7 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   else
     RPRE="APIMonitor_${STARTDATE}_"
   fi
+  if test "$TAG" == "1"; then TAGARG="--tag ${RPRE%_}"; fi
   if test $(($loop+1)) != $MAXITER -a -z "$INTERRUPTED"; then 
     echo "Using new $RPRE prefix for resrcs on $TRIPLE (${AZS[*]})"
     #loop=-1
