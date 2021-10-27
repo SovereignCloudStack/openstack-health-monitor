@@ -2533,6 +2533,12 @@ testjhinet()
     elif test $R == 1; then
       let CUMPINGERRORS+=1; ERR="${ERR}ssh JH$JHNO ping $PINGTARGET || ping $PINGTARGET2; "
     fi
+    if test $R != 0; then
+      ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${JHVMS[$JHNO]}
+      ERR="${ERR}openstack server show ${JHVMS[$JHNO]}
+$OSTACKRESP
+"
+    fi
 # We skip wait222 now for failed JHs, so we need to record this here in case of failure
 # Don't generate entry for success here, we'll test this again in wait222, which records the success/time
     if test -n "$GRAFANA" -a $R != 0; then
