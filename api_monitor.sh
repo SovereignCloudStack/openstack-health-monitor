@@ -3699,6 +3699,15 @@ let RUNS+=1
 
 if test -z "$OS_PROJECT_NAME"; then OPRJ="$OS_CLOUD"; else OPRJ="$OS_PROJECT_NAME"; fi
 
+# Moved opportunity to interrupt here - so we get stats sent ...
+echo -n "Hit ^C now to interrupt ..."
+if test $THISRUNTIME -lt $MINCYC; then
+  echo -n " extra sleep for $(($MINCYC-$THISRUNTIME))s ..."
+  sleep $(($MINCYC-$THISRUNTIME))
+fi
+sleep 5
+echo
+
 CDATE=$(date +%Y-%m-%d)
 CTIME=$(date +%H:%M:%S)
 if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn ERRORS"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
@@ -3788,15 +3797,11 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
     #loop=-1
   fi
 fi
+
+sleep 1
 let loop+=1
-echo -n "Hit ^C now to interrupt ..."
-if test $THISRUNTIME -lt $MINCYC; then
-  echo -n " extra sleep for $(($MINCYC-$THISRUNTIME))s ..."
-  sleep $(($MINCYC-$THISRUNTIME))
-fi
-sleep 5
-echo
 done
+
 #if test -n "$LOGFILE"; then
 #  compress_and_upload "$LOGFILE"
 #fi
