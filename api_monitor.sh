@@ -651,7 +651,8 @@ translate()
   shift
   CMD=${1##*-}
   # External nets are not managed by us and thus not tagged; ports created via nova are neither
-  if test $ORIGCMD == neutron && test $CMD == create -o $CMD == list && test "$1" != "net-external-list" -a "$1" != "port-list"; then
+  # (Also routers and loadbalancer may not be tagged reliably?)
+  if test $ORIGCMD == neutron && test $CMD == create -o $CMD == list && test "$1" != "net-external-list" -a "$1" != "port-list" -a "$1" != "router-list" -a "$1" != "lbaas-loadbalancer-list"; then
     MYTAG="$TAGARG"
   fi
   if test "$CMD" == "$1"; then
