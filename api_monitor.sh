@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.72
+VERSION=1.73
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -127,9 +127,8 @@ GRAFANANM="${GRAFANANM:-api-monitoring}"
 if test -z "$AZS"; then
   #AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
   #AZS=$(openstack availability zone list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | grep -v '| Zone Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
-  AZS=$(openstack availability zone list -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"')
-  if test -z "$AZS"; then AZS=$(otc.sh vm listaz 2>/dev/null | grep -v region | sort -n); fi
-  if test -z "$AZS"; then AZS="eu-de-01 eu-de-02"; fi
+  AZS=$(openstack availability zone list -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
+  if test -z "$AZS"; then AZS=$(otc.sh vm listaz 2>/dev/null | grep -v region | sort -u); fi
 fi
 AZS=($AZS)
 #echo "${#AZS[*]} AZs: ${AZS[*]}"; exit 0
@@ -137,8 +136,9 @@ NOAZS=${#AZS[*]}
 if test -z "$VAZS"; then
   #VAZS=$(cinder availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
   #VAZS=$(openstack availability zone list --volume 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | grep -v '| Zone Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
-  VAZS=$(openstack availability zone list --volume -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"')
+  VAZS=$(openstack availability zone list --volume -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
   if test -z "$VAZS"; then VAZS=(${AZS[*]}); else VAZS=($VAZS); fi
+  #echo "AZs: ${AZS[*]}, VAZs: ${VAZS[*]}"
 fi
 NOVAZS=${#VAZS[*]}
 NOVMS=12
@@ -738,15 +738,20 @@ translate()
     elif test "$C1" == "lbaas loadbalancer"; then
       EP="$OCTAVIA_EP"
       # FIXME: Don't use octaviaclient-2.2
-      if test "$iNEW_OCTAVIA" = "1"; then
-	ARGS=$(echo "$@" | sed -e 's/\-\-vip\-network\-id/--vip_network_id/g')
+      if test "$OLD_OCTAVIA" = "1"; then
+	ARGS=$(echo "$@" | sed -e 's/\-\-vip\-network\-id/--vip_network_id/g' -e 's/\-\-vip\-subnet\-id/--vip_subnet_id/g')
       else
 	ARGS=$(echo "$@")
       fi
       OSTACKCMD=(openstack loadbalancer $CMD $ARGS)
     elif test "$C1" == "lbaas pool"; then
+      if test "$OLD_OCTAVIA" = "1"; then
+	ARGS=$(echo "$@" | sed -e 's/\-\-lb\-algorithm/--lb_algorithm/g')
+      else
+	ARGS=$(echo "$@")
+      fi
       EP="$OCTAVIA_EP"
-      OSTACKCMD=($OPST loadbalancer pool $CMD $LBWAIT $@)
+      OSTACKCMD=($OPST loadbalancer pool $CMD $LBWAIT $ARGS)
     elif test "$C1" == "lbaas listener"; then
       EP="$OCTAVIA_EP"
       ARGS=$(echo "$@" | sed 's/--loadbalancer //')
@@ -1542,15 +1547,15 @@ createSGroups()
   updAPIerr $?
   read TM ID STATE <<<"$RESP"
   NETSTATS+=( $TM )
-  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
+  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0.0.0.0/0 $SG0)
   updAPIerr $?
   read TM ID STATE <<<"$RESP"
   NETSTATS+=( $TM )
-  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max $((222+($NOVMS-1)/$NOAZS)) --remote-ip-prefix 0/0 $SG0)
+  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max $((222+($NOVMS-1)/$NOAZS)) --remote-ip-prefix 0.0.0.0/0 $SG0)
   updAPIerr $?
   read TM ID STATE <<<"$RESP"
   NETSTATS+=( $TM )
-  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
+  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0.0.0.0/0 $SG0)
   updAPIerr $?
   read TM ID STATE <<<"$RESP"
   NETSTATS+=( $TM )
@@ -2016,14 +2021,19 @@ else
 createLBs()
 {
   if test -n "$LOADBALANCER"; then
-    createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0"
+    #createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0"
+    createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-subnet-id ${JHSUBNETS[0]} --name "${RPRE}LB_0"
   fi
 }
 
 deleteLBs()
 {
   if test -n "$LBAASS"; then
-    deleteResources LBSTATS LBAAS "" $FIPTIMEOUT neutron lbaas-loadbalancer-delete --cascade
+    if test -n "$OLD_OCTAVIA"; then
+      deleteResources LBSTATS LBAAS "" $FIPTIMEOUT neutron lbaas-loadbalancer-delete
+    else
+      deleteResources LBSTATS LBAAS "" $FIPTIMEOUT neutron lbaas-loadbalancer-delete --cascade
+    fi
   fi
 }
 
