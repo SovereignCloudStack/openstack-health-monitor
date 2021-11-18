@@ -6,7 +6,7 @@
 # You can freely mix ...
 #export JHIMG="Ubuntu 20.04"
 #export JHIMG="openSUSE 15.2"
-export iJHIMG="Standard_Ubuntu_20.04_latest"
+export JHIMG="Standard_Ubuntu_20.04_latest"
 #export ADDJHVOLSIZE=2
 export IMG="Standard_Ubuntu_20.04_latest"
 #export IMG="openSUSE 15.2"
