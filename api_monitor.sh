@@ -746,7 +746,7 @@ translate()
       OSTACKCMD=(openstack loadbalancer $CMD $ARGS)
     elif test "$C1" == "lbaas pool"; then
       if test "$OLD_OCTAVIA" = "1"; then
-	ARGS=$(echo "$@" | sed -e 's/\-\-lb\-algorithm/--lb_algorithm/g')
+	ARGS=$(echo "$@" | sed -e 's/\-\-lb\-algorithm/--lb_algorithm/g' -e 's/\-\-session\-persistence/--session_persistence/g')
       else
 	ARGS=$(echo "$@")
       fi

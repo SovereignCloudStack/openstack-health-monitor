@@ -13,8 +13,8 @@ export IMG="Standard_Ubuntu_20.04_latest"
 #export IMG="CentOS 8"
 # DEFLTUSER from image_original_user property
 #export DEFLTUSER=opensuse
-#export DEFLTUSER=ubuntu
-#export JHDEFLTUSER=ubuntu
+export DEFLTUSER=ubuntu
+export JHDEFLTUSER=ubuntu
 # You can use a filter when listing images (because your catalog is huge)
 #export JHIMGFILT="--property-filter os_version=openSUSE-15.0"
 #export IMGFILT="--property-filter os_version=openSUSE-15.0"
