@@ -746,7 +746,7 @@ translate()
       OSTACKCMD=(openstack loadbalancer $CMD $ARGS)
     elif test "$C1" == "lbaas pool"; then
       if test "$OLD_OCTAVIA" = "1"; then
-	ARGS=$(echo "$@" | sed -e 's/\-\-lb\-algorithm=/--lb_algorithm /g' -e 's/\-\-session\-persistence=/--session_persistence /g' -e 's/\-\-loadbalancer /--loadbalancer_id /g')
+	ARGS=$(echo "$@" | sed -e 's/\-\-lb\-algorithm=/--lb_algorithm /g' -e 's/\-\-session\-persistence type=/--session_persistence /g' -e 's/\-\-loadbalancer /--loadbalancer_id /g')
       else
 	ARGS=$(echo "$@")
       fi
@@ -2778,11 +2778,14 @@ exit 1
 EOT
   chmod +x ${RPRE}wait
   # Do tests from 2nd host in 1st net and connect to 1st hosts in 1st/2nd/... net
+  calcRedirs
   red=${REDIRS[0]}
-  red=$(echo $red | cut -d " " -f $((NONETS+1)))
+  #red=$(echo $red | cut -d " " -f $((NONETS+1)))
+  red=$(echo "$red" | tail -n1)
   #echo "$red"
   pno=${red#*tcp,}
   pno=${pno%%,*}
+  echo "Redirect: ${REDIRS[0]} $red $pno"
   scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
   rm ${RPRE}wait
   echo -n "IPerf3 tests (${IPS[$NONETS]}): "
