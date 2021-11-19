@@ -746,7 +746,7 @@ translate()
       OSTACKCMD=(openstack loadbalancer $CMD $ARGS)
     elif test "$C1" == "lbaas pool"; then
       if test "$OLD_OCTAVIA" = "1"; then
-	ARGS=$(echo "$@" | sed -e 's/\-\-lb\-algorithm/--lb_algorithm/g' -e 's/\-\-session\-persistence/--session_persistence/g')
+	ARGS=$(echo "$@" | sed -e 's/\-\-lb\-algorithm=/--lb_algorithm /g' -e 's/\-\-session\-persistence=/--session_persistence /g' -e 's/\-\-loadbalancer /--loadbalancer_id /g')
       else
 	ARGS=$(echo "$@")
       fi
@@ -1762,10 +1762,13 @@ createFIPs()
   read TM EXTGW STATE <<<"$RESP"
   NETSTATS+=( $TM )
   SNAT=$(echo $EXTGW | sed 's/^[^,]*, "enable_snat": \([^ }]*\).*$/\1/')
+  if test "$SNAT" != "false" -a "$SNAT" != "true"; then
+    SNAT=$(echo $STATE | sed 's/^[^,]*, "enable_snat": \([^ }]*\).*$/\1/')
+  fi
   if test "$SNAT" = "false"; then
     ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP
   else
-    echo "SNAT enabled already, no need to use SNAT instance via VIP"
+    echo "SNAT enabled already ($SNAT), no need to use SNAT instance via VIP"
   fi
   if test $? != 0; then
     echo -e "$BOLD We lack the ability to set VPC route via SNAT gateways by API, will be fixed soon"
