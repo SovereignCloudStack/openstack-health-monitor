@@ -746,7 +746,8 @@ translate()
       OSTACKCMD=(openstack loadbalancer $CMD $ARGS)
     elif test "$C1" == "lbaas pool"; then
       if test "$OLD_OCTAVIA" = "1"; then
-	ARGS=$(echo "$@" | sed -e 's/\-\-lb\-algorithm=/--lb_algorithm /g' -e 's/\-\-session\-persistence type=/--session_persistence /g' -e 's/\-\-loadbalancer /--loadbalancer_id /g')
+	#ARGS=$(echo "$@" | sed -e 's/\-\-lb\-algorithm=/--lb_algorithm /g' -e "s/\-\-session\-persistence type=\([^ ]*\)/--session_persistence '{ \"type\": \"\1\" }'/g" -e 's/\-\-loadbalancer /--loadbalancer_id /g')
+	ARGS=$(echo "$@" | sed -e 's/\-\-lb\-algorithm=/--lb_algorithm /g' -e "s/\-\-session\-persistence type=\([^ ]*\)//g" -e 's/\-\-loadbalancer /--loadbalancer_id /g')
       else
 	ARGS=$(echo "$@")
       fi
@@ -754,7 +755,12 @@ translate()
       OSTACKCMD=($OPST loadbalancer pool $CMD $LBWAIT $ARGS)
     elif test "$C1" == "lbaas listener"; then
       EP="$OCTAVIA_EP"
-      ARGS=$(echo "$@" | sed 's/--loadbalancer //')
+      if test "$OLD_OCTAVIA" = "1"; then
+        ARGS=$(echo "$@" | sed -e 's/\-\-protocol\-port/--protocol_port/g')
+      else
+	ARGS=$(echo "$@")
+      fi
+      ARGS=$(echo "$ARGS" | sed 's/--loadbalancer //')
       OSTACKCMD=($OPST loadbalancer listener $CMD $LBWAIT $ARGS)
     elif test "$C1" == "lbaas member"; then
       EP="$OCTAVIA_EP"
@@ -1820,6 +1826,7 @@ deleteFIPs()
   fi
 }
 
+REDIRS=()
 # Create a list of port forwarding rules (redirection/fwdmasq)
 declare -a REDIRS
 calcRedirs()
@@ -1866,7 +1873,6 @@ calcRedirs()
 createJHVMs()
 {
   local IP STR odd ptn RD USERDATA JHNUM port
-  REDIRS=()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   calcRedirs
@@ -2778,15 +2784,15 @@ exit 1
 EOT
   chmod +x ${RPRE}wait
   # Do tests from 2nd host in 1st net and connect to 1st hosts in 1st/2nd/... net
-  calcRedirs
+  #calcRedirs
   red=${REDIRS[0]}
   #red=$(echo $red | cut -d " " -f $((NONETS+1)))
-  red=$(echo "$red" | tail -n1)
+  red=$(echo "$red" | grep -v '^$' | tail -n2 | head -n1)
   #echo "$red"
   pno=${red#*tcp,}
   pno=${pno%%,*}
-  echo "Redirect: ${REDIRS[0]} $red $pno"
-  scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
+  #echo "Redirect: ${REDIRS[0]} $red $pno"
+  scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@${FLOATS[0]}: >/dev/null
   rm ${RPRE}wait
   echo -n "IPerf3 tests (${IPS[$NONETS]}): "
   for VM in $(seq 0 $((NONETS-1))); do
