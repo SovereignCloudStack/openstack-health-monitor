@@ -756,7 +756,7 @@ translate()
     elif test "$C1" == "lbaas listener"; then
       EP="$OCTAVIA_EP"
       if test "$OLD_OCTAVIA" = "1"; then
-        ARGS=$(echo "$@" | sed -e 's/\-\-protocol\-port/--protocol_port/g')
+        ARGS=$(echo "$@" | sed -e 's/\-\-protocol\-port/--protocol_port/g' -e 's/\-\-default\-pool/--default_pool/g')
       else
 	ARGS=$(echo "$@")
       fi
