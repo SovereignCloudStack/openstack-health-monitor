@@ -765,10 +765,11 @@ translate()
       if test -n "$OLD_OCTAVIA"; then
         ARGS=$(echo "$@" | sed -e 's/\-\-protocol\-port/--protocol_port/g' -e 's/\-\-subnet\-id/--subnet_id/g')
       else
-	      ARGS=$(echo "$@") # sed -e 's/\-\-subnet\-id [^ ]*//'
+	ARGS=$(echo "$@") # sed -e 's/\-\-subnet\-id [^ ]*//'
       fi
       EP="$OCTAVIA_EP"
-      OSTACKCMD=($OPST loadbalancer member $CMD $LBWAIT $ARGS)
+      #OSTACKCMD=($OPST loadbalancer member $CMD $LBWAIT $ARGS)
+      OSTACKCMD=(openstack loadbalancer member $CMD $LBWAIT $ARGS)
     elif test "$C1" == "lbaas healthmonitor"; then
       EP="$OCTAVIA_EP"
       if test -n "$OLD_OCTAVIA"; then
@@ -2096,7 +2097,9 @@ testLBs()
   LBFIPS=( $(echo "$OSTACKRESP" | grep ' id ' | sed 's/^|[^|]*| *\([a-f0-9\-]*\).*$/\1/') )
   echo "${LBFIPS[0]}"
   #echo "DEBUG: IPS ${IPS[*]} SUBNETS ${SUBNETS[*]}"
-  createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id \${SUBNETS[\$\(\(no%$NONETS\)\)]} --protocol-port 80 ${POOLS[0]}
+  #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id \${SUBNETS[\$\(\(no%$NONETS\)\)]} --protocol-port 80 ${POOLS[0]}
+  createResources $NOVMS LBSTATS MEMBER IP POOL "" id $((FIPTIMEOUT+2)) neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id ${JHSUBNETS[0]} --protocol-port 80 ${POOLS[0]}
+  #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   RC=$?
   let ERR+=$RC
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
