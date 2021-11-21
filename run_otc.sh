@@ -30,6 +30,8 @@ export FLAVOR=s2.medium.1
 export FROM=kurt@garloff.de
 # Only use one AZ
 #export AZS="eu-de-01 eu-de-02 eu-de-03"
+export AZS="eu-de-01 eu-de-03"
+export VAZS="eu-de-01 eu-de-03"
 # Upload (compressed) logfiles and stats to container
 export SWIFTCONTAINER=OS-HM-Logfiles
 # NAMESERVER
@@ -84,5 +86,5 @@ done
 
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
 #exec api_monitor.sh -o -C -D -N 2 -n 8 -s -e sender@domain.org "$@"
-exec ./api_monitor.sh -O -C -D -n 6 -s -L -b -B -a 2 -R "$@"
+exec ./api_monitor.sh -O -C -D -n 6 -s -b -B -a 2 -R "$@"
 
