@@ -137,9 +137,9 @@ if test -z "$VAZS"; then
   #VAZS=$(cinder availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
   #VAZS=$(openstack availability zone list --volume 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | grep -v '| Zone Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
   VAZS=$(openstack availability zone list --volume -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
-  if test -z "$VAZS"; then VAZS=(${AZS[*]}); else VAZS=($VAZS); fi
-  #echo "AZs: ${AZS[*]}, VAZs: ${VAZS[*]}"
 fi
+if test -z "$VAZS"; then VAZS=(${AZS[*]}); else VAZS=($VAZS); fi
+#echo "AZs: ${AZS[*]}, VAZs: ${VAZS[*]}"
 NOVAZS=${#VAZS[*]}
 NOVMS=12
 NONETS=$NOAZS
@@ -738,14 +738,14 @@ translate()
     elif test "$C1" == "lbaas loadbalancer"; then
       EP="$OCTAVIA_EP"
       # FIXME: Don't use octaviaclient-2.2
-      if test "$OLD_OCTAVIA" = "1"; then
+      if test -n "$OLD_OCTAVIA"; then
 	ARGS=$(echo "$@" | sed -e 's/\-\-vip\-network\-id/--vip_network_id/g' -e 's/\-\-vip\-subnet\-id/--vip_subnet_id/g')
       else
 	ARGS=$(echo "$@")
       fi
       OSTACKCMD=(openstack loadbalancer $CMD $ARGS)
     elif test "$C1" == "lbaas pool"; then
-      if test "$OLD_OCTAVIA" = "1"; then
+      if test -n "$OLD_OCTAVIA"; then
 	#ARGS=$(echo "$@" | sed -e 's/\-\-lb\-algorithm=/--lb_algorithm /g' -e "s/\-\-session\-persistence type=\([^ ]*\)/--session_persistence '{ \"type\": \"\1\" }'/g" -e 's/\-\-loadbalancer /--loadbalancer_id /g')
 	ARGS=$(echo "$@" | sed -e 's/\-\-lb\-algorithm=/--lb_algorithm /g' -e "s/\-\-session\-persistence type=\([^ ]*\)//g" -e 's/\-\-loadbalancer /--loadbalancer_id /g')
       else
@@ -755,19 +755,27 @@ translate()
       OSTACKCMD=($OPST loadbalancer pool $CMD $LBWAIT $ARGS)
     elif test "$C1" == "lbaas listener"; then
       EP="$OCTAVIA_EP"
-      if test "$OLD_OCTAVIA" = "1"; then
-        ARGS=$(echo "$@" | sed -e 's/\-\-protocol\-port/--protocol_port/g' -e 's/\-\-default\-pool/--default_pool/g')
+      if test -n "$OLD_OCTAVIA"; then
+        ARGS=$(echo "$@" | sed -e 's/\-\-protocol\-port/--protocol_port/g' -e 's/\-\-default\-pool/--default_pool/g' -e 's/\-\-loadbalancer / /g')
       else
-	ARGS=$(echo "$@")
+	ARGS=$(echo "$@" | sed 's/\-\-loadbalancer / /')
       fi
-      ARGS=$(echo "$ARGS" | sed 's/--loadbalancer //')
       OSTACKCMD=($OPST loadbalancer listener $CMD $LBWAIT $ARGS)
     elif test "$C1" == "lbaas member"; then
+      if test -n "$OLD_OCTAVIA"; then
+        ARGS=$(echo "$@" | sed -e 's/\-\-protocol\-port/--protocol_port/g' -e 's/\-\-subnet\-id/--subnet_id/g')
+      else
+	      ARGS=$(echo "$@") # sed -e 's/\-\-subnet\-id [^ ]*//'
+      fi
       EP="$OCTAVIA_EP"
-      OSTACKCMD=($OPST loadbalancer member $CMD $LBWAIT $@)
+      OSTACKCMD=($OPST loadbalancer member $CMD $LBWAIT $ARGS)
     elif test "$C1" == "lbaas healthmonitor"; then
       EP="$OCTAVIA_EP"
-      ARGS=$(echo "$@" | sed 's/--pool //')
+      if test -n "$OLD_OCTAVIA"; then
+        ARGS=$(echo "$@" | sed -e 's/\-\-max\-retries/--max_retries/g' -e 's/\-\-url\-path/--url_path/g' -e 's/\-\-pool //g')
+      else
+        ARGS=$(echo "$@" | sed 's/\-\-pool //')
+      fi
       OSTACKCMD=($OPST loadbalancer healthmonitor $CMD $LBWAIT $ARGS)
     fi
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
@@ -2019,9 +2027,9 @@ else
       SCRIPT=$(echo -e "$SCRIPT\n  iptables -t nat -A PREROUTING -s $saddr -i \$DEV -j DNAT -p $proto --dport $port --to-destination $daddr:$dport")
     done
     SCRIPT=$(echo -e "$SCRIPT\nfi")
-    echo "$SCRIPT" | ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_ipt"
+    echo "$SCRIPT" | ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_ipt" >/dev/null 2>&1
     # -tt is a workaround for a RHEL/CentOS 7 bug
-    ssh -tt -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_ipt"
+    ssh -tt -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_ipt" >/dev/null 2>&1
   done
 }
 
@@ -2087,7 +2095,8 @@ testLBs()
   LBIP=$(echo "$OSTACKRESP" | grep ' floating_ip_address ' | sed 's/^|[^|]*| *\([a-f0-9:\.]*\).*$/\1/')
   LBFIPS=( $(echo "$OSTACKRESP" | grep ' id ' | sed 's/^|[^|]*| *\([a-f0-9\-]*\).*$/\1/') )
   echo "${LBFIPS[0]}"
-  createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
+  #echo "DEBUG: IPS ${IPS[*]} SUBNETS ${SUBNETS[*]}"
+  createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id \${SUBNETS[\$\(\(no%$NONETS\)\)]} --protocol-port 80 ${POOLS[0]}
   RC=$?
   let ERR+=$RC
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
@@ -2134,6 +2143,9 @@ cleanLBs()
   deleteResources FIPSTATS LBFIP "" $FIPTIMEOUT neutron floating-ip-delete
   echo -n " "
   deleteResources LBSTATS POOL "" $FIPTIMEOUT neutron lbaas-pool-delete
+  if test -n "$REMLISTENERS"; then
+    deleteResources LBSTATS REMLISTENER "" $FIPTIMEOUT neutron lbaas-listener-delete
+  fi
 }
 
 waitJHVMs()
@@ -2785,27 +2797,29 @@ EOT
   chmod +x ${RPRE}wait
   # Do tests from 2nd host in 1st net and connect to 1st hosts in 1st/2nd/... net
   #calcRedirs
-  red=${REDIRS[0]}
+  red=${REDIRS[$((NOAZS-1))]}
   #red=$(echo $red | cut -d " " -f $((NONETS+1)))
-  red=$(echo "$red" | grep -v '^$' | tail -n2 | head -n1)
+  #red=$(echo "$red" | grep -v '^$' | tail -n2 | head -n1)
+  red=$(echo "$red" | grep -v '^$' | tail -n1)
   #echo "$red"
   pno=${red#*tcp,}
   pno=${pno%%,*}
   #echo "Redirect: ${REDIRS[0]} $red $pno"
-  scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@${FLOATS[0]}: >/dev/null
-  rm ${RPRE}wait
-  echo -n "IPerf3 tests (${IPS[$NONETS]}): "
+  echo -n "IPerf3 tests:"
   for VM in $(seq 0 $((NONETS-1))); do
     TGT=${IPS[$VM]}
-    if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[0]} iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
-    IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[0]} "./${RPRE}wait /usr/bin/iperf3; iperf3 -t5 -J -c $TGT")
+    SRC=${IPS[$VM+$NOVMS-$NONETS]}
+    FLT=${FLOATS[$(($VM%$NOAZS))]}
+    scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
+    if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
+    IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "./${RPRE}wait /usr/bin/iperf3; iperf3 -t5 -J -c $TGT")
     if test $? != 0; then return 1; fi
     if test -n "$LOGFILE"; then echo "$IPJSON" >> $LOGFILE; fi
     SENDBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_sent.bits_per_second'))/1048576))
     RECVBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_received.bits_per_second'))/1048576))
     HUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.host_total'))
     RUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.remote_total'))
-    echo -en "${TGT}: ${BOLD}$SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL${NORM}\n "
+    echo -e " ${SRC} <-> ${TGT}: ${BOLD}$SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL${NORM}"
     if test -n "$LOGFILE"; then echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
     BANDWIDTH+=($SENDBW $RECVBW)
     if test -n "$GRAFANA"; then
@@ -2813,6 +2827,7 @@ EOT
       curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=r$VM duration=$RECVBW,return_code=0" >/dev/null
     fi
   done
+  rm ${RPRE}wait
   echo -en "\b"
 }
 
