@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.72
+VERSION=1.73
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -127,9 +127,8 @@ GRAFANANM="${GRAFANANM:-api-monitoring}"
 if test -z "$AZS"; then
   #AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
   #AZS=$(openstack availability zone list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | grep -v '| Zone Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
-  AZS=$(openstack availability zone list -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"')
-  if test -z "$AZS"; then AZS=$(otc.sh vm listaz 2>/dev/null | grep -v region | sort -n); fi
-  if test -z "$AZS"; then AZS="eu-de-01 eu-de-02"; fi
+  AZS=$(openstack availability zone list -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
+  if test -z "$AZS"; then AZS=$(otc.sh vm listaz 2>/dev/null | grep -v region | sort -u); fi
 fi
 AZS=($AZS)
 #echo "${#AZS[*]} AZs: ${AZS[*]}"; exit 0
@@ -137,9 +136,10 @@ NOAZS=${#AZS[*]}
 if test -z "$VAZS"; then
   #VAZS=$(cinder availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
   #VAZS=$(openstack availability zone list --volume 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | grep -v '| Zone Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
-  VAZS=$(openstack availability zone list --volume -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"')
-  if test -z "$VAZS"; then VAZS=(${AZS[*]}); else VAZS=($VAZS); fi
+  VAZS=$(openstack availability zone list --volume -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
 fi
+if test -z "$VAZS"; then VAZS=(${AZS[*]}); else VAZS=($VAZS); fi
+#echo "AZs: ${AZS[*]}, VAZs: ${VAZS[*]}"
 NOVAZS=${#VAZS[*]}
 NOVMS=12
 NONETS=$NOAZS
@@ -738,25 +738,45 @@ translate()
     elif test "$C1" == "lbaas loadbalancer"; then
       EP="$OCTAVIA_EP"
       # FIXME: Don't use octaviaclient-2.2
-      if test "$iNEW_OCTAVIA" = "1"; then
-	ARGS=$(echo "$@" | sed -e 's/\-\-vip\-network\-id/--vip_network_id/g')
+      if test -n "$OLD_OCTAVIA"; then
+	ARGS=$(echo "$@" | sed -e 's/\-\-vip\-network\-id/--vip_network_id/g' -e 's/\-\-vip\-subnet\-id/--vip_subnet_id/g')
       else
 	ARGS=$(echo "$@")
       fi
       OSTACKCMD=(openstack loadbalancer $CMD $ARGS)
     elif test "$C1" == "lbaas pool"; then
+      if test -n "$OLD_OCTAVIA"; then
+	#ARGS=$(echo "$@" | sed -e 's/\-\-lb\-algorithm=/--lb_algorithm /g' -e "s/\-\-session\-persistence type=\([^ ]*\)/--session_persistence '{ \"type\": \"\1\" }'/g" -e 's/\-\-loadbalancer /--loadbalancer_id /g')
+	ARGS=$(echo "$@" | sed -e 's/\-\-lb\-algorithm=/--lb_algorithm /g' -e "s/\-\-session\-persistence type=\([^ ]*\)//g" -e 's/\-\-loadbalancer /--loadbalancer_id /g')
+      else
+	ARGS=$(echo "$@")
+      fi
       EP="$OCTAVIA_EP"
-      OSTACKCMD=($OPST loadbalancer pool $CMD $LBWAIT $@)
+      OSTACKCMD=($OPST loadbalancer pool $CMD $LBWAIT $ARGS)
     elif test "$C1" == "lbaas listener"; then
       EP="$OCTAVIA_EP"
-      ARGS=$(echo "$@" | sed 's/--loadbalancer //')
+      if test -n "$OLD_OCTAVIA"; then
+        ARGS=$(echo "$@" | sed -e 's/\-\-protocol\-port/--protocol_port/g' -e 's/\-\-default\-pool/--default_pool/g' -e 's/\-\-loadbalancer / /g')
+      else
+	ARGS=$(echo "$@" | sed 's/\-\-loadbalancer / /')
+      fi
       OSTACKCMD=($OPST loadbalancer listener $CMD $LBWAIT $ARGS)
     elif test "$C1" == "lbaas member"; then
       EP="$OCTAVIA_EP"
-      OSTACKCMD=($OPST loadbalancer member $CMD $LBWAIT $@)
+      if test -n "$OLD_OCTAVIA"; then
+        ARGS=$(echo "$@" | sed -e 's/\-\-protocol\-port/--protocol_port/g' -e 's/\-\-subnet\-id/--subnet_id/g')
+      else
+	ARGS=$(echo "$@" | sed -e 's/\-\-subnet\-id [^ ]*/ /g')
+      fi
+      OSTACKCMD=($OPST loadbalancer member $CMD $LBWAIT $ARGS)
+      #OSTACKCMD=(openstack loadbalancer member $CMD $LBWAIT $ARGS)
     elif test "$C1" == "lbaas healthmonitor"; then
       EP="$OCTAVIA_EP"
-      ARGS=$(echo "$@" | sed 's/--pool //')
+      if test -n "$OLD_OCTAVIA"; then
+        ARGS=$(echo "$@" | sed -e 's/\-\-max\-retries/--max_retries/g' -e 's/\-\-url\-path/--url_path/g' -e 's/\-\-pool //g')
+      else
+        ARGS=$(echo "$@" | sed 's/\-\-pool //')
+      fi
       OSTACKCMD=($OPST loadbalancer healthmonitor $CMD $LBWAIT $ARGS)
     fi
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
@@ -1542,15 +1562,15 @@ createSGroups()
   updAPIerr $?
   read TM ID STATE <<<"$RESP"
   NETSTATS+=( $TM )
-  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0/0 $SG0)
+  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 22 --port-range-max 22 --remote-ip-prefix 0.0.0.0/0 $SG0)
   updAPIerr $?
   read TM ID STATE <<<"$RESP"
   NETSTATS+=( $TM )
-  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max $((222+($NOVMS-1)/$NOAZS)) --remote-ip-prefix 0/0 $SG0)
+  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 222 --port-range-max $((222+($NOVMS-1)/$NOAZS)) --remote-ip-prefix 0.0.0.0/0 $SG0)
   updAPIerr $?
   read TM ID STATE <<<"$RESP"
   NETSTATS+=( $TM )
-  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0/0 $SG0)
+  RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol icmp --port-range-min 8 --port-range-max 0 --remote-ip-prefix 0.0.0.0/0 $SG0)
   updAPIerr $?
   read TM ID STATE <<<"$RESP"
   NETSTATS+=( $TM )
@@ -1757,10 +1777,13 @@ createFIPs()
   read TM EXTGW STATE <<<"$RESP"
   NETSTATS+=( $TM )
   SNAT=$(echo $EXTGW | sed 's/^[^,]*, "enable_snat": \([^ }]*\).*$/\1/')
+  if test "$SNAT" != "false" -a "$SNAT" != "true"; then
+    SNAT=$(echo $STATE | sed 's/^[^,]*, "enable_snat": \([^ }]*\).*$/\1/')
+  fi
   if test "$SNAT" = "false"; then
     ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP
   else
-    echo "SNAT enabled already, no need to use SNAT instance via VIP"
+    echo "SNAT enabled already ($SNAT), no need to use SNAT instance via VIP"
   fi
   if test $? != 0; then
     echo -e "$BOLD We lack the ability to set VPC route via SNAT gateways by API, will be fixed soon"
@@ -1812,6 +1835,7 @@ deleteFIPs()
   fi
 }
 
+REDIRS=()
 # Create a list of port forwarding rules (redirection/fwdmasq)
 declare -a REDIRS
 calcRedirs()
@@ -1858,7 +1882,6 @@ calcRedirs()
 createJHVMs()
 {
   local IP STR odd ptn RD USERDATA JHNUM port
-  REDIRS=()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   calcRedirs
@@ -2005,9 +2028,9 @@ else
       SCRIPT=$(echo -e "$SCRIPT\n  iptables -t nat -A PREROUTING -s $saddr -i \$DEV -j DNAT -p $proto --dport $port --to-destination $daddr:$dport")
     done
     SCRIPT=$(echo -e "$SCRIPT\nfi")
-    echo "$SCRIPT" | ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_ipt"
+    echo "$SCRIPT" | ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_ipt" >/dev/null 2>&1
     # -tt is a workaround for a RHEL/CentOS 7 bug
-    ssh -tt -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_ipt"
+    ssh -tt -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_ipt" >/dev/null 2>&1
   done
 }
 
@@ -2016,14 +2039,19 @@ else
 createLBs()
 {
   if test -n "$LOADBALANCER"; then
-    createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0"
+    #createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0"
+    createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-subnet-id ${JHSUBNETS[0]} --name "${RPRE}LB_0"
   fi
 }
 
 deleteLBs()
 {
   if test -n "$LBAASS"; then
-    deleteResources LBSTATS LBAAS "" $FIPTIMEOUT neutron lbaas-loadbalancer-delete --cascade
+    if test -n "$OLD_OCTAVIA"; then
+      deleteResources LBSTATS LBAAS "" $FIPTIMEOUT neutron lbaas-loadbalancer-delete
+    else
+      deleteResources LBSTATS LBAAS "" $FIPTIMEOUT neutron lbaas-loadbalancer-delete --cascade
+    fi
   fi
 }
 
@@ -2068,7 +2096,10 @@ testLBs()
   LBIP=$(echo "$OSTACKRESP" | grep ' floating_ip_address ' | sed 's/^|[^|]*| *\([a-f0-9:\.]*\).*$/\1/')
   LBFIPS=( $(echo "$OSTACKRESP" | grep ' id ' | sed 's/^|[^|]*| *\([a-f0-9\-]*\).*$/\1/') )
   echo "${LBFIPS[0]}"
-  createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
+  #echo "DEBUG: IPS ${IPS[*]} SUBNETS ${SUBNETS[*]}"
+  createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id \${SUBNETS[\$\(\(no%$NONETS\)\)]} --protocol-port 80 ${POOLS[0]}
+  #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $((FIPTIMEOUT+2)) neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id ${JHSUBNETS[0]} --protocol-port 80 ${POOLS[0]}
+  #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   RC=$?
   let ERR+=$RC
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
@@ -2115,6 +2146,9 @@ cleanLBs()
   deleteResources FIPSTATS LBFIP "" $FIPTIMEOUT neutron floating-ip-delete
   echo -n " "
   deleteResources LBSTATS POOL "" $FIPTIMEOUT neutron lbaas-pool-delete
+  if test -n "$REMLISTENERS"; then
+    deleteResources LBSTATS REMLISTENER "" $FIPTIMEOUT neutron lbaas-listener-delete
+  fi
 }
 
 waitJHVMs()
@@ -2765,25 +2799,30 @@ exit 1
 EOT
   chmod +x ${RPRE}wait
   # Do tests from 2nd host in 1st net and connect to 1st hosts in 1st/2nd/... net
-  red=${REDIRS[0]}
-  red=$(echo $red | cut -d " " -f $((NONETS+1)))
+  #calcRedirs
+  red=${REDIRS[$((NOAZS-1))]}
+  #red=$(echo $red | cut -d " " -f $((NONETS+1)))
+  #red=$(echo "$red" | grep -v '^$' | tail -n2 | head -n1)
+  red=$(echo "$red" | grep -v '^$' | tail -n1)
   #echo "$red"
   pno=${red#*tcp,}
   pno=${pno%%,*}
-  scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
-  rm ${RPRE}wait
-  echo -n "IPerf3 tests (${IPS[$NONETS]}): "
+  #echo "Redirect: ${REDIRS[0]} $red $pno"
+  echo -n "IPerf3 tests:"
   for VM in $(seq 0 $((NONETS-1))); do
     TGT=${IPS[$VM]}
-    if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[0]} iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
-    IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[0]} "./${RPRE}wait /usr/bin/iperf3; iperf3 -t5 -J -c $TGT")
+    SRC=${IPS[$VM+$NOVMS-$NONETS]}
+    FLT=${FLOATS[$(($VM%$NOAZS))]}
+    scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
+    if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
+    IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "./${RPRE}wait /usr/bin/iperf3; iperf3 -t5 -J -c $TGT")
     if test $? != 0; then return 1; fi
     if test -n "$LOGFILE"; then echo "$IPJSON" >> $LOGFILE; fi
     SENDBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_sent.bits_per_second'))/1048576))
     RECVBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_received.bits_per_second'))/1048576))
     HUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.host_total'))
     RUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.remote_total'))
-    echo -en "${TGT}: ${BOLD}$SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL${NORM}\n "
+    echo -e " ${SRC} <-> ${TGT}: ${BOLD}$SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL${NORM}"
     if test -n "$LOGFILE"; then echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
     BANDWIDTH+=($SENDBW $RECVBW)
     if test -n "$GRAFANA"; then
@@ -2791,6 +2830,7 @@ EOT
       curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=r$VM duration=$RECVBW,return_code=0" >/dev/null
     fi
   done
+  rm ${RPRE}wait
   echo -en "\b"
 }
 
