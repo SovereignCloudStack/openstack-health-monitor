@@ -647,7 +647,8 @@ translate()
   #echo "#DEBUG: $@" 1>&2
   if test -z "$DEFCMD"; then echo "ERROR: Unknown cmd $@" 1>&2; return 1; fi
   local OPST
-  if test -n "$OPENSTACKTOKEN" -a "$DEFCMD" != "image"; then OPST=myopenstack; else OPST=openstack; fi
+  #if test -n "$OPENSTACKTOKEN" -a "$DEFCMD" != "image"; then OPST=myopenstack; else OPST=openstack; fi
+  if test -n "$OPENSTACKTOKEN"; then OPST=myopenstack; else OPST=openstack; fi
   shift
   CMD=${1##*-}
   # External nets are not managed by us and thus not tagged; ports created via nova are neither
@@ -803,7 +804,7 @@ myopenstack()
 {
   #TODO: Check whether old openstack client version accept the syntax (maybe they need --os-auth-type admin_token?)
   #echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-url $EP $@" >> $LOGFILE
-  echo "openstack --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-endpoint $EP $@" >> $LOGFILE
+  echo "openstack --os-token {SHA1}$(echo $TOKEN| sha1sum | sed 's/ .*$//') --os-endpoint $EP --os-auth-type admin_token --os-project-name=\"\" $@" >> $LOGFILE
   #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-project-name "" --os-token $TOKEN --os-url $EP "$@"
   #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP "$@"
   OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP --os-auth-type admin_token --os-project-name="" "$@"
@@ -3179,9 +3180,10 @@ getToken()
 {
   ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack catalog list -f json
   NOVA_EP=$(getPublicEP nova)
-  CINDER_EP=$(getPublicEP cinder)
+  CINDER_EP=$(getPublicEP cinderv3)
   if test -z "$CINDER_EP"; then CINDER_EP=$(getPublicEP cinderv2); fi
-  GLANCE_EP=$(getPublicEP glance)
+  if test -z "$CINDER_EP"; then CINDER_EP=$(getPublicEP cinder); fi
+  GLANCE_EP=$(getPublicEP glance); GLANCE_EP="${GLANCE_EP}/v2"
   NEUTRON_EP=$(getPublicEP neutron)
   OCTAVIA_EP=$(getPublicEP octavia)
   SWIFT_EP=$(getPublicEP swift)
