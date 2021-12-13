@@ -103,6 +103,11 @@ VERSION=1.73
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
 
+# Sanitize locale
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+export LC_NUMERIC=en_US.UTF-8
+
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
 
