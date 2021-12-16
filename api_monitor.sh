@@ -1315,7 +1315,7 @@ waitlistResources()
     sleep 3
     let ctr+=1
   done
-  if test $ctr -ge $MAXWAIT; then let WERR+=${#SLIST[*]}; let misserr=${#SLIST[*]}; fi
+  if test $ctr -ge $MAXWAIT; then let WERR+=${#SLIST[*]}; let misserr+=${#SLIST[*]}; fi
   if test -n "${SLIST[*]}"; then
     echo " TIMEOUT $(($(date +%s)-$waitstart))"
     echo -e "\n${YELLOW}Wait TIMEOUT/ERROR${NORM} ($(($(date +%s)-$waitstart))s, $ctr iterations), LEFT: ${RED}${RRLIST[*]}:${SLIST[*]}${NORM}" 1>&2
