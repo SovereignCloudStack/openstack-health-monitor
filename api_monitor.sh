@@ -1270,7 +1270,7 @@ waitlistResources()
       sleep 10
     fi
     local TM
-    misserr=0
+    #misserr=0
     for i in $(seq 0 $LAST ); do
       local rsrc=${RLIST[$i]}
       if test -z "${SLIST[$i]}"; then STATSTR+=$(colstat "${STATI[$i]}" "$COMP1" "$COMP2"); continue; fi
@@ -1400,13 +1400,13 @@ waitdelResources()
 # Function return original $?
 handleWaitErr()
 {
-  local RV=$?
+  local RETV=$?
   local rsrc
-  if test $RV = 0; then return $RV; fi
+  if test $RETV = 0; then return $RETV; fi
   for rsrc in ${ERRRSC[*]}; do
     ostackcmd_tm "$@" $rsrc
   done
-  return $RV
+  return $RETV
 }
 
 # STATNM RESRNM COMMAND
@@ -3576,9 +3576,10 @@ else # test "$1" = "DEPLOY"; then
              else
               # loadbalancer
               waitLBs
-              LBERRORS=$RC
+              LBERRORS=$?
 	      if test $LBERRORS != 0; then
-		sendalarm $RC "Loadbalancer not created successfully " "${RRLIST[*]}" $((4*$MAXWAIT))
+		#sendalarm $RC "Loadbalancer not created successfully " "${RRLIST[*]}" $((4*$MAXWAIT))
+		sendalarm $RC "Loadbalancer not created successfully " "${ERRRSC[*]}" $((4*$MAXWAIT))
 	      fi
               if createFIPs; then
                # No error handling here (but alarms are generated)
