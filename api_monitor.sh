@@ -3576,8 +3576,11 @@ else # test "$1" = "DEPLOY"; then
              else
               # loadbalancer
               waitLBs
+              LBERRORS=$RC
+	      if test $LBERRORS != 0; then
+		sendalarm $RC "Loadbalancer not created successfully " "${RRLIST[*]}" $((4*$MAXWAIT))
+	      fi
               if createFIPs; then
-               LBERR=$?
                # No error handling here (but alarms are generated)
                waitVMs
                if test $RC != 0; then
@@ -3651,7 +3654,7 @@ else # test "$1" = "DEPLOY"; then
                 # TODO: Attach additional net interfaces to JHs ... and test IP addr
                 WAITTIME+=($(($MSTOP-$WSTART)))
                 # Test load balancer
-                if test -n "$LOADBALANCER" -a $LBERR = 0; then testLBs; fi
+                if test -n "$LOADBALANCER" -a $LBERRORS = 0; then testLBs; fi
                 TESTTIME=$(($(date +%s)-$MSTOP))
                 echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), TESTS DONE (${TESTTIME}s), DELETE AGAIN $NORM"
                 let SUCCRUNS+=1
@@ -3666,7 +3669,7 @@ else # test "$1" = "DEPLOY"; then
                 fi
                 # Subtract waiting time (5s here)
                 MSTART=$(($MSTART+$(date +%s)-$MSTOP))
-                if test -n "$LOADBALANCER" -a $LBERR = 0; then cleanLBs; fi
+                if test -n "$LOADBALANCER" -a $LBERRORS = 0; then cleanLBs; fi
                fi
                # TODO: Detach and delete disks again
               fi; deleteFIPs
