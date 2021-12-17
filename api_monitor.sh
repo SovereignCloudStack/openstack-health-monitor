@@ -1275,7 +1275,7 @@ waitlistResources()
       sleep 10
     fi
     local TM
-    misserr=0
+    #misserr=0
     for i in $(seq 0 $LAST ); do
       local rsrc=${RLIST[$i]}
       if test -z "${SLIST[$i]}"; then STATSTR+=$(colstat "${STATI[$i]}" "$COMP1" "$COMP2"); continue; fi
@@ -1320,7 +1320,7 @@ waitlistResources()
     sleep 3
     let ctr+=1
   done
-  if test $ctr -ge $MAXWAIT; then let WERR+=${#SLIST[*]}; let misserr=${#SLIST[*]}; fi
+  if test $ctr -ge $MAXWAIT; then let WERR+=${#SLIST[*]}; let misserr+=${#SLIST[*]}; fi
   if test -n "${SLIST[*]}"; then
     echo " TIMEOUT $(($(date +%s)-$waitstart))"
     echo -e "\n${YELLOW}Wait TIMEOUT/ERROR${NORM} ($(($(date +%s)-$waitstart))s, $ctr iterations), LEFT: ${RED}${RRLIST[*]}:${SLIST[*]}${NORM}" 1>&2
@@ -1405,13 +1405,13 @@ waitdelResources()
 # Function return original $?
 handleWaitErr()
 {
-  local RV=$?
+  local RETV=$?
   local rsrc
-  if test $RV = 0; then return $RV; fi
+  if test $RETV = 0; then return $RETV; fi
   for rsrc in ${ERRRSC[*]}; do
     ostackcmd_tm "$@" $rsrc
   done
-  return $RV
+  return $RETV
 }
 
 # STATNM RESRNM COMMAND
@@ -3581,8 +3581,12 @@ else # test "$1" = "DEPLOY"; then
              else
               # loadbalancer
               waitLBs
+              LBERRORS=$?
+	      if test $LBERRORS != 0; then
+		#sendalarm $RC "Loadbalancer not created successfully " "${RRLIST[*]}" $((4*$MAXWAIT))
+		sendalarm $RC "Loadbalancer not created successfully " "${ERRRSC[*]}" $((4*$MAXWAIT))
+	      fi
               if createFIPs; then
-               LBERR=$?
                # No error handling here (but alarms are generated)
                waitVMs
                if test $RC != 0; then
@@ -3656,7 +3660,7 @@ else # test "$1" = "DEPLOY"; then
                 # TODO: Attach additional net interfaces to JHs ... and test IP addr
                 WAITTIME+=($(($MSTOP-$WSTART)))
                 # Test load balancer
-                if test -n "$LOADBALANCER" -a $LBERR = 0; then testLBs; fi
+                if test -n "$LOADBALANCER" -a $LBERRORS = 0; then testLBs; fi
                 TESTTIME=$(($(date +%s)-$MSTOP))
                 echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), TESTS DONE (${TESTTIME}s), DELETE AGAIN $NORM"
                 let SUCCRUNS+=1
@@ -3671,7 +3675,7 @@ else # test "$1" = "DEPLOY"; then
                 fi
                 # Subtract waiting time (5s here)
                 MSTART=$(($MSTART+$(date +%s)-$MSTOP))
-                if test -n "$LOADBALANCER" -a $LBERR = 0; then cleanLBs; fi
+                if test -n "$LOADBALANCER" -a $LBERRORS = 0; then cleanLBs; fi
                fi
                # TODO: Detach and delete disks again
               fi; deleteFIPs
