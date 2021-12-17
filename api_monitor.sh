@@ -3584,7 +3584,7 @@ else # test "$1" = "DEPLOY"; then
               LBERRORS=$?
 	      if test $LBERRORS != 0; then
 		#sendalarm $RC "Loadbalancer not created successfully " "${RRLIST[*]}" $((4*$MAXWAIT))
-		sendalarm $RC "Loadbalancer not created successfully " "${ERRRSC[*]}" $((4*$MAXWAIT))
+		sendalarm $LBERRORS "Loadbalancer not created successfully " "${ERRRSC[*]}" $((4*$MAXWAIT))
 	      fi
               if createFIPs; then
                # No error handling here (but alarms are generated)
