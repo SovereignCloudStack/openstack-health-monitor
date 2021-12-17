@@ -3588,7 +3588,7 @@ else # test "$1" = "DEPLOY"; then
              RC=$?
              if test $RC != 0; then
                # ERR+=$RC Errors will be counted later again
-               sendalarm $RC "Timeout waiting for JHVM ${RRLIST[*]}" "$WAITERRSTR" $((4*$MAXWAIT))
+               #sendalarm $RC "Timeout waiting for JHVM ${RRLIST[*]}" "$WAITERRSTR" $((4*$MAXWAIT))
                # FIXME: Shouldn't we count errors and abort here? Without JumpHosts, the rest is hopeless ...
                let ERR+=$RC
                if test $RC -gt $NOAZS; then let VMERRORS+=$NOAZS; else let VMERRORS+=$RC; fi
@@ -3599,10 +3599,7 @@ else # test "$1" = "DEPLOY"; then
               if createFIPs; then
                # No error handling here (but alarms are generated)
                waitVMs
-               if test $RC != 0; then
-                 # Errors will be counted later again
-                 sendalarm $RC "Timeout waiting for VM ${RRLIST[*]}" "$WAITERRSTR" $((4*$MAXWAIT))
-               fi
+               # Errors will be counted later again
                setmetaVMs
                create2ndSubNets
                create2ndPorts
