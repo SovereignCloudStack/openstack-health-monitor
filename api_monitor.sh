@@ -98,10 +98,15 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.73
+VERSION=1.74
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
+
+# Sanitize locale
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+export LC_NUMERIC=en_US.UTF-8
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
@@ -1270,7 +1275,7 @@ waitlistResources()
       sleep 10
     fi
     local TM
-    misserr=0
+    #misserr=0
     for i in $(seq 0 $LAST ); do
       local rsrc=${RLIST[$i]}
       if test -z "${SLIST[$i]}"; then STATSTR+=$(colstat "${STATI[$i]}" "$COMP1" "$COMP2"); continue; fi
@@ -1315,7 +1320,7 @@ waitlistResources()
     sleep 3
     let ctr+=1
   done
-  if test $ctr -ge $MAXWAIT; then let WERR+=${#SLIST[*]}; let misserr=${#SLIST[*]}; fi
+  if test $ctr -ge $MAXWAIT; then let WERR+=${#SLIST[*]}; let misserr+=${#SLIST[*]}; fi
   if test -n "${SLIST[*]}"; then
     echo " TIMEOUT $(($(date +%s)-$waitstart))"
     echo -e "\n${YELLOW}Wait TIMEOUT/ERROR${NORM} ($(($(date +%s)-$waitstart))s, $ctr iterations), LEFT: ${RED}${RRLIST[*]}:${SLIST[*]}${NORM}" 1>&2
@@ -1394,19 +1399,33 @@ waitdelResources()
 # Do nothing for $? == 0.
 # Otherwise do custom commands (typically XXX show) for each resource in $ERRRSC[*]
 # This is to create additional info in the debug log file
-# $1: Statistics array
-# $2: Command timeout
-# $3-...: Command
+# $1: Error message
+# $2: Statistics array
+# $3: Command timeout
+# $4-...: Command
 # Function return original $?
 handleWaitErr()
 {
-  local RV=$?
+  local RETV=$?
+  #WAITERRSTR=""
   local rsrc
-  if test $RV = 0; then return $RV; fi
-  for rsrc in ${ERRRSC[*]}; do
+  if test $RETV = 0; then return $RETV; fi
+  WAITERRPREFIX="$1"
+  shift
+  translate "$3" "$4"
+  WAITERRSTR="${OSTACKCMD[@]} ${ERRRSC[*]} ${RRLIST[*]}
+"
+  for rsrc in ${ERRRSC[*]} ${RRLIST[*]}; do
     ostackcmd_tm "$@" $rsrc
+    WAITERRSTR="$WAITERRSTR
+$OSTACKRESP"
   done
-  return $RV
+  # Change in 1.74: Just generate an alarm here unless $1 == ""
+  # Before, we left it to the caller
+  if test -n "$WAITERRPREFIX"; then
+    sendalarm $RETV "Error waiting for $WAITERRPREFIX" "$WAITERRSTR"
+  fi
+  return $RETV
 }
 
 # STATNM RESRNM COMMAND
@@ -1693,7 +1712,7 @@ waitJHVols()
 {
   #waitResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" "status" $CINDERTIMEOUT cinder show
   waitlistResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" $VOLSTATCOL $CINDERTIMEOUT cinder list
-  handleWaitErr VOLSTATS $CINDERTIMEOUT cinder show
+  handleWaitErr "JH volumes" VOLSTATS $CINDERTIMEOUT cinder show
 }
 
 deleteJHVols()
@@ -1714,7 +1733,7 @@ waitVols()
   if test -n "$BOOTFROMIMAGE"; then return 0; fi
   #waitResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" "status" $CINDERTIMEOUT cinder show
   waitlistResources VOLSTATS VOLUME VOLCSTATS VOLSTIME "available" "NA" $VOLSTATCOL $CINDERTIMEOUT cinder list
-  handleWaitErr VOLSTATS $CINDERTIMEOUT cinder show
+  handleWaitErr "Volumes" VOLSTATS $CINDERTIMEOUT cinder show
 }
 
 deleteVols()
@@ -2061,7 +2080,7 @@ waitLBs()
   #echo "Wait for LBs ${LBAASS[*]} ..."
   #waitResources NETSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NA" "provisioning_status" $NETTIMEOUT neutron lbaas-loadbalancer-show
   waitlistResources LBSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
-  handleWaitErr LBSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show
+  handleWaitErr "Loadbalancer" LBSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show
 }
 
 testLBs()
@@ -2074,7 +2093,7 @@ testLBs()
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test -z "$LBWAIT"; then
     waitlistResources LBSTATS POOL NONE NONE "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-pool-list
-    handleWaitErr LBSTATS $NETTIMEOUT neutron lbaas-pool-show
+    handleWaitErr "LB pool" LBSTATS $NETTIMEOUT neutron lbaas-pool-show
   fi
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
   createResources 1 LBSTATS LISTENER POOL LBAAS "" id $FIPTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
@@ -2083,7 +2102,7 @@ testLBs()
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test -z "$LBWAIT"; then
     waitResources LBSTATS LISTENER NONE NONE "ACTIVE" "NONONO" "provisioning_status" $NETTIMEOUT neutron lbaas-listener-show
-    handleWaitErr LBSTATS $NETTIMEOUT neutron lbaas-listener-show
+    handleWaitErr "LB listener" LBSTATS $NETTIMEOUT neutron lbaas-listener-show
   fi
   # FIXME: We still get those occasional LB immutable errors -- how can we avoid this?
   # For now push member creation after FIP allocation
@@ -2156,7 +2175,7 @@ waitJHVMs()
 {
   #waitResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NA" "status" $NOVATIMEOUT nova show
   waitlistResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
-  handleWaitErr NOVASTATS $NOVATIMEOUT nova show
+  handleWaitErr "JH VMs" NOVASTATS $NOVATIMEOUT nova show
 }
 
 deleteJHVMs()
@@ -2274,7 +2293,7 @@ waitVMs()
 {
   #waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" $NOVATIMEOUT nova show
   waitlistResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
-  handleWaitErr NOVASTATS $NOVATIMEOUT nova show
+  handleWaitErr "VMs" NOVASTATS $NOVATIMEOUT nova show
 }
 
 # Remove VMs (one by one or by batch if we created in batches)
@@ -3559,34 +3578,28 @@ else # test "$1" = "DEPLOY"; then
          if createVols; then
           if createKeypairs; then
            createPorts
-           waitJHVols
+           waitJHVols # TODO: Error handling
            if createJHVMs; then
             let ROUNDVMS=$NOAZS
-            waitVols
+            waitVols  # TODO: Error handling
             if createVMs; then
              let ROUNDVMS+=$NOVMS
              waitJHVMs
              RC=$?
              if test $RC != 0; then
                # ERR+=$RC Errors will be counted later again
-               sendalarm $RC "Timeout waiting for JHVM " "${RRLIST[*]}" $((4*$MAXWAIT))
+               #sendalarm $RC "Timeout waiting for JHVM ${RRLIST[*]}" "$WAITERRSTR" $((4*$MAXWAIT))
                # FIXME: Shouldn't we count errors and abort here? Without JumpHosts, the rest is hopeless ...
                let ERR+=$RC
                if test $RC -gt $NOAZS; then let VMERRORS+=$NOAZS; else let VMERRORS+=$RC; fi
              else
               # loadbalancer
               waitLBs
-              LBERRORS=$RC
-	      if test $LBERRORS != 0; then
-		sendalarm $RC "Loadbalancer not created successfully " "${RRLIST[*]}" $((4*$MAXWAIT))
-	      fi
+              LBERRORS=$?
               if createFIPs; then
                # No error handling here (but alarms are generated)
                waitVMs
-               if test $RC != 0; then
-                 # Errors will be counted later again
-                 sendalarm $RC "Timeout waiting for VM " "${RRLIST[*]}" $((4*$MAXWAIT))
-               fi
+               # Errors will be counted later again
                setmetaVMs
                create2ndSubNets
                create2ndPorts
