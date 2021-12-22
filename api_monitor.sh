@@ -3670,7 +3670,7 @@ else # test "$1" = "DEPLOY"; then
                 if test -n "$LOADBALANCER" -a $LBERRORS = 0; then 
 		 LBACTIVE=1
 		 testLBs
-	 	else
+                else
 		 LBACTIVE=0
 		fi
                 TESTTIME=$(($(date +%s)-$MSTOP))
@@ -3687,7 +3687,7 @@ else # test "$1" = "DEPLOY"; then
                 fi
                 # Subtract waiting time (5s here)
                 MSTART=$(($MSTART+$(date +%s)-$MSTOP))
-                if test -n "$LOADBALANCER" -a $LBACTIVE = 1; then cleanLBs; fi
+                if test -n "$LOADBALANCER" -a "$LBACTIVE" = "1"; then cleanLBs; fi
                fi
                # TODO: Detach and delete disks again
               fi; deleteFIPs
