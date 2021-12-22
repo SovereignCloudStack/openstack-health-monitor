@@ -3667,7 +3667,12 @@ else # test "$1" = "DEPLOY"; then
                 # TODO: Attach additional net interfaces to JHs ... and test IP addr
                 WAITTIME+=($(($MSTOP-$WSTART)))
                 # Test load balancer
-                if test -n "$LOADBALANCER" -a $LBERRORS = 0; then testLBs; fi
+                if test -n "$LOADBALANCER" -a $LBERRORS = 0; then 
+		 LBACTIVE=1
+		 testLBs
+                else
+		 LBACTIVE=0
+		fi
                 TESTTIME=$(($(date +%s)-$MSTOP))
                 echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), TESTS DONE (${TESTTIME}s), DELETE AGAIN $NORM"
                 let SUCCRUNS+=1
@@ -3682,7 +3687,7 @@ else # test "$1" = "DEPLOY"; then
                 fi
                 # Subtract waiting time (5s here)
                 MSTART=$(($MSTART+$(date +%s)-$MSTOP))
-                if test -n "$LOADBALANCER" -a $LBERRORS = 0; then cleanLBs; fi
+                if test -n "$LOADBALANCER" -a "$LBACTIVE" = "1"; then cleanLBs; fi
                fi
                # TODO: Detach and delete disks again
               fi; deleteFIPs
