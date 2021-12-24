@@ -2066,7 +2066,7 @@ createLBs()
 
 deleteLBs()
 {
-  DELLBAAS=(${LBAASS[*]})
+  DELLBAASS=(${LBAASS[*]})
   if test -n "$LBAASS"; then
     if test -n "$OLD_OCTAVIA"; then
       deleteResources LBSTATS LBAAS "" $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete
@@ -3419,7 +3419,6 @@ declare -a NETS=()
 declare -a SUBNETS=()
 declare -a JHNETS=()
 declare -a JHSUBNETS=()
-declare -a LBAASS=()
 declare -a SGROUPS=()
 declare -a JHPORTS=()
 declare -a PORTS=()
@@ -3435,6 +3434,7 @@ declare -a VMS=()
 declare -a JHVMS=()
 # LB
 declare -a LBAASS=()
+declare -a DELLBAASS=()
 declare -a POOLS=()
 declare -a LISTENERS=()
 declare -a MEMBERS=()
