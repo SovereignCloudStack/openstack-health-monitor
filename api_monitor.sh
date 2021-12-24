@@ -2068,9 +2068,9 @@ deleteLBs()
 {
   if test -n "$LBAASS"; then
     if test -n "$OLD_OCTAVIA"; then
-      deleteResources LBSTATS LBAAS "" $FIPTIMEOUT neutron lbaas-loadbalancer-delete
+      deleteResources LBSTATS LBAAS "" $FIPTIMEOUT neutron lbaas-loadbalancer-delete --wait
     else
-      deleteResources LBSTATS LBAAS "" $FIPTIMEOUT neutron lbaas-loadbalancer-delete --cascade
+      deleteResources LBSTATS LBAAS "" $FIPTIMEOUT neutron lbaas-loadbalancer-delete --cascade --wait
     fi
   fi
 }
