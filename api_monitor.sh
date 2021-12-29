@@ -3712,7 +3712,7 @@ else # test "$1" = "DEPLOY"; then
         #deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
         unset IGNORE_ERRORS
        fi; deleteVIPs
-      fi; deleteLBs
+      fi; waitLBs; deleteLBs
       deleteJHVols
      # There is a chance that some VMs were not created, but ports were allocated, so clean ...
      fi; cleanupPorts; deleteSGroups
