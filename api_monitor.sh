@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.74
+VERSION=1.75
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -2066,11 +2066,12 @@ createLBs()
 
 deleteLBs()
 {
+  DELLBAASS=(${LBAASS[*]})
   if test -n "$LBAASS"; then
     if test -n "$OLD_OCTAVIA"; then
-      deleteResources LBSTATS LBAAS "" $FIPTIMEOUT neutron lbaas-loadbalancer-delete
+      deleteResources LBSTATS LBAAS "" $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete
     else
-      deleteResources LBSTATS LBAAS "" $FIPTIMEOUT neutron lbaas-loadbalancer-delete --cascade
+      deleteResources LBSTATS LBAAS "" $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete --cascade
     fi
   fi
 }
@@ -2081,6 +2082,11 @@ waitLBs()
   #waitResources NETSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NA" "provisioning_status" $NETTIMEOUT neutron lbaas-loadbalancer-show
   waitlistResources LBSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
   handleWaitErr "Loadbalancer" LBSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show
+}
+
+waitdelLBs()
+{
+  waitlistResources LBSTATS DELLBAAS LBDSTATS LBSTIME "XDELX" "$FORCEDEL" 2 $NETTIMEOUT neutron lbaas-loadbalancer-list
 }
 
 testLBs()
@@ -3033,17 +3039,18 @@ cleanup_new()
 {
   collectRes
   deleteVMs
+  cleanLBs
   deleteFIPs
   deleteJHVMs
+  deleteLBs
   deleteVIPs
-  cleanLBs
   waitdelVMs; deleteVols
   VOLUMES=("${VOLUMES2[@]}"); deleteVols
   waitdelJHVMs; deleteJHVols
-  deleteLBs
   deleteKeypairs
   delete2ndPorts; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
   deleteSGroups
+  waitdelLBs
   deleteRIfaces
   deleteSubNets; deleteJHSubNets
   deleteNets; deleteJHNets
@@ -3057,6 +3064,13 @@ cleanup()
   # See cleanup_new (will switch after some extra testing)
   VMS=( $(findres ${RPRE}VM_VM nova list) )
   deleteVMs
+  LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
+    if test -n "$LBAASS"; then
+    POOLS=( $(findres ${RPRE}Pool neutron lbaas-pool-list) )
+    LISTENERS=( $(findres ${RPRE}Listener neutron lbaas-listener-list) )
+    #MEMBERS=( $(findres ${RPRE}Member neutron lbaas-member-list ${POOLS[0]}) )
+  fi
+  cleanLBs
   ROUTERS=( $(findres "" neutron router-list) )
   SNATROUTE=1
   #FIPS=( $(findres "" neutron floatingip-list) )
@@ -3071,13 +3085,7 @@ cleanup()
   deleteFIPs
   JHVMS=( $(findres ${RPRE}VM_JH nova list) )
   deleteJHVMs
-  LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
-    if test -n "$LBAASS"; then
-    POOLS=( $(findres ${RPRE}Pool neutron lbaas-pool-list) )
-    LISTENERS=( $(findres ${RPRE}Listener neutron lbaas-listener-list) )
-    #MEMBERS=( $(findres ${RPRE}Member neutron lbaas-member-list ${POOLS[0]}) )
-  fi
-  cleanLBs
+  deleteLBs
   VIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
   deleteVIPs
   VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
@@ -3087,7 +3095,6 @@ cleanup()
   deleteVols
   JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) )
   waitdelJHVMs; deleteJHVols
-  deleteLBs
   translate nova keypair-list
   KEYPAIRS=( $(${OSTACKCMD[@]} | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   deleteKeypairs
@@ -3098,6 +3105,7 @@ cleanup()
   delete2ndPorts; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
   SGROUPS=( $(findres "" neutron security-group-list) )
   deleteSGroups
+  waitdelLBs
   SUBNETS=( $(findres "" neutron subnet-list) )
   JHSUBNETS=()
   deleteRIfaces
@@ -3411,7 +3419,6 @@ declare -a NETS=()
 declare -a SUBNETS=()
 declare -a JHNETS=()
 declare -a JHSUBNETS=()
-declare -a LBAASS=()
 declare -a SGROUPS=()
 declare -a JHPORTS=()
 declare -a PORTS=()
@@ -3427,6 +3434,7 @@ declare -a VMS=()
 declare -a JHVMS=()
 # LB
 declare -a LBAASS=()
+declare -a DELLBAASS=()
 declare -a POOLS=()
 declare -a LISTENERS=()
 declare -a MEMBERS=()
@@ -3704,11 +3712,11 @@ else # test "$1" = "DEPLOY"; then
         #deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
         unset IGNORE_ERRORS
        fi; deleteVIPs
-      fi; deleteLBs
+      fi; waitLBs; deleteLBs
       deleteJHVols
      # There is a chance that some VMs were not created, but ports were allocated, so clean ...
      fi; cleanupPorts; deleteSGroups
-    fi; deleteRIfaces
+    fi; waitdelLBs; deleteRIfaces
    fi; deleteSubNets
   fi; deleteNets
  fi
@@ -3733,7 +3741,7 @@ else # test "$1" = "DEPLOY"; then
  if test -n "$RESHUFFLE"; then let MAXCYC+=$((2*$NFACT*$NOVMS)); fi
  if test -n "$FULLCONN"; then let MAXCYC+=$(($NOVMS*$NOVMS/10)); fi
  if test -n "$IPERF"; then let MAXCYC+=$((6*$NONETS)); fi
- if test -n "$LOADBALANCER"; then let MAXCYC+=$((24+4*$NOVMS)); fi
+ if test -n "$LOADBALANCER"; then let MAXCYC+=$((32+4*$NOVMS)); fi
  # FIXME: We could check THISRUNSUCCESS instead?
  if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $MAXCYC; then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME (max $MAXCYC)" $MAXCYC
