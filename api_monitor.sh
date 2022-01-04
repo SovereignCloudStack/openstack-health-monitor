@@ -670,6 +670,9 @@ translate()
       #OSTACKCMD=($OPST $DEFCMD $CMD $ARGS)
       # No token_endpoint auth for volume creation (need to talk to image service as well?)
       OSTACKCMD=(openstack $DEFCMD $CMD $ARGS)
+    # Try to force volume deletion (along with snapshots)
+    elif test "$DEFCMD" == "volume" -a "$CMD" == "delete"; then
+      OSTACKCMD=($OPST $DEFCMD $CMD --force --purge "$@")
     # Optimization: Avoid image and flavor name lookups in server list when polling
     elif test "$DEFCMD" == "server" -a "$CMD" == "list"; then
       ARGS=$(echo "$@" | sed -e 's@\-\-sort display_name:asc@--sort-column Name@')
@@ -1259,7 +1262,7 @@ waitlistResources()
   declare -i WERR=0
   declare -i misserr=0
   local waitstart=$(date +%s)
-  if test -n "$CSTAT"; then MAXWAIT=240; else MAXWAIT=30; fi
+  if test -n "$CSTAT" -a "$CLEANUPMODE" != "1"; then MAXWAIT=240; else MAXWAIT=30; fi
   if test -z "${RLIST[*]}"; then return 0; fi
   while test -n "${SLIST[*]}" -a $ctr -le $MAXWAIT; do
     local STATSTR=""
@@ -3469,6 +3472,7 @@ if test -n "$OPENSTACKTOKEN"; then
 fi
 # Debugging: Start with volume step
 if test "$1" = "CLEANUP"; then
+  CLEANUPMODE=1
   if test -n "$2"; then RPRE=$2; if test ${RPRE%_} == ${RPRE}; then RPRE=${RPRE}_; fi; fi
   if test "$TAG" == "1"; then TAGARG="--tag ${RPRE%_}"; fi
   echo -e "$BOLD *** Start cleanup $RPRE $TAGARG *** $NORM"
