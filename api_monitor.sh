@@ -670,9 +670,9 @@ translate()
       #OSTACKCMD=($OPST $DEFCMD $CMD $ARGS)
       # No token_endpoint auth for volume creation (need to talk to image service as well?)
       OSTACKCMD=(openstack $DEFCMD $CMD $ARGS)
-    # Try to force volume deletion (along with snapshots)
+    # Try to force volume deletion
     elif test "$DEFCMD" == "volume" -a "$CMD" == "delete"; then
-      OSTACKCMD=($OPST $DEFCMD $CMD --force --purge "$@")
+      OSTACKCMD=($OPST $DEFCMD $CMD --force "$@")
     # Optimization: Avoid image and flavor name lookups in server list when polling
     elif test "$DEFCMD" == "server" -a "$CMD" == "list"; then
       ARGS=$(echo "$@" | sed -e 's@\-\-sort display_name:asc@--sort-column Name@')
