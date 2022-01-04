@@ -3166,6 +3166,10 @@ waitnetgone()
   deletePorts
   unset IGNORE_ERRORS
   echo -n "Wait for subnets/nets to disappear: "
+  SUBNETS=( $(findres "" neutron subnet-list) )
+  NETS=( $(findres "" neutron net-list) )
+  deleteSubNets
+  deleteNets
   while test $to -lt 40; do
     SUBNETS=( $(findres "" neutron subnet-list) )
     NETS=( $(findres "" neutron net-list) )
