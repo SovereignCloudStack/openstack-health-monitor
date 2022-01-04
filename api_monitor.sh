@@ -3595,10 +3595,8 @@ else # test "$1" = "DEPLOY"; then
              waitJHVMs
              RC=$?
              if test $RC != 0; then
-               # ERR+=$RC Errors will be counted later again
                #sendalarm $RC "Timeout waiting for JHVM ${RRLIST[*]}" "$WAITERRSTR" $((4*$MAXWAIT))
                # FIXME: Shouldn't we count errors and abort here? Without JumpHosts, the rest is hopeless ...
-               let ERR+=$RC
                if test $RC -gt $NOAZS; then let VMERRORS+=$NOAZS; else let VMERRORS+=$RC; fi
              else
               # loadbalancer
