@@ -1471,8 +1471,10 @@ deleteRouters()
 
 createNets()
 {
-  createResources 1 NETSTATS JHNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_JH\$no"
-  createResources $NONETS NETSTATS NET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_VM_\$no"
+  ERC=0
+  createResources 1 NETSTATS JHNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_JH\$no" || ERC=$?
+  createResources $NONETS NETSTATS NET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_VM_\$no" || ERC=$?
+  return $ERC
 }
 
 deleteNets()
@@ -1489,24 +1491,28 @@ JHSUBNETIP=10.250.255.0/24
 
 createSubNets()
 {
+  ERC=0
   if test -n "$NAMESERVER"; then
-    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 9.9.9.9 --dns-nameserver $NAMESERVER --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
-    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 9.9.9.9 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22"
+    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 9.9.9.9 --dns-nameserver $NAMESERVER --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP" || ERC=$?
+    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 9.9.9.9 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22" || ERC=$?
   else
-    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
-    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_VM_\$no" "\$VAL" "10.250.\$((no*4)).0/22"
+    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP" || ERC=$?
+    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_VM_\$no" "\$VAL" "10.250.\$((no*4)).0/22" || ERC=$?
   fi
+  return $ERC
 }
 
 create2ndSubNets()
 {
+  ERC=0
   if test -n "$SECONDNET"; then
     SECONDNETS=(); SECONDSUBNETS=()
-    createResources $NONETS NETSTATS SECONDNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET2_VM_\$no"
-    #createResources $NONETS NETSTATS SECONDSUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --disable-dhcp --name "${RPRE}SUBNET2_\$no" "\$VAL" "10.251.\$((no+4)).0/22"
-    createResources $NONETS NETSTATS SECONDSUBNET SECONDNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET2_VM_\$no" "\$VAL" "10.251.\$((no*4)).0/22"
-    createResources $NONETS NETSTATS NONE SECONDSUBNET NONE "" id $FIPTIMEOUT neutron router-interface-add ${ROUTERS[0]} "\$VAL"
+    createResources $NONETS NETSTATS SECONDNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET2_VM_\$no" || ERC=$?
+    #createResources $NONETS NETSTATS SECONDSUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --disable-dhcp --name "${RPRE}SUBNET2_\$no" "\$VAL" "10.251.\$((no+4)).0/22" || ERC=$?
+    createResources $NONETS NETSTATS SECONDSUBNET SECONDNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET2_VM_\$no" "\$VAL" "10.251.\$((no*4)).0/22" || ERC=$?
+    createResources $NONETS NETSTATS NONE SECONDSUBNET NONE "" id $FIPTIMEOUT neutron router-interface-add ${ROUTERS[0]} "\$VAL" || ERC=$?
   fi
+  return $ERC
 }
 
 deleteSubNets()
