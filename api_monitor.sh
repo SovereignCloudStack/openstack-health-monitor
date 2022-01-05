@@ -670,6 +670,9 @@ translate()
       #OSTACKCMD=($OPST $DEFCMD $CMD $ARGS)
       # No token_endpoint auth for volume creation (need to talk to image service as well?)
       OSTACKCMD=(openstack $DEFCMD $CMD $ARGS)
+    # Try to force volume deletion (restricted to admin on most platforms)
+    #elif test "$DEFCMD" == "volume" -a "$CMD" == "delete"; then
+    #  OSTACKCMD=($OPST $DEFCMD $CMD --force "$@")
     # Optimization: Avoid image and flavor name lookups in server list when polling
     elif test "$DEFCMD" == "server" -a "$CMD" == "list"; then
       ARGS=$(echo "$@" | sed -e 's@\-\-sort display_name:asc@--sort-column Name@')
@@ -1259,7 +1262,7 @@ waitlistResources()
   declare -i WERR=0
   declare -i misserr=0
   local waitstart=$(date +%s)
-  if test -n "$CSTAT"; then MAXWAIT=240; else MAXWAIT=30; fi
+  if test -n "$CSTAT" -a "$CLEANUPMODE" != "1"; then MAXWAIT=240; else MAXWAIT=30; fi
   if test -z "${RLIST[*]}"; then return 0; fi
   while test -n "${SLIST[*]}" -a $ctr -le $MAXWAIT; do
     local STATSTR=""
@@ -1471,8 +1474,10 @@ deleteRouters()
 
 createNets()
 {
-  createResources 1 NETSTATS JHNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_JH\$no"
-  createResources $NONETS NETSTATS NET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_VM_\$no"
+  ERC=0
+  createResources 1 NETSTATS JHNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_JH\$no" || ERC=$?
+  createResources $NONETS NETSTATS NET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_VM_\$no" || ERC=$?
+  return $ERC
 }
 
 deleteNets()
@@ -1489,24 +1494,28 @@ JHSUBNETIP=10.250.255.0/24
 
 createSubNets()
 {
+  ERC=0
   if test -n "$NAMESERVER"; then
-    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 9.9.9.9 --dns-nameserver $NAMESERVER --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
-    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 9.9.9.9 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22"
+    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 9.9.9.9 --dns-nameserver $NAMESERVER --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP" || ERC=$?
+    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 9.9.9.9 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22" || ERC=$?
   else
-    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP"
-    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_VM_\$no" "\$VAL" "10.250.\$((no*4)).0/22"
+    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP" || ERC=$?
+    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_VM_\$no" "\$VAL" "10.250.\$((no*4)).0/22" || ERC=$?
   fi
+  return $ERC
 }
 
 create2ndSubNets()
 {
+  ERC=0
   if test -n "$SECONDNET"; then
     SECONDNETS=(); SECONDSUBNETS=()
-    createResources $NONETS NETSTATS SECONDNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET2_VM_\$no"
-    #createResources $NONETS NETSTATS SECONDSUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --disable-dhcp --name "${RPRE}SUBNET2_\$no" "\$VAL" "10.251.\$((no+4)).0/22"
-    createResources $NONETS NETSTATS SECONDSUBNET SECONDNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET2_VM_\$no" "\$VAL" "10.251.\$((no*4)).0/22"
-    createResources $NONETS NETSTATS NONE SECONDSUBNET NONE "" id $FIPTIMEOUT neutron router-interface-add ${ROUTERS[0]} "\$VAL"
+    createResources $NONETS NETSTATS SECONDNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET2_VM_\$no" || ERC=$?
+    #createResources $NONETS NETSTATS SECONDSUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --disable-dhcp --name "${RPRE}SUBNET2_\$no" "\$VAL" "10.251.\$((no+4)).0/22" || ERC=$?
+    createResources $NONETS NETSTATS SECONDSUBNET SECONDNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET2_VM_\$no" "\$VAL" "10.251.\$((no*4)).0/22" || ERC=$?
+    createResources $NONETS NETSTATS NONE SECONDSUBNET NONE "" id $FIPTIMEOUT neutron router-interface-add ${ROUTERS[0]} "\$VAL" || ERC=$?
   fi
+  return $ERC
 }
 
 deleteSubNets()
@@ -3160,6 +3169,10 @@ waitnetgone()
   deletePorts
   unset IGNORE_ERRORS
   echo -n "Wait for subnets/nets to disappear: "
+  SUBNETS=( $(findres "" neutron subnet-list) )
+  NETS=( $(findres "" neutron net-list) )
+  deleteSubNets
+  deleteNets
   while test $to -lt 40; do
     SUBNETS=( $(findres "" neutron subnet-list) )
     NETS=( $(findres "" neutron net-list) )
@@ -3459,6 +3472,7 @@ if test -n "$OPENSTACKTOKEN"; then
 fi
 # Debugging: Start with volume step
 if test "$1" = "CLEANUP"; then
+  CLEANUPMODE=1
   if test -n "$2"; then RPRE=$2; if test ${RPRE%_} == ${RPRE}; then RPRE=${RPRE}_; fi; fi
   if test "$TAG" == "1"; then TAGARG="--tag ${RPRE%_}"; fi
   echo -e "$BOLD *** Start cleanup $RPRE $TAGARG *** $NORM"
@@ -3595,10 +3609,8 @@ else # test "$1" = "DEPLOY"; then
              waitJHVMs
              RC=$?
              if test $RC != 0; then
-               # ERR+=$RC Errors will be counted later again
                #sendalarm $RC "Timeout waiting for JHVM ${RRLIST[*]}" "$WAITERRSTR" $((4*$MAXWAIT))
                # FIXME: Shouldn't we count errors and abort here? Without JumpHosts, the rest is hopeless ...
-               let ERR+=$RC
                if test $RC -gt $NOAZS; then let VMERRORS+=$NOAZS; else let VMERRORS+=$RC; fi
              else
               # loadbalancer
