@@ -3167,6 +3167,14 @@ waitnetgone()
   PORTS=( $(findres "" neutron port-list) )
   IGNORE_ERRORS=1
   deletePorts
+  # FIXME: We occasionally leaks ports from octavia
+  if test -n "$LOADBALANCER"; then
+    SUBNETS=( $(findres "" neutron subnet-list) )
+    for sub in "$SUBNETS"; do
+      PORTS=( $(findres "octavia-lb-vrrp" neutron port-list --fixed-ip subnet=$sub) )
+      deletePorts
+    done
+  fi
   unset IGNORE_ERRORS
   echo -n "Wait for subnets/nets to disappear: "
   SUBNETS=( $(findres "" neutron subnet-list) )
