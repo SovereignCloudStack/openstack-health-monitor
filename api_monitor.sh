@@ -3058,10 +3058,10 @@ cleanup_new()
   waitdelJHVMs; deleteJHVols
   deleteKeypairs
   delete2ndPorts; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
+  NOFITLERTAG=1
   deleteSGroups
   waitdelLBs
   deleteRIfaces
-  NOFITLERTAG=1
   deleteSubNets; deleteJHSubNets
   deleteNets; deleteJHNets
   unset NOFILTERTAG
@@ -3114,10 +3114,10 @@ cleanup()
   if test -n "$SECONDPORTS"; then SECONDNET=1; fi
   JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
   delete2ndPorts; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
+  NOFILTERTAG=1
   SGROUPS=( $(findres "" neutron security-group-list) )
   deleteSGroups
   waitdelLBs
-  NOFILTERTAG=1
   SUBNETS=( $(findres "" neutron subnet-list) )
   JHSUBNETS=()
   deleteRIfaces
