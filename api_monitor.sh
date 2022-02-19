@@ -658,7 +658,7 @@ translate()
   CMD=${1##*-}
   # External nets are not managed by us and thus not tagged; ports created via nova are neither
   # (Also routers and loadbalancer may not be tagged reliably?)
-  if test $ORIGCMD == neutron && test $CMD == create -o $CMD == list && test "$1" != "net-external-list" -a "$1" != "port-list" -a "$1" != "router-list" -a "$1" != "lbaas-loadbalancer-list"; then
+  if test $ORIGCMD == neutron && test $CMD == create -o $CMD == list && test -z "$NOFILTERTAG" && test "$1" != "net-external-list" -a "$1" != "port-list" -a "$1" != "router-list" -a "$1" != "lbaas-loadbalancer-list"; then
     MYTAG="$TAGARG"
   fi
   if test "$CMD" == "$1"; then
@@ -3161,6 +3161,7 @@ waitnetgone()
  VMs $REMVMS FIPs $REMFIPS JHVMs $REMJHVMS Keypairs $REMKPS Volumes $REMVOLS JHVols $REMJHVOLS" 0
   fi
   # Cleanup: These might be left over ...
+  NOFILTERTAG=1
   local to
   declare -i to=0
   # There should not be anything left ...
@@ -3184,11 +3185,12 @@ waitnetgone()
   while test $to -lt 40; do
     SUBNETS=( $(findres "" neutron subnet-list) )
     NETS=( $(findres "" neutron net-list) )
-    if test -z "${SUBNETS[*]}" -a -z "${NETS[*]}"; then echo "gone"; return; fi
+    if test -z "${SUBNETS[*]}" -a -z "${NETS[*]}"; then echo "gone"; unset NOFILTERTAG; return; fi
     sleep 2
     let to+=1
     echo -n "."
   done
+  unset NOFILTERTAG
   SGROUPS=( $(findres "" neutron security-group-list) )
   ROUTERS=( $(findres "" neutron router-list) )
   IGNORE_ERRORS=1
