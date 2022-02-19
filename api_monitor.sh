@@ -3061,8 +3061,10 @@ cleanup_new()
   deleteSGroups
   waitdelLBs
   deleteRIfaces
+  NOFITLERTAG=1
   deleteSubNets; deleteJHSubNets
   deleteNets; deleteJHNets
+  unset NOFILTERTAG
   deleteRouters
 }
 
@@ -3115,6 +3117,7 @@ cleanup()
   SGROUPS=( $(findres "" neutron security-group-list) )
   deleteSGroups
   waitdelLBs
+  NOFILTERTAG=1
   SUBNETS=( $(findres "" neutron subnet-list) )
   JHSUBNETS=()
   deleteRIfaces
@@ -3122,6 +3125,7 @@ cleanup()
   NETS=( $(findres "" neutron net-list) )
   JHNETS=()
   deleteNets
+  unset NOFILTERTAG
   deleteRouters
 }
 
@@ -3190,7 +3194,6 @@ waitnetgone()
     let to+=1
     echo -n "."
   done
-  unset NOFILTERTAG
   SGROUPS=( $(findres "" neutron security-group-list) )
   ROUTERS=( $(findres "" neutron router-list) )
   IGNORE_ERRORS=1
@@ -3198,6 +3201,7 @@ waitnetgone()
   if test -n "$ROUTERS"; then deleteRIfaces; fi
   deleteSubNets
   deleteNets
+  unset NOFILTERTAG
   if test -n "$ROUTERS"; then deleteRouters; fi
   unset IGNORE_ERRORS
 }
