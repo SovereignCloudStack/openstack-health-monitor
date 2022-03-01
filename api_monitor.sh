@@ -2078,9 +2078,9 @@ deleteLBs()
   DELLBAASS=(${LBAASS[*]})
   if test -n "$LBAASS"; then
     if test -n "$OLD_OCTAVIA"; then
-      deleteResources LBSTATS LBAAS LBSTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete
+      deleteResources LBSTATS LBAAS "" $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete
     else
-      deleteResources LBSTATS LBAAS LBSTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete --cascade
+      deleteResources LBSTATS LBAAS "" $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete --cascade
     fi
   fi
 }
@@ -2090,7 +2090,7 @@ waitLBs()
   #echo "Wait for LBs ${LBAASS[*]} ..."
   #waitResources NETSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NA" "provisioning_status" $NETTIMEOUT neutron lbaas-loadbalancer-show
   if test "$1" = "--nostat"; then
-    waitlistResources LBSTATS LBAAS NONE LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
+    waitlistResources LBSTATS LBAAS "" LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
   else
     waitlistResources LBSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
   fi
