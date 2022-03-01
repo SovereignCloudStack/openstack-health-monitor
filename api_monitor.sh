@@ -3380,6 +3380,7 @@ declare -a VOLCSTATS
 declare -a VOLDSTATS
 declare -a VMCSTATS
 declare -a LBCSTATS
+declare -a LBDSTATS
 declare -a VMCDTATS
 
 declare -a TOTTIME
@@ -3870,6 +3871,7 @@ $(allstats -m)" > $DATADIR/Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv
   VOLDSTATS=()
   VMCSTATS=()
   LBCSTATS=()
+  LBDSTATS=()
   VMDSTATS=()
   TOTTIME=()
   WAITTIME=()
