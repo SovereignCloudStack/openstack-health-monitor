@@ -2078,9 +2078,9 @@ deleteLBs()
   DELLBAASS=(${LBAASS[*]})
   if test -n "$LBAASS"; then
     if test -n "$OLD_OCTAVIA"; then
-      deleteResources LBSTATS LBAAS "" $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete
+      deleteResources LBSTATS LBAAS LBSTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete
     else
-      deleteResources LBSTATS LBAAS "" $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete --cascade
+      deleteResources LBSTATS LBAAS LBSTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete --cascade
     fi
   fi
 }
@@ -2089,7 +2089,11 @@ waitLBs()
 {
   #echo "Wait for LBs ${LBAASS[*]} ..."
   #waitResources NETSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NA" "provisioning_status" $NETTIMEOUT neutron lbaas-loadbalancer-show
-  waitlistResources LBSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
+  if test "$1" = "--nostat"; then
+    waitlistResources LBSTATS LBAAS NONE LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
+  else
+    waitlistResources LBSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
+  fi
   handleWaitErr "Loadbalancer" LBSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show
 }
 
@@ -3738,7 +3742,7 @@ else # test "$1" = "DEPLOY"; then
         #deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
         unset IGNORE_ERRORS
        fi; deleteVIPs
-      fi; waitLBs; deleteLBs
+      fi; waitLBs --nostat; deleteLBs
       deleteJHVols
      # There is a chance that some VMs were not created, but ports were allocated, so clean ...
      fi; cleanupPorts; deleteSGroups
