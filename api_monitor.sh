@@ -1795,7 +1795,7 @@ createFIPs()
   #echo "Wait for JHPorts: "
   waitResources NETSTATS JHPORT JPORTSTAT JVMSTIME "NONNULL" "NONONO" "device_owner" $NETTIMEOUT neutron port-show
   # Now FIP creation is safe
-  createResources $NOAZS FIPSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL $EXTNET
+  createResources $NOAZS FIPSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL --description ${RPRE}JH\$no $EXTNET
   if test $? != 0 -o -n "$INJECTFIPERR"; then return 1; fi
   # Use API to tell VPC that the VIP is the next hop (route table)
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
@@ -2126,7 +2126,7 @@ testLBs()
   let ERR+=$?
   LBPORT=$OSTACKRESP
   echo -n "Attach FIP to LB port $LBPORT: "
-  ostackcmd_tm FIPSTATS $FIPTIMEOUT neutron floating-ip-create --port $LBPORT $EXTNET
+  ostackcmd_tm FIPSTATS $FIPTIMEOUT neutron floatingip-create --port $LBPORT --description ${RPRE}LB $EXTNET
   let ERR+=$?
   LBIP=$(echo "$OSTACKRESP" | grep ' floating_ip_address ' | sed 's/^|[^|]*| *\([a-f0-9:\.]*\).*$/\1/')
   LBFIPS=( $(echo "$OSTACKRESP" | grep ' id ' | sed 's/^|[^|]*| *\([a-f0-9\-]*\).*$/\1/') )
@@ -2178,7 +2178,7 @@ cleanLBs()
   deleteResources LBSTATS LISTENER "" $FIPTIMEOUT neutron lbaas-listener-delete
   # Delete FIP first, so no sleep waiting for listener been gone
   echo -n " "
-  deleteResources FIPSTATS LBFIP "" $FIPTIMEOUT neutron floating-ip-delete
+  deleteResources FIPSTATS LBFIP "" $FIPTIMEOUT neutron floatingip-delete
   echo -n " "
   deleteResources LBSTATS POOL "" $FIPTIMEOUT neutron lbaas-pool-delete
   if test -n "$REMLISTENERS"; then
