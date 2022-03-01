@@ -2089,7 +2089,11 @@ waitLBs()
 {
   #echo "Wait for LBs ${LBAASS[*]} ..."
   #waitResources NETSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NA" "provisioning_status" $NETTIMEOUT neutron lbaas-loadbalancer-show
-  waitlistResources LBSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
+  if test "$1" = "--nostat"; then
+    waitlistResources LBSTATS LBAAS "" LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
+  else
+    waitlistResources LBSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
+  fi
   handleWaitErr "Loadbalancer" LBSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show
 }
 
@@ -3376,6 +3380,7 @@ declare -a VOLCSTATS
 declare -a VOLDSTATS
 declare -a VMCSTATS
 declare -a LBCSTATS
+declare -a LBDSTATS
 declare -a VMCDTATS
 
 declare -a TOTTIME
@@ -3738,7 +3743,7 @@ else # test "$1" = "DEPLOY"; then
         #deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
         unset IGNORE_ERRORS
        fi; deleteVIPs
-      fi; waitLBs; deleteLBs
+      fi; waitLBs --nostat; deleteLBs
       deleteJHVols
      # There is a chance that some VMs were not created, but ports were allocated, so clean ...
      fi; cleanupPorts; deleteSGroups
@@ -3866,6 +3871,7 @@ $(allstats -m)" > $DATADIR/Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv
   VOLDSTATS=()
   VMCSTATS=()
   LBCSTATS=()
+  LBDSTATS=()
   VMDSTATS=()
   TOTTIME=()
   WAITTIME=()
