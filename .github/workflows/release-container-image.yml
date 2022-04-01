@@ -1,0 +1,35 @@
+---
+name: Release container image
+
+"on":
+  push:
+    tags:
+      - '*'
+
+jobs:
+  release-container-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get the version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF#refs/tags/}
+
+      - name: Build container image
+        run: scripts/build.sh
+        env:
+          DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
+          REPOSITORY: sovereigncloudstack/openstack-health-monitor
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+
+      - name: Push container image
+        run: |
+          scripts/push.sh
+        env:
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          REPOSITORY: sovereigncloudstack/openstack-health-monitor
+          VERSION: ${{ steps.get_version.outputs.VERSION }}

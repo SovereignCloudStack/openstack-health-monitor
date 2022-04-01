@@ -16,5 +16,14 @@ if [[ -n $DOCKER_REGISTRY ]]; then
     REPOSITORY="$DOCKER_REGISTRY/$REPOSITORY"
 fi
 
-docker push "$REPOSITORY:$VERSION"
+if [[ $VERSION == "latest" ]]; then
+    docker push "$REPOSITORY:$VERSION"
+else
+    if skopeo inspect --creds "${DOCKER_USERNAME}:${DOCKER_PASSWORD}" "docker://${REPOSITORY}:${VERSION}" > /dev/null; then
+        echo "The image ${REPOSITORY}:${VERSION} already exists."
+    else
+        docker push "$REPOSITORY:$VERSION"
+    fi
+fi
+
 docker rmi "$REPOSITORY:$VERSION"
