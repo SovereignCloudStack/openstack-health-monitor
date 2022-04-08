@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.75
+VERSION=1.76
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -2086,6 +2086,28 @@ deleteLBs()
   fi
 }
 
+# Remove VIP ports from LBs that can't be deleted, so we can clean up networks at least
+delPortsLBs()
+{
+  #echo "delPortsLBs LBAASS ${LBAASS[*]} REMLBAASS ${REMLBAASS[*]}"
+  if test -z "$REMLBAASS"; then return 0; fi
+  local ERR=0
+  echo -n "Deleting ports of failed LBs "
+  for LBAAS in ${REMLBAASS[*]}; do
+    ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show $LBAAS -f value -c vip_port_id
+    let ERR+=$?
+    LBPORT=$OSTACKRESP
+    #ostackcmd_tm LBSTATS $NETTIMEOUT neutron port-show $LBPORT
+    openstack port show $LBPORT >/dev/null 2>&1
+    if test $? != 0; then echo -n "$LBAAS:ALREADY_DELETED "; continue; fi
+    echo -n "$LBAAS:$LBPORT "
+    ostackcmd_tm LBSTATS $NETTIMEOUT neutron port-delete $LBPORT
+    let ERR+=$?
+  done
+  echo
+  return $ERR
+}
+
 waitLBs()
 {
   #echo "Wait for LBs ${LBAASS[*]} ..."
@@ -3057,6 +3079,7 @@ cleanup_new()
   deleteFIPs
   deleteJHVMs
   deleteLBs
+  delPortsLBs
   deleteVIPs
   waitdelVMs; deleteVols
   VOLUMES=("${VOLUMES2[@]}"); deleteVols
@@ -3102,6 +3125,7 @@ cleanup()
   JHVMS=( $(findres ${RPRE}VM_JH nova list) )
   deleteJHVMs
   deleteLBs
+  delPortsLBs
   VIPS=( $(findres ${RPRE}VirtualIP neutron port-list) )
   deleteVIPs
   VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
@@ -3745,6 +3769,7 @@ else # test "$1" = "DEPLOY"; then
         unset IGNORE_ERRORS
        fi; deleteVIPs
       fi; waitLBs --nostat; deleteLBs
+      delPortsLBs
       deleteJHVols
      # There is a chance that some VMs were not created, but ports were allocated, so clean ...
      fi; cleanupPorts; deleteSGroups
