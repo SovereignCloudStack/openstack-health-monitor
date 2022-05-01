@@ -1290,7 +1290,7 @@ waitlistResources()
       STATI[$i]="$STAT"
       STATSTR+=$(colstat "$STAT" "$COMP1" "$COMP2")
       STE=$?
-      echo -en "Wait $RNM $rsrc: $STATSTR\r"
+      #echo -en "Wait $RNM $rsrc: $STATSTR\r"
       # Found or ERROR
       if test $STE != 0; then
         # ERROR
