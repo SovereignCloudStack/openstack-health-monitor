@@ -1255,6 +1255,7 @@ waitlistResources()
   local LAST=$(( ${#RLIST[@]} - 1 ))
   local PARSE="^|"
   local WAITVAL
+  #echo "waitlistResources \"${RLIST[*]}\" \"${SLIST[*]}\"" 1>&2
   if test "$COMP1" == "XDELX"; then WAITVAL="del"; else WAITVAL="$COMP1"; fi
   for no in $(seq 1 $COL); do PARSE="$PARSE[^|]*|"; done
   PARSE="$PARSE *\([^|]*\)|.*\$"
@@ -1306,7 +1307,7 @@ waitlistResources()
         TM=$(math "%i" "$TM-${SLIST[$i]}")
         unset RRLIST[$i]
         unset SLIST[$i]
-	echo -e "State $STAT reached for $rsrc in $TM secs" 1>&2
+        #echo -e "State $STAT reached for ($i) $rsrc in $TM secs, remain \"${SLIST[*]}\"" 1>&2
         if test -n "$CSTAT"; then
           eval ${CSTAT}+="($TM)"
           if test -n "$GRAFANA"; then
@@ -2080,9 +2081,9 @@ deleteLBs()
   DELLBAASS=(${LBAASS[*]})
   if test -n "$LBAASS"; then
     if test -n "$OLD_OCTAVIA"; then
-      deleteResources LBSTATS LBAAS LBSTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete
+      deleteResources LBSTATS LBAAS LBDTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete
     else
-      deleteResources LBSTATS LBAAS LBSTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete --cascade
+      deleteResources LBSTATS LBAAS LBDTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete --cascade
     fi
   fi
 }
@@ -2114,7 +2115,7 @@ waitLBs()
   #echo "Wait for LBs ${LBAASS[*]} ..."
   #waitResources NETSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NA" "provisioning_status" $NETTIMEOUT neutron lbaas-loadbalancer-show
   if test "$1" = "--nostat"; then
-    waitlistResources LBSTATS LBAAS "" LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
+    waitlistResources LBSTATS LBAAS NONE NONE "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
   else
     waitlistResources LBSTATS LBAAS LBCSTATS LBSTIME "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-loadbalancer-list
   fi
@@ -2125,7 +2126,7 @@ waitdelLBs()
 {
   if test -n "${DELLBAASS[*]}"; then
     echo "Delete LBAAS: ${DELLBAASS[*]}"
-    waitlistResources LBSTATS DELLBAAS LBDSTATS LBSTIME "XDELX" "$FORCEDEL" 2 $NETTIMEOUT neutron lbaas-loadbalancer-list
+    waitlistResources LBSTATS DELLBAAS LBDSTATS LBDTIME "XDELX" "$FORCEDEL" 2 $NETTIMEOUT neutron lbaas-loadbalancer-list
   fi
 }
 
@@ -3476,6 +3477,7 @@ declare -a JVOLSTIME=()
 declare -a VMSTIME=()
 declare -a JVMSTIME=()
 declare -a LBSTIME=()
+declare -a LBDTIME=()
 
 # List of resources - neutron
 declare -a NETS=()
