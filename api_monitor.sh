@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.76
+VERSION=1.77
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -1289,7 +1289,7 @@ waitlistResources()
       STATI[$i]="$STAT"
       STATSTR+=$(colstat "$STAT" "$COMP1" "$COMP2")
       STE=$?
-      #echo -en "Wait $RNM: $STATSTR\r"
+      echo -en "Wait $RNM $rsrc: $STATSTR\r"
       # Found or ERROR
       if test $STE != 0; then
         # ERROR
@@ -1306,6 +1306,7 @@ waitlistResources()
         TM=$(math "%i" "$TM-${SLIST[$i]}")
         unset RRLIST[$i]
         unset SLIST[$i]
+	echo -e "State $STAT reached for $rsrc in $TM secs" 1>&2
         if test -n "$CSTAT"; then
           eval ${CSTAT}+="($TM)"
           if test -n "$GRAFANA"; then
@@ -2079,9 +2080,9 @@ deleteLBs()
   DELLBAASS=(${LBAASS[*]})
   if test -n "$LBAASS"; then
     if test -n "$OLD_OCTAVIA"; then
-      deleteResources LBSTATS LBAAS "" $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete
+      deleteResources LBSTATS LBAAS LBSTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete
     else
-      deleteResources LBSTATS LBAAS "" $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete --cascade
+      deleteResources LBSTATS LBAAS LBSTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete --cascade
     fi
   fi
 }
@@ -2122,7 +2123,10 @@ waitLBs()
 
 waitdelLBs()
 {
-  waitlistResources LBSTATS DELLBAAS LBDSTATS LBSTIME "XDELX" "$FORCEDEL" 2 $NETTIMEOUT neutron lbaas-loadbalancer-list
+  if test -n "${DELLBAASS[*]}"; then
+    echo "Delete LBAAS: ${DELLBAASS[*]}"
+    waitlistResources LBSTATS DELLBAAS LBDSTATS LBSTIME "XDELX" "$FORCEDEL" 2 $NETTIMEOUT neutron lbaas-loadbalancer-list
+  fi
 }
 
 testLBs()
@@ -2887,9 +2891,11 @@ EOT
     echo -e " ${SRC} <-> ${TGT}: ${BOLD}$SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL${NORM}"
     if test -n "$LOGFILE"; then echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
     BANDWIDTH+=($SENDBW $RECVBW)
+    SBW=$(echo "scale=2; $SENDBW/1000" | bc -l)
+    RBW=$(echo "scale=2; $RECVBW/1000" | bc -l)
     if test -n "$GRAFANA"; then
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=s$VM duration=$SENDBW,return_code=0" >/dev/null
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=r$VM duration=$RECVBW,return_code=0" >/dev/null
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=s$VM duration=$SBW,return_code=0" >/dev/null
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=r$VM duration=$RBW,return_code=0" >/dev/null
     fi
   done
   rm ${RPRE}wait
