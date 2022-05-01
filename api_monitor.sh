@@ -2125,7 +2125,7 @@ waitLBs()
 waitdelLBs()
 {
   if test -n "${DELLBAASS[*]}"; then
-    echo "Delete LBAAS: ${DELLBAASS[*]}"
+    #echo "Delete LBAAS: ${DELLBAASS[*]}"
     waitlistResources LBSTATS DELLBAAS LBDSTATS LBDTIME "XDELX" "$FORCEDEL" 2 $NETTIMEOUT neutron lbaas-loadbalancer-list
   fi
 }
