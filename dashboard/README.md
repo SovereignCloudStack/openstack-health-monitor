@@ -19,4 +19,19 @@ Grafana in the host that runs the openstack-health-monitor.
 to get 3 hours of Grafana access via localhost:3000 protected by the
 ssh acceess controls.
 
+## The config files
 
+* `telegraf.conf` is a default config file for [telegraf](https://www.influxdata.com/time-series-platform/telegraf/)
+  from openSUSE 15.3 with minimal edits to work for us. The relevant pieces here are the
+  `inputs.influxdb_listener` (on `:8186`) and the `outputs.influxdb` (to `localhost:8086`).
+* `config.toml` is the default config file for [influxdb](https://www.influxdata.com/time-series-platform/)
+  from openSUSE 15.3 without any edits.
+* `grafana.ini` is the default config file for [grafana](https://grafana.com/)
+  from openSUSE 15.3 with the admin password changed to `SCS_Admin` and `allow_signup` set to `false`.
+* `openstack-health-dashboard.json` contains the dashboard exported to JSON and is the one piece here
+  that has received significant work. Screenshots from the dashboard can be seen below.
+
+## Screenshots
+
+![](SCS1-gxscshm-20220502.png)
+![](SCS2-gxscshm-20220502.png)
