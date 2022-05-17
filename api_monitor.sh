@@ -1084,6 +1084,7 @@ deleteResources()
   local LN=${#LIST[@]}
   local TIRESP
   local IGNERRS=0
+  eval "REM${RNM}S=()"
   while test ${#LIST[*]} -gt 0; do
     local rsrc=${LIST[-1]}
     echo -n "$rsrc "
