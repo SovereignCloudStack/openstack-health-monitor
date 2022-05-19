@@ -5,19 +5,14 @@ and execution times) to a local telegraf. This can be used to feed the results
 to an influxdb which can feed grafana for dashboards.
 
 This directory contains configuration files that can be used to setup a local
-telegraf, influxdb and grafana setup. Note that this is purely for demonstration
-purposes. In real life, you want to containerize the setup, put an SSL terminating
-reverse proxy (ingress) in front of the grafana and think a bit about user
-management. In particular, you would not want to expose the grafana with the
-default config here to the internet without changing the admin password (`SCS_Admin`)
-and enabling SSL.
+telegraf, influxdb and grafana setup. Note that this is for demonstration
+purposes. You can disable the SSL setup and just use it locally by doing
+an ssh port-forward of port 3000.
 
-For demo purposes on the other hand, running everything in the same VM (even
-without containers) can be done -- I use ssh port forwarding to access the
-Grafana in the host that runs the openstack-health-monitor.
-`ssh -f -L 3000:localhost:3000 linux@host sleep 10800`
-to get 3 hours of Grafana access via localhost:3000 protected by the
-ssh acceess controls.
+The default config in grafana.ini needs some work to complete the SSL setup
+by having a DNS resolvable hostname (you can get one on sovereignit.cloud
+from the SCS project if you want) and generate a valid cert for it.
+It also enables Viewer access for SovereignCloudStack org members on github.
 
 ## The config files
 
@@ -28,8 +23,15 @@ ssh acceess controls.
   from openSUSE 15.3 without any edits.
 * `grafana.ini` is the default config file for [grafana](https://grafana.com/)
   from openSUSE 15.3 with the admin password changed to `SCS_Admin` and `allow_signup` set to `false`.
+  The configuration is prepared to be exposed to the internet -- to do so, change the admin password,
+  fill in a hostname that you control (or reach out to SCS for getting a registration on sovereignit.cloud),
+  generate SSL certs (e.g. via Let's Encrypt) and put them to `/etc/grafana/health-fullchain.pem`
+  and `health-key.pem`. Note that all github users that belong to the SovereignCloudStack org
+  have Viewer access to the dashboards.
 * `openstack-health-dashboard.json` contains the dashboard exported to JSON and is the one piece here
-  that has received significant work. Screenshots from the dashboard can be seen below.
+  that has received significant work. Screenshots from the dashboard can be seen below. You can import
+  the dashboard -- you will also need to create a influxdb datasource connecting to `localhost:8086` to
+  the `telegraf` database.
 
 ## Screenshots
 
