@@ -880,10 +880,12 @@ ostackcmd_id()
   local TIM=$(math "%.2f" "$LEND-$LSTART")
 
   test "$1" = "openstack" -o "$1" = "myopenstack" && shift
+  CMD="$1"
+  if test "$CMD" = "neutron" -a "${2:0:5}" = "lbaas"; then CMD=octavia; fi
   if test -n "$GRAFANA"; then
       # log time / rc to grafana
       rc2grafana $RC
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$TIM,return_code=$GRC" >> grafana.log
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$CMD,method=$2 duration=$TIM,return_code=$GRC" >> grafana.log
   fi
 
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
@@ -906,7 +908,7 @@ ostackcmd_id()
     if test -n "$GRAFANA"; then
       # log time / rc to grafana
       rc2grafana $RC
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$TIM,return_code=$GRC" >> grafana.log
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$CMD,method=$2 duration=$TIM,return_code=$GRC" >> grafana.log
     fi
     if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
       sendalarm $RC "$*" "$RESP" $TIMEOUT
@@ -967,12 +969,14 @@ ostackcmd_tm()
   local LEND=$(date +%s.%3N)
   local TIM=$(math "%.2f" "$LEND-$LSTART")
   test "$1" = "openstack" -o "$1" = "myopenstack" && shift
+  CMD="$1"
+  if test "$CMD" = "neutron" -a "${2:0:5}" = "lbaas"; then CMD=octavia; fi
   if test -n "$GRAFANA"; then
     # log time / rc to grafana telegraph
     rc2grafana $RC
     # Note: We log untranslated commands to grafana here, for continuity reasons
     # (This is why we do translation in the first place ...)
-    curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$TIM,return_code=$GRC" >> grafana.log
+    curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,CMD=$1,method=$2 duration=$TIM,return_code=$GRC" >> grafana.log
   fi
   # TODO: Implement retry for HTTP 409 similar to ostackcmd_id
 

@@ -8,20 +8,26 @@
         "hide": true,
         "iconColor": "rgba(0, 211, 255, 1)",
         "name": "Annotations & Alerts",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [],
+          "type": "dashboard"
+        },
         "type": "dashboard"
       }
     ]
   },
   "description": "",
   "editable": true,
-  "gnetId": null,
+  "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": 2,
-  "iteration": 1651420398054,
+  "iteration": 1652870179241,
   "links": [],
+  "liveNow": false,
   "panels": [
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -33,8 +39,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           }
@@ -63,7 +68,7 @@
         "text": {},
         "textMode": "auto"
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "groupBy": [
@@ -114,13 +119,10 @@
           ]
         }
       ],
-      "timeFrom": null,
-      "timeShift": null,
       "title": "API calls",
       "type": "stat"
     },
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -132,8 +134,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "#EAB839",
@@ -170,7 +171,7 @@
         "text": {},
         "textMode": "auto"
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "groupBy": [
@@ -215,13 +216,10 @@
           ]
         }
       ],
-      "timeFrom": null,
-      "timeShift": null,
       "title": "API errors",
       "type": "stat"
     },
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -229,12 +227,13 @@
             "mode": "thresholds"
           },
           "mappings": [],
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "percentage",
             "steps": [
               {
-                "color": "red",
-                "value": null
+                "color": "red"
               },
               {
                 "color": "#EAB839",
@@ -270,7 +269,7 @@
         "showThresholdMarkers": true,
         "text": {}
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "alias": "API falis",
@@ -318,13 +317,10 @@
           ]
         }
       ],
-      "timeFrom": null,
-      "timeShift": null,
       "title": "API success rate",
       "type": "gauge"
     },
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -336,8 +332,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           }
@@ -366,7 +361,7 @@
         "text": {},
         "textMode": "auto"
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "groupBy": [
@@ -386,7 +381,7 @@
           "measurement": "gx-scs",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT count(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = ssh) AND $timeFilter GROUP BY time($__interval) fill(null)",
+          "query": "SELECT count(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval) fill(null)",
           "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
@@ -413,13 +408,10 @@
           ]
         }
       ],
-      "timeFrom": null,
-      "timeShift": null,
       "title": "ssh conns",
       "type": "stat"
     },
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -431,8 +423,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "#EAB839",
@@ -469,7 +460,7 @@
         "text": {},
         "textMode": "auto"
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "groupBy": [
@@ -483,7 +474,7 @@
           "measurement": "gx-scs",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT sum(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = ssh) AND $timeFilter GROUP BY time($__interval)",
+          "query": "SELECT sum(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval)",
           "rawQuery": true,
           "refId": "A",
           "resultFormat": "time_series",
@@ -510,13 +501,10 @@
           ]
         }
       ],
-      "timeFrom": null,
-      "timeShift": null,
       "title": "ssh errors",
       "type": "stat"
     },
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -524,12 +512,13 @@
             "mode": "thresholds"
           },
           "mappings": [],
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "percentage",
             "steps": [
               {
-                "color": "red",
-                "value": null
+                "color": "red"
               },
               {
                 "color": "#EAB839",
@@ -565,7 +554,7 @@
         "showThresholdMarkers": true,
         "text": {}
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "alias": "API falis",
@@ -580,7 +569,7 @@
           "measurement": "gx-scs",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"gx-scs\" WHERE (\"cmd\" = ssh) AND $timeFilter",
+          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"gx-scs\" WHERE (\"cmd\" = 'ssh') AND $timeFilter",
           "rawQuery": true,
           "refId": "A",
           "resultFormat": "time_series",
@@ -613,13 +602,10 @@
           ]
         }
       ],
-      "timeFrom": null,
-      "timeShift": null,
       "title": "ssh success rate",
       "type": "gauge"
     },
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -631,8 +617,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           }
@@ -661,7 +646,7 @@
         "text": {},
         "textMode": "auto"
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "groupBy": [
@@ -681,7 +666,7 @@
           "measurement": "gx-scs",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT count(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = ssh) AND $timeFilter GROUP BY time($__interval) fill(null)",
+          "query": "SELECT count(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval) fill(null)",
           "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
@@ -708,13 +693,10 @@
           ]
         }
       ],
-      "timeFrom": null,
-      "timeShift": null,
       "title": "Resrcs",
       "type": "stat"
     },
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -726,8 +708,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "#EAB839",
@@ -764,7 +745,7 @@
         "text": {},
         "textMode": "auto"
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "groupBy": [
@@ -778,7 +759,7 @@
           "measurement": "gx-scs",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT sum(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = ssh) AND $timeFilter GROUP BY time($__interval)",
+          "query": "SELECT sum(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval)",
           "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
@@ -805,14 +786,11 @@
           ]
         }
       ],
-      "timeFrom": null,
-      "timeShift": null,
       "title": "Resrc errors",
       "type": "stat"
     },
     {
       "collapsed": false,
-      "datasource": null,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -829,13 +807,8 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": null,
       "decimals": 0,
       "description": "",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -867,7 +840,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -933,9 +906,7 @@
         }
       ],
       "thresholds": [],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "API errors",
       "tooltip": {
         "shared": true,
@@ -944,9 +915,7 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
@@ -964,21 +933,16 @@
         {
           "$$hashKey": "object:865",
           "format": "short",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": false
         }
       ],
       "yaxis": {
-        "align": false,
-        "alignLevel": null
+        "align": false
       }
     },
     {
       "collapsed": false,
-      "datasource": null,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -995,12 +959,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": null,
       "description": "",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -1034,7 +993,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -1109,9 +1068,7 @@
         }
       ],
       "thresholds": [],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "API response times",
       "tooltip": {
         "shared": true,
@@ -1120,16 +1077,13 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
       "yaxes": [
         {
           "$$hashKey": "object:347",
-          "decimals": null,
           "format": "short",
           "label": "s",
           "logBase": 1,
@@ -1139,7 +1093,6 @@
         },
         {
           "$$hashKey": "object:348",
-          "decimals": null,
           "format": "short",
           "label": "",
           "logBase": 1,
@@ -1149,8 +1102,7 @@
         }
       ],
       "yaxis": {
-        "align": false,
-        "alignLevel": null
+        "align": false
       }
     },
     {
@@ -1158,12 +1110,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": null,
       "description": "",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -1193,7 +1140,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -1253,9 +1200,7 @@
         }
       ],
       "thresholds": [],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "Resource wait",
       "tooltip": {
         "shared": true,
@@ -1264,16 +1209,13 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
       "yaxes": [
         {
           "$$hashKey": "object:2109",
-          "decimals": null,
           "format": "short",
           "label": "s",
           "logBase": 10,
@@ -1284,16 +1226,12 @@
         {
           "$$hashKey": "object:2110",
           "format": "short",
-          "label": null,
           "logBase": 2,
-          "max": null,
-          "min": null,
           "show": true
         }
       ],
       "yaxis": {
-        "align": false,
-        "alignLevel": null
+        "align": false
       }
     },
     {
@@ -1301,13 +1239,8 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": null,
       "decimals": 1,
       "description": "",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -1337,7 +1270,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -1397,9 +1330,7 @@
         }
       ],
       "thresholds": [],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "Bench",
       "tooltip": {
         "shared": true,
@@ -1408,36 +1339,27 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
       "yaxes": [
         {
           "$$hashKey": "object:2905",
-          "decimals": null,
           "format": "short",
           "label": "s, Gb/s",
-          "logBase": 1,
-          "max": null,
-          "min": null,
+          "logBase": 10,
           "show": true
         },
         {
           "$$hashKey": "object:2906",
           "format": "short",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": false
         }
       ],
       "yaxis": {
-        "align": false,
-        "alignLevel": null
+        "align": false
       }
     },
     {
@@ -1445,13 +1367,8 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": null,
       "decimals": 0,
       "description": "",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -1483,7 +1400,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -1542,9 +1459,7 @@
         }
       ],
       "thresholds": [],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "Bench (ssh) errors",
       "tooltip": {
         "shared": true,
@@ -1553,9 +1468,7 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
@@ -1573,36 +1486,28 @@
         {
           "$$hashKey": "object:3273",
           "format": "short",
-          "label": null,
           "logBase": 1,
-          "max": null,
-          "min": null,
           "show": true
         }
       ],
       "yaxis": {
-        "align": false,
-        "alignLevel": null
+        "align": false
       }
     }
   ],
-  "refresh": false,
-  "schemaVersion": 27,
+  "refresh": "",
+  "schemaVersion": 34,
   "style": "dark",
   "tags": [],
   "templating": {
     "list": [
       {
-        "allValue": null,
         "current": {
           "selected": false,
-          "text": "All",
-          "value": "$__all"
+          "text": "neutron",
+          "value": "neutron"
         },
-        "datasource": null,
         "definition": "show tag values with key = cmd",
-        "description": null,
-        "error": null,
         "hide": 0,
         "includeAll": true,
         "label": "cmd",
@@ -1611,393 +1516,79 @@
         "options": [],
         "query": "show tag values with key = cmd",
         "refresh": 2,
-        "regex": "/^(nova|neutron|glance|cinder|token|catalog|swift)$/",
+        "regex": "/^(nova|neutron|glance|cinder|token|catalog|swift|octavia)$/",
         "skipUrlSync": false,
         "sort": 1,
         "tagValuesQuery": "",
-        "tags": [],
         "tagsQuery": "",
         "type": "query",
         "useTags": false
       },
       {
-        "allValue": null,
         "current": {
           "selected": false,
           "text": "All",
           "value": "$__all"
         },
-        "datasource": null,
         "definition": "show tag values with key = method where cmd =~ /$mycmd/",
-        "description": null,
-        "error": null,
         "hide": 0,
         "includeAll": true,
         "label": "method",
         "multi": false,
         "name": "mymethod",
-        "options": [
-          {
-            "selected": true,
-            "text": "All",
-            "value": "$__all"
-          },
-          {
-            "selected": false,
-            "text": "boot",
-            "value": "boot"
-          },
-          {
-            "selected": false,
-            "text": "create",
-            "value": "create"
-          },
-          {
-            "selected": false,
-            "text": "delete",
-            "value": "delete"
-          },
-          {
-            "selected": false,
-            "text": "floatingip-create",
-            "value": "floatingip-create"
-          },
-          {
-            "selected": false,
-            "text": "floatingip-delete",
-            "value": "floatingip-delete"
-          },
-          {
-            "selected": false,
-            "text": "floatingip-list",
-            "value": "floatingip-list"
-          },
-          {
-            "selected": false,
-            "text": "image-show",
-            "value": "image-show"
-          },
-          {
-            "selected": false,
-            "text": "issue",
-            "value": "issue"
-          },
-          {
-            "selected": false,
-            "text": "keypair-add",
-            "value": "keypair-add"
-          },
-          {
-            "selected": false,
-            "text": "keypair-delete",
-            "value": "keypair-delete"
-          },
-          {
-            "selected": false,
-            "text": "keypair-list",
-            "value": "keypair-list"
-          },
-          {
-            "selected": false,
-            "text": "lbaas-healthmonitor-create",
-            "value": "lbaas-healthmonitor-create"
-          },
-          {
-            "selected": false,
-            "text": "lbaas-healthmonitor-delete",
-            "value": "lbaas-healthmonitor-delete"
-          },
-          {
-            "selected": false,
-            "text": "lbaas-listener-create",
-            "value": "lbaas-listener-create"
-          },
-          {
-            "selected": false,
-            "text": "lbaas-listener-delete",
-            "value": "lbaas-listener-delete"
-          },
-          {
-            "selected": false,
-            "text": "lbaas-loadbalancer-create",
-            "value": "lbaas-loadbalancer-create"
-          },
-          {
-            "selected": false,
-            "text": "lbaas-loadbalancer-delete",
-            "value": "lbaas-loadbalancer-delete"
-          },
-          {
-            "selected": false,
-            "text": "lbaas-loadbalancer-list",
-            "value": "lbaas-loadbalancer-list"
-          },
-          {
-            "selected": false,
-            "text": "lbaas-loadbalancer-show",
-            "value": "lbaas-loadbalancer-show"
-          },
-          {
-            "selected": false,
-            "text": "lbaas-member-create",
-            "value": "lbaas-member-create"
-          },
-          {
-            "selected": false,
-            "text": "lbaas-member-delete",
-            "value": "lbaas-member-delete"
-          },
-          {
-            "selected": false,
-            "text": "lbaas-pool-create",
-            "value": "lbaas-pool-create"
-          },
-          {
-            "selected": false,
-            "text": "lbaas-pool-delete",
-            "value": "lbaas-pool-delete"
-          },
-          {
-            "selected": false,
-            "text": "list",
-            "value": "list"
-          },
-          {
-            "selected": false,
-            "text": "meta",
-            "value": "meta"
-          },
-          {
-            "selected": false,
-            "text": "net-create",
-            "value": "net-create"
-          },
-          {
-            "selected": false,
-            "text": "net-delete",
-            "value": "net-delete"
-          },
-          {
-            "selected": false,
-            "text": "net-external-list",
-            "value": "net-external-list"
-          },
-          {
-            "selected": false,
-            "text": "port-create",
-            "value": "port-create"
-          },
-          {
-            "selected": false,
-            "text": "port-delete",
-            "value": "port-delete"
-          },
-          {
-            "selected": false,
-            "text": "port-list",
-            "value": "port-list"
-          },
-          {
-            "selected": false,
-            "text": "port-show",
-            "value": "port-show"
-          },
-          {
-            "selected": false,
-            "text": "port-update",
-            "value": "port-update"
-          },
-          {
-            "selected": false,
-            "text": "router-create",
-            "value": "router-create"
-          },
-          {
-            "selected": false,
-            "text": "router-delete",
-            "value": "router-delete"
-          },
-          {
-            "selected": false,
-            "text": "router-gateway-set",
-            "value": "router-gateway-set"
-          },
-          {
-            "selected": false,
-            "text": "router-interface-add",
-            "value": "router-interface-add"
-          },
-          {
-            "selected": false,
-            "text": "router-interface-delete",
-            "value": "router-interface-delete"
-          },
-          {
-            "selected": false,
-            "text": "router-show",
-            "value": "router-show"
-          },
-          {
-            "selected": false,
-            "text": "router-update",
-            "value": "router-update"
-          },
-          {
-            "selected": false,
-            "text": "security-group-create",
-            "value": "security-group-create"
-          },
-          {
-            "selected": false,
-            "text": "security-group-delete",
-            "value": "security-group-delete"
-          },
-          {
-            "selected": false,
-            "text": "security-group-rule-create",
-            "value": "security-group-rule-create"
-          },
-          {
-            "selected": false,
-            "text": "show",
-            "value": "show"
-          },
-          {
-            "selected": false,
-            "text": "subnet-create",
-            "value": "subnet-create"
-          },
-          {
-            "selected": false,
-            "text": "subnet-delete",
-            "value": "subnet-delete"
-          },
-          {
-            "selected": false,
-            "text": "upload",
-            "value": "upload"
-          }
-        ],
+        "options": [],
         "query": "show tag values with key = method where cmd =~ /$mycmd/",
-        "refresh": 0,
+        "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
         "sort": 0,
         "tagValuesQuery": "",
-        "tags": [],
         "tagsQuery": "",
         "type": "query",
         "useTags": false
       },
       {
-        "allValue": null,
         "current": {
           "selected": false,
           "text": "All",
           "value": "$__all"
         },
-        "datasource": null,
         "definition": "show tag values with key = cmd",
-        "description": null,
-        "error": null,
         "hide": 0,
         "includeAll": true,
         "label": "Resrc",
         "multi": false,
         "name": "mywait",
-        "options": [
-          {
-            "selected": true,
-            "text": "All",
-            "value": "$__all"
-          },
-          {
-            "selected": false,
-            "text": "waitDELLBAAS",
-            "value": "waitDELLBAAS"
-          },
-          {
-            "selected": false,
-            "text": "waitJHPORT",
-            "value": "waitJHPORT"
-          },
-          {
-            "selected": false,
-            "text": "waitJHVM",
-            "value": "waitJHVM"
-          },
-          {
-            "selected": false,
-            "text": "waitJHVOLUME",
-            "value": "waitJHVOLUME"
-          },
-          {
-            "selected": false,
-            "text": "waitLBAAS",
-            "value": "waitLBAAS"
-          },
-          {
-            "selected": false,
-            "text": "waitVM",
-            "value": "waitVM"
-          }
-        ],
+        "options": [],
         "query": "show tag values with key = cmd",
-        "refresh": 0,
+        "refresh": 1,
         "regex": "/^wait/",
         "skipUrlSync": false,
         "sort": 0,
         "tagValuesQuery": "",
-        "tags": [],
         "tagsQuery": "",
         "type": "query",
         "useTags": false
       },
       {
-        "allValue": null,
         "current": {
           "selected": false,
           "text": "All",
           "value": "$__all"
         },
-        "datasource": null,
         "definition": "show tag values with key = cmd",
-        "description": null,
-        "error": null,
         "hide": 0,
         "includeAll": true,
         "label": "Bench",
         "multi": false,
         "name": "mybench",
-        "options": [
-          {
-            "selected": true,
-            "text": "All",
-            "value": "$__all"
-          },
-          {
-            "selected": false,
-            "text": "4000pi",
-            "value": "4000pi"
-          },
-          {
-            "selected": false,
-            "text": "iperf3",
-            "value": "iperf3"
-          },
-          {
-            "selected": false,
-            "text": "ssh",
-            "value": "ssh"
-          }
-        ],
+        "options": [],
         "query": "show tag values with key = cmd",
-        "refresh": 0,
+        "refresh": 1,
         "regex": "/^(4000pi|iperf3|ssh)$/",
         "skipUrlSync": false,
         "sort": 0,
         "tagValuesQuery": "",
-        "tags": [],
         "tagsQuery": "",
         "type": "query",
         "useTags": false
@@ -2005,12 +1596,13 @@
     ]
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-24h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
   "uid": "9ltTEmlnk",
-  "version": 10
+  "version": 11,
+  "weekStart": ""
 }
