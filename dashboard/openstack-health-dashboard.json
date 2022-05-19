@@ -18,14 +18,27 @@
       }
     ]
   },
-  "description": "",
+  "description": "OpenStack scenario testing https://github.com/SovereignCloudStack/openstack-health-monitor",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": 2,
-  "iteration": 1652870179241,
-  "links": [],
-  "liveNow": false,
+  "iteration": 1652974081332,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Github",
+      "tooltip": "",
+      "type": "link",
+      "url": "https://github.com/SovereignCloudStack/openstack-health-monitor"
+    }
+  ],
+  "liveNow": true,
   "panels": [
     {
       "description": "",
@@ -39,7 +52,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               }
             ]
           }
@@ -134,7 +148,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "#EAB839",
@@ -233,7 +248,8 @@
             "mode": "percentage",
             "steps": [
               {
-                "color": "red"
+                "color": "red",
+                "value": null
               },
               {
                 "color": "#EAB839",
@@ -332,7 +348,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               }
             ]
           }
@@ -423,7 +440,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "#EAB839",
@@ -518,7 +536,8 @@
             "mode": "percentage",
             "steps": [
               {
-                "color": "red"
+                "color": "red",
+                "value": null
               },
               {
                 "color": "#EAB839",
@@ -617,7 +636,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               }
             ]
           }
@@ -708,7 +728,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "#EAB839",
@@ -1410,6 +1431,10 @@
       "steppedLine": false,
       "targets": [
         {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "kOQ-cJwnk"
+          },
           "groupBy": [
             {
               "params": [
@@ -1422,12 +1447,6 @@
                 "cmd"
               ],
               "type": "tag"
-            },
-            {
-              "params": [
-                "none"
-              ],
-              "type": "fill"
             }
           ],
           "measurement": "gx-scs",
@@ -1495,7 +1514,7 @@
       }
     }
   ],
-  "refresh": "",
+  "refresh": false,
   "schemaVersion": 34,
   "style": "dark",
   "tags": [],
@@ -1504,8 +1523,8 @@
       {
         "current": {
           "selected": false,
-          "text": "neutron",
-          "value": "neutron"
+          "text": "All",
+          "value": "$__all"
         },
         "definition": "show tag values with key = cmd",
         "hide": 0,
@@ -1603,6 +1622,6 @@
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
   "uid": "9ltTEmlnk",
-  "version": 11,
+  "version": 17,
   "weekStart": ""
 }
