@@ -20,10 +20,10 @@
   },
   "description": "OpenStack scenario testing https://github.com/SovereignCloudStack/openstack-health-monitor",
   "editable": true,
-  "gnetId": null,
+  "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 1,
-  "iteration": 1652980242318,
+  "id": 2,
+  "iteration": 1653028191455,
   "links": [
     {
       "asDropdown": false,
@@ -38,9 +38,9 @@
       "url": "https://github.com/SovereignCloudStack/openstack-health-monitor"
     }
   ],
+  "liveNow": true,
   "panels": [
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -82,7 +82,7 @@
         "text": {},
         "textMode": "auto"
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "groupBy": [
@@ -137,7 +137,6 @@
       "type": "stat"
     },
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -187,7 +186,7 @@
         "text": {},
         "textMode": "auto"
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "groupBy": [
@@ -236,7 +235,6 @@
       "type": "stat"
     },
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -287,7 +285,7 @@
         "showThresholdMarkers": true,
         "text": {}
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "alias": "API falis",
@@ -339,7 +337,6 @@
       "type": "gauge"
     },
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -381,7 +378,7 @@
         "text": {},
         "textMode": "auto"
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "groupBy": [
@@ -432,7 +429,6 @@
       "type": "stat"
     },
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -482,7 +478,7 @@
         "text": {},
         "textMode": "auto"
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "groupBy": [
@@ -527,7 +523,6 @@
       "type": "stat"
     },
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -578,7 +573,7 @@
         "showThresholdMarkers": true,
         "text": {}
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "alias": "API falis",
@@ -630,7 +625,6 @@
       "type": "gauge"
     },
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -672,7 +666,7 @@
         "text": {},
         "textMode": "auto"
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "groupBy": [
@@ -723,7 +717,6 @@
       "type": "stat"
     },
     {
-      "datasource": null,
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -773,7 +766,7 @@
         "text": {},
         "textMode": "auto"
       },
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "targets": [
         {
           "groupBy": [
@@ -819,7 +812,6 @@
     },
     {
       "collapsed": false,
-      "datasource": null,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -836,13 +828,8 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": null,
       "decimals": 0,
       "description": "",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -874,7 +861,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -940,9 +927,7 @@
         }
       ],
       "thresholds": [],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "API errors",
       "tooltip": {
         "shared": true,
@@ -951,9 +936,7 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
@@ -981,7 +964,6 @@
     },
     {
       "collapsed": false,
-      "datasource": null,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -998,12 +980,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": null,
       "description": "",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -1037,7 +1014,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -1112,9 +1089,7 @@
         }
       ],
       "thresholds": [],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "API response times",
       "tooltip": {
         "shared": true,
@@ -1123,9 +1098,7 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
@@ -1158,12 +1131,7 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": null,
       "description": "",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -1193,7 +1161,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -1253,9 +1221,7 @@
         }
       ],
       "thresholds": [],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "Resource wait",
       "tooltip": {
         "shared": true,
@@ -1264,9 +1230,7 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
@@ -1296,13 +1260,8 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": null,
       "decimals": 1,
       "description": "",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -1332,7 +1291,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -1392,9 +1351,7 @@
         }
       ],
       "thresholds": [],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "Bench",
       "tooltip": {
         "shared": true,
@@ -1403,9 +1360,7 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
@@ -1433,13 +1388,8 @@
       "bars": false,
       "dashLength": 10,
       "dashes": false,
-      "datasource": null,
       "decimals": 0,
       "description": "",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
       "fill": 1,
       "fillGradient": 0,
       "gridPos": {
@@ -1471,7 +1421,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "7.5.12",
+      "pluginVersion": "8.3.5",
       "pointradius": 2,
       "points": false,
       "renderer": "flot",
@@ -1528,9 +1478,7 @@
         }
       ],
       "thresholds": [],
-      "timeFrom": null,
       "timeRegions": [],
-      "timeShift": null,
       "title": "Bench (ssh) errors",
       "tooltip": {
         "shared": true,
@@ -1539,9 +1487,7 @@
       },
       "type": "graph",
       "xaxis": {
-        "buckets": null,
         "mode": "time",
-        "name": null,
         "show": true,
         "values": []
       },
@@ -1569,22 +1515,18 @@
     }
   ],
   "refresh": false,
-  "schemaVersion": 27,
+  "schemaVersion": 34,
   "style": "dark",
   "tags": [],
   "templating": {
     "list": [
       {
-        "allValue": null,
         "current": {
           "selected": false,
           "text": "All",
           "value": "$__all"
         },
-        "datasource": null,
         "definition": "show tag values with key = cmd",
-        "description": null,
-        "error": null,
         "hide": 0,
         "includeAll": true,
         "label": "cmd",
@@ -1597,22 +1539,17 @@
         "skipUrlSync": false,
         "sort": 1,
         "tagValuesQuery": "",
-        "tags": [],
         "tagsQuery": "",
         "type": "query",
         "useTags": false
       },
       {
-        "allValue": null,
         "current": {
           "selected": false,
           "text": "All",
           "value": "$__all"
         },
-        "datasource": null,
         "definition": "show tag values with key = method where cmd =~ /$mycmd/",
-        "description": null,
-        "error": null,
         "hide": 0,
         "includeAll": true,
         "label": "method",
@@ -1625,22 +1562,17 @@
         "skipUrlSync": false,
         "sort": 0,
         "tagValuesQuery": "",
-        "tags": [],
         "tagsQuery": "",
         "type": "query",
         "useTags": false
       },
       {
-        "allValue": null,
         "current": {
           "selected": false,
           "text": "All",
           "value": "$__all"
         },
-        "datasource": null,
         "definition": "show tag values with key = cmd",
-        "description": null,
-        "error": null,
         "hide": 0,
         "includeAll": true,
         "label": "Resrc",
@@ -1653,22 +1585,17 @@
         "skipUrlSync": false,
         "sort": 0,
         "tagValuesQuery": "",
-        "tags": [],
         "tagsQuery": "",
         "type": "query",
         "useTags": false
       },
       {
-        "allValue": null,
         "current": {
           "selected": false,
           "text": "All",
           "value": "$__all"
         },
-        "datasource": null,
         "definition": "show tag values with key = cmd",
-        "description": null,
-        "error": null,
         "hide": 0,
         "includeAll": true,
         "label": "Bench",
@@ -1681,20 +1608,16 @@
         "skipUrlSync": false,
         "sort": 0,
         "tagValuesQuery": "",
-        "tags": [],
         "tagsQuery": "",
         "type": "query",
         "useTags": false
       },
       {
-        "allValue": null,
         "current": {
-          "selected": false,
+          "selected": true,
           "text": "plus-pco",
           "value": "plus-pco"
         },
-        "description": null,
-        "error": null,
         "hide": 0,
         "includeAll": false,
         "label": "Cloud",
@@ -1713,6 +1636,7 @@
           }
         ],
         "query": "plus-pco, gx-scs",
+        "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"
       }
@@ -1726,5 +1650,6 @@
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
   "uid": "9ltTEmlnk",
-  "version": 3
+  "version": 1,
+  "weekStart": ""
 }
