@@ -23,7 +23,7 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": 2,
-  "iteration": 1652974081332,
+  "iteration": 1653028191455,
   "links": [
     {
       "asDropdown": false,
@@ -32,7 +32,7 @@
       "keepTime": false,
       "tags": [],
       "targetBlank": false,
-      "title": "Github",
+      "title": "openstack-health-monitor (github)",
       "tooltip": "",
       "type": "link",
       "url": "https://github.com/SovereignCloudStack/openstack-health-monitor"
@@ -99,7 +99,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -197,7 +197,7 @@
               "type": "time"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -297,10 +297,10 @@
               "type": "time"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"gx-scs\" WHERE (\"cmd\" =~ /^$mycmd$/ AND \"method\" =~ /^$mymethod$/) AND $timeFilter",
+          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"$mycloud\" WHERE (\"cmd\" =~ /^$mycmd$/ AND \"method\" =~ /^$mymethod$/) AND $timeFilter",
           "rawQuery": true,
           "refId": "A",
           "resultFormat": "time_series",
@@ -395,10 +395,10 @@
               "type": "fill"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT count(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval) fill(null)",
+          "query": "SELECT count(\"return_code\") FROM \"$mycloud\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval) fill(null)",
           "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
@@ -489,10 +489,10 @@
               "type": "time"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT sum(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval)",
+          "query": "SELECT sum(\"return_code\") FROM \"$mycloud\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval)",
           "rawQuery": true,
           "refId": "A",
           "resultFormat": "time_series",
@@ -585,10 +585,10 @@
               "type": "time"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "$mycloud",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"gx-scs\" WHERE (\"cmd\" = 'ssh') AND $timeFilter",
+          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"$mycloud\" WHERE (\"cmd\" = 'ssh') AND $timeFilter",
           "rawQuery": true,
           "refId": "A",
           "resultFormat": "time_series",
@@ -683,10 +683,10 @@
               "type": "fill"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT count(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval) fill(null)",
+          "query": "SELECT count(\"return_code\") FROM \"$mycloud\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval) fill(null)",
           "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
@@ -777,10 +777,10 @@
               "type": "time"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT sum(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval)",
+          "query": "SELECT sum(\"return_code\") FROM \"$mycloud\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval)",
           "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
@@ -892,7 +892,7 @@
               "type": "tag"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -1052,10 +1052,10 @@
             }
           ],
           "hide": false,
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT \"duration\" FROM \"gx-scs\" WHERE $timeFilter GROUP BY time($__interval) fill(none)",
+          "query": "SELECT \"duration\" FROM \"$mycloud\" WHERE $timeFilter GROUP BY time($__interval) fill(none)",
           "rawQuery": false,
           "refId": "All",
           "resultFormat": "time_series",
@@ -1192,7 +1192,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -1322,7 +1322,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -1449,7 +1449,7 @@
               "type": "tag"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -1611,6 +1611,34 @@
         "tagsQuery": "",
         "type": "query",
         "useTags": false
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "plus-pco",
+          "value": "plus-pco"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Cloud",
+        "multi": false,
+        "name": "mycloud",
+        "options": [
+          {
+            "selected": true,
+            "text": "plus-pco",
+            "value": "plus-pco"
+          },
+          {
+            "selected": false,
+            "text": "gx-scs",
+            "value": "gx-scs"
+          }
+        ],
+        "query": "plus-pco, gx-scs",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
       }
     ]
   },
@@ -1622,6 +1650,6 @@
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
   "uid": "9ltTEmlnk",
-  "version": 17,
+  "version": 1,
   "weekStart": ""
 }
