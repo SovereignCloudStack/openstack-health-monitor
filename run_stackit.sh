@@ -28,8 +28,8 @@ export FLAVOR=t1.1
 #fi
 # EMail notifications sender address
 export FROM=kurt@garloff.de
-# Only use two AZs
-export AZS="eu01-1 eu01-2"
+# Only use AZs
+#export AZS="eu01-1 eu01-2 eu01-3 eu01-m"
 # Upload (compressed) logfiles and stats to container
 export SWIFTCONTAINER=OS-HM-Logfiles
 # NAMESERVER
@@ -90,6 +90,6 @@ done
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
 #exec api_monitor.sh -o -C -D -N 2 -n 8 -s -e sender@domain.org "$@"
 #exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -a 2 -T -R "$@"
-exec ./api_monitor.sh -O -C -D -N 4 -n 8 -s -b -B -a 2 -z 5 -T -R -S stackit "$@"
+exec ./api_monitor.sh -O -C -D -n 8 -s -b -B -a 2 -z 5 -T -R -S stackit "$@"
 #exec ./api_monitor.sh -o -C -D -N 2 -n 8 -s -L -b -B -a 2 -T -R "$@"
 
