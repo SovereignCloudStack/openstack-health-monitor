@@ -650,6 +650,7 @@ translate()
   done
   OSTACKCMD=("$@")
   if test "$1" == "myopenstack" -a -z "$OPENSTACKTOKEN"; then shift; OSTACKCMD=("openstack" "$@"); return 0; fi
+  if test "$1" == "openstack" -a -z "$OPENSTACKTOKEN"; then shift; OSTACKCMD=("openstack" "$@"); return 0; fi
   if test -z "$EP"; then echo "No translation for $@" 1>&2; return 0; fi
   if test -z "$OPENSTACKCLIENT" -o "$1" == "openstack" -o "$1" == "myopenstack"; then return 0; fi
   if test -n "$LOGFILE"; then echo "#DEBUG: $@" >> $LOGFILE; fi
@@ -2302,7 +2303,7 @@ createVMsAll()
       echo -e "  - iperf3 -Ds" >> $UDTMP
     fi
   elif test -n "$IPERF"; then
-      echo -e "packages:\n  - iperf3 -Ds\nruncmd:\n  - iperf3 -Ds" >> $UDTMP
+      echo -e "packages:\n  - $IPERF3\nruncmd:\n  - iperf3 -Ds" >> $UDTMP
   fi
   declare -a STMS
   if test -n "$VMVOLSIZE"; then
