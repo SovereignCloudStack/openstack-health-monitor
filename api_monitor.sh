@@ -630,7 +630,7 @@ CINDER_EP="${CINDER_EP:-cinderURL}"
 OCTAVIA_EP="${OCTAVIA_EP:${NEUTRON_EP:-octaviaURL}}"
 NEUTRON_EP="${NEUTRON_EP:-neutronURL}"
 GLANCE_EP="${GLANCE_EP:-glanceURL}"
-SWIFT_EP="${SWITF_EP:-swiftURL}"
+SWIFT_EP="${SWIFT_EP:-swiftURL}"
 OSTACKCMD=""; EP=""
 # Translate nova/cinder/neutron ... to openstack commands
 translate()
@@ -1923,6 +1923,7 @@ calcRedirs()
   fi
 }
 
+if [[ "$JHIMG" = "openSUSE"* ]] || [[ "$JHIMG" = "SLES"* ]]; then JHIPERF3=iperf; else JHIPERF3=iperf3; fi
 if [[ "$IMG" = "openSUSE"* ]] || [[ "$IMG" = "SLES"* ]]; then IPERF3=iperf; else IPERF3=iperf3; fi
 
 # JumpHosts creation with SNAT and port forwarding
@@ -1940,7 +1941,7 @@ createJHVMs()
 packages:
   - iptables
   - bc
-  - $IPERF3
+  - $JHIPERF3
 otc:
    internalnet:
       - 10.250/16
@@ -2683,7 +2684,7 @@ $OSTACKRESP
 #!/bin/bash
 let MAXW=90
 while test \$MAXW -ge 1; do
-  if test -e "\$1"; then exit 0; fi
+  if type -p "\$1">/dev/null; then exit 0; fi
   let MAXW-=1
   sleep 1
 done
@@ -2695,7 +2696,7 @@ EOT
     for JHNO in $(seq 0 $(($NOAZS-1))); do
       scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "StrictHostKeyChecking=no" -o "PasswordAuthentication=no" -i $DATADIR/${KEYPAIRS[0]}.pem -p ${RPRE}wait ${USER}@${FLOATS[$JHNO]}: >/dev/null
       if test -n "$LOGFILE"; then echo "ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@${FLOATS[$JHNO]} time echo 'scale=4000; 4*a(1)'" >> $LOGFILE; fi
-      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait /usr/bin/bc; sync; { TIMEFORMAT=%2U; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
+      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait bc; sync; { TIMEFORMAT=%2U; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
       # Handle GNU time output format
       if echo "$BENCH" | grep user >/dev/null 2>&1; then
         BENCH=$(echo "$BENCH" | grep user)
@@ -2882,7 +2883,7 @@ iperf3test()
 #!/bin/bash
 let MAXW=90
 while test \$MAXW -ge 1; do
-  if test -e "\$1"; then exit 0; fi
+  if type -p "\$1">/dev/null; then exit 0; fi
   let MAXW-=1
   sleep 1
 done
@@ -2906,7 +2907,7 @@ EOT
     FLT=${FLOATS[$(($VM%$NOAZS))]}
     scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
     if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
-    IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "./${RPRE}wait /usr/bin/iperf3; iperf3 -t5 -J -c $TGT")
+    IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "./${RPRE}wait iperf3; iperf3 -t5 -J -c $TGT")
     if test $? != 0; then return 1; fi
     if test -n "$LOGFILE"; then echo "$IPJSON" >> $LOGFILE; fi
     SENDBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_sent.bits_per_second'))/1048576))
