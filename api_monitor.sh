@@ -859,7 +859,7 @@ ostackcmd_search()
   local TIM=$(math "%.2f" "$LEND-$LSTART")
   if test "$RC" != "0"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; return $RC; fi
   if test -z "$ID"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP => $SEARCH not found$NORM" 1>&2; return $RC; fi
-  if test "${TIM%.*}" -gt 10; then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; fi
+  if test "${TIM%.*}" -gt $((3+$TIMEOUT/4)); then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; fi
   echo "$TIM $ID $STATUS"
   return $RC
 }
@@ -1923,6 +1923,8 @@ calcRedirs()
   fi
 }
 
+if [[ "$IMG" = "openSUSE"* ]] || [[ "$IMG" = "SLES"* ]]; then IPERF3=iperf; else IPERF3=iperf3; fi
+
 # JumpHosts creation with SNAT and port forwarding
 createJHVMs()
 {
@@ -1938,6 +1940,7 @@ createJHVMs()
 packages:
   - iptables
   - bc
+  - $IPERF3
 otc:
    internalnet:
       - 10.250/16
@@ -2278,8 +2281,6 @@ orderVMs()
     #echo
   done
 }
-
-if [[ "$IMG" = "openSUSE"* ]] || [[ "$IMG" = "SLES"* ]]; then IPERF3=iperf; else IPERF3=iperf3; fi
 
 # Create many VMs with one API call (option -D)
 createVMsAll()

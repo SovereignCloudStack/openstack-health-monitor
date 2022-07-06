@@ -1108,7 +1108,7 @@
           "format": "short",
           "label": "s",
           "logBase": 1,
-          "max": "13",
+          "max": "16",
           "min": "0",
           "show": true
         },
@@ -1633,9 +1633,14 @@
             "selected": false,
             "text": "gx-scs",
             "value": "gx-scs"
+          },
+          {
+            "selected": false,
+            "text": "stackit",
+            "value": "stackit"
           }
         ],
-        "query": "plus-pco, gx-scs",
+        "query": "plus-pco, gx-scs, stackit",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"
@@ -1650,6 +1655,6 @@
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
   "uid": "9ltTEmlnk",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
