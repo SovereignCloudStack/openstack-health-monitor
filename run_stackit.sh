@@ -41,11 +41,11 @@ export NAMESERVER=8.8.8.8
 export EMAIL_PARAM=${EMAIL_PARAM:-"scs@garloff.de"}
 
 # Notifications & Alarms (pass as list, arrays can't be exported)
-ALARM_EMAIL_ADDRESSES="scs@garloff.de"
-NOTE_EMAIL_ADDRESSES="scs@garloff.de"
+#ALARM_EMAIL_ADDRESSES="scs@garloff.de"
+#NOTE_EMAIL_ADDRESSES="scs@garloff.de"
 #ALARM_EMAIL_ADDRESSES="scs@garloff.de scs-monitoring@plusserver.com"
 #NOTE_EMAIL_ADDRESSES="scs@garloff.de"
-export ALARM_EMAIL_ADDRESSES NOTE_EMAIL_ADDRESSES
+#export ALARM_EMAIL_ADDRESSES NOTE_EMAIL_ADDRESSES
 
 # Terminate early on auth error
 openstack server list >/dev/null

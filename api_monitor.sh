@@ -2301,7 +2301,7 @@ createVMsAll()
       echo -e "  - iperf3 -Ds" >> $UDTMP
     fi
   elif test -n "$IPERF"; then
-      echo -e "packages:\n  - iperf3 -Ds" >> $UDTMP
+      echo -e "packages:\n  - iperf3 -Ds\nruncmd:\n  - iperf3 -Ds" >> $UDTMP
   fi
   declare -a STMS
   if test -n "$VMVOLSIZE"; then
