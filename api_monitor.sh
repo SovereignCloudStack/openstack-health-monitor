@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.77
+VERSION=1.78
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -259,6 +259,7 @@ usage()
   echo " -S [NM] sends stats to grafana via local telegraf http_listener (def for NM=api-monitoring)"
   echo " -q     do not send any alarms"
   echo " -d     boot Directly from image (not via volume)"
+  echo " -z SZ  boots VMs from volume of size SZ"
   echo " -P     do not create Port before VM creation"
   echo " -D     create all VMs with one API call (implies -d -P)"
   echo " -i N   sets max number of iterations (def = -1 = inf)"
@@ -310,6 +311,7 @@ while test -n "$1"; do
           if test -n "$2" -a "$2" != "CLEANUP" -a "$2" != "DEPLOY" -a "${2:0:1}" != "-"; then GRAFANANM="$2"; shift; fi;;
     "-P") unset MANUALPORTSETUP;;
     "-d") BOOTFROMIMAGE=1;;
+    "-z") VMVOLSIZE=$2; shift;;
     "-D") BOOTALLATONCE=1; BOOTFROMIMAGE=1; unset MANUALPORTSETUP;;
     "-e") if test -z "$EMAIL"; then EMAIL="$2"; else EMAIL2="$2"; fi; shift;;
     "-m") if test -z "$SMNID"; then SMNID="$2"; else SMNID2="$2"; fi; shift;;
@@ -628,7 +630,7 @@ CINDER_EP="${CINDER_EP:-cinderURL}"
 OCTAVIA_EP="${OCTAVIA_EP:${NEUTRON_EP:-octaviaURL}}"
 NEUTRON_EP="${NEUTRON_EP:-neutronURL}"
 GLANCE_EP="${GLANCE_EP:-glanceURL}"
-SWIFT_EP="${SWITF_EP:-swiftURL}"
+SWIFT_EP="${SWIFT_EP:-swiftURL}"
 OSTACKCMD=""; EP=""
 # Translate nova/cinder/neutron ... to openstack commands
 translate()
@@ -647,7 +649,9 @@ translate()
     fi
   done
   OSTACKCMD=("$@")
-  if test "$1" == "myopenstack" -a -z "$OPENSTACKTOKEN" -o -z "$EP"; then shift; OSTACKCMD=("openstack" "$@"); return 0; fi
+  if test "$1" == "myopenstack" -a -z "$OPENSTACKTOKEN"; then shift; OSTACKCMD=("openstack" "$@"); return 0; fi
+  if test "$1" == "openstack" -a -z "$OPENSTACKTOKEN"; then shift; OSTACKCMD=("openstack" "$@"); return 0; fi
+  if test -z "$EP"; then if test "$1" != "openstack"; then echo "No translation for $@" 1>&2; fi; return 0; fi
   if test -z "$OPENSTACKCLIENT" -o "$1" == "openstack" -o "$1" == "myopenstack"; then return 0; fi
   if test -n "$LOGFILE"; then echo "#DEBUG: $@" >> $LOGFILE; fi
   #echo "#DEBUG: $@" 1>&2
@@ -682,6 +686,12 @@ translate()
     elif test "$DEFCMD" == "volume" -a "$CMD" == "list"; then OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
     elif test "$DEFCMD" == "server" -a "$CMD" == "boot"; then
+      # FIXME: openstack server create does not seem to support vol from image with delete_on_termination=true
+      case "$*" in
+	      *"--block-device "*)
+	OSTACKCMD=(nova boot "$@")
+        return
+      esac
       # Only handles one SG
       ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@')
       #OSTACKCMD=($OPST $DEFCMD create $ARGS)
@@ -851,7 +861,7 @@ ostackcmd_search()
   local TIM=$(math "%.2f" "$LEND-$LSTART")
   if test "$RC" != "0"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; return $RC; fi
   if test -z "$ID"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP => $SEARCH not found$NORM" 1>&2; return $RC; fi
-  if test "${TIM%.*}" -gt 10; then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; fi
+  if test "${TIM%.*}" -gt $((3+$TIMEOUT/4)); then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; fi
   echo "$TIM $ID $STATUS"
   return $RC
 }
@@ -926,7 +936,7 @@ ostackcmd_id()
     echo "$LSTART/$LEND/$ID/$STATUS: ${OSTACKCMD[@]} => $RC ($ID:$STATUS) $RESP" >> $LOGFILE
     if test "$RC" != "0" -a -z "$IGNORE_ERRORS"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; return $RC; fi
   fi
-  if test "${TIM%.*}" -gt 10; then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; fi
+  if test "${TIM%.*}" -gt $((3+$TIMEOUT/4)); then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; fi
   echo "$TIM $ID $STATUS"
   return $RC
 }
@@ -982,7 +992,7 @@ ostackcmd_tm()
 
   eval "${STATNM}+=( $TIM )"
   echo "$LSTART/$LEND/: ${OSTACKCMD[@]} => $RC $OSTACKRESP" >> $LOGFILE
-  if test "${TIM%.*}" -gt 10; then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $OSTACKRESP$NORM" 1>&2; fi
+  if test "${TIM%.*}" -gt $((3+$TIMEOUT/4)); then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $OSTACKRESP$NORM" 1>&2; fi
   return $RC
 }
 
@@ -1915,6 +1925,9 @@ calcRedirs()
   fi
 }
 
+if [[ "$JHIMG" = "openSUSE"* ]] || [[ "$JHIMG" = "SLES"* ]]; then JHIPERF3=iperf; else JHIPERF3=iperf3; fi
+if [[ "$IMG" = "openSUSE"* ]] || [[ "$IMG" = "SLES"* ]]; then IPERF3=iperf; else IPERF3=iperf3; fi
+
 # JumpHosts creation with SNAT and port forwarding
 createJHVMs()
 {
@@ -1930,6 +1943,7 @@ createJHVMs()
 packages:
   - iptables
   - bc
+  - $JHIPERF3
 otc:
    internalnet:
       - 10.250/16
@@ -2271,8 +2285,6 @@ orderVMs()
   done
 }
 
-if [[ "$IMG" = "openSUSE"* ]] || [[ "$IMG" = "SLES"* ]]; then IPERF3=iperf; else IPERF3=iperf3; fi
-
 # Create many VMs with one API call (option -D)
 createVMsAll()
 {
@@ -2290,8 +2302,15 @@ createVMsAll()
     if test -n "$IPERF"; then
       echo -e "  - iperf3 -Ds" >> $UDTMP
     fi
+  elif test -n "$IPERF"; then
+      echo -e "packages:\n  - $IPERF3\nruncmd:\n  - iperf3 -Ds" >> $UDTMP
   fi
   declare -a STMS
+  if test -n "$VMVOLSIZE"; then
+    IMAGE="--block-device id=$IMGID,source=image,dest=volume,size=$VMVOLSIZE,shutdown=remove,bootindex=0"
+  else
+    IMAGE="--image $IMGID"
+  fi
   echo -n "Create VMs in batches: "
   # Can not pass port IDs during boot in batch creation
   if test -n "$SECONDNET" -a -z "$DELAYEDATTACH"; then DELAYEDATTACH=1; fi 
@@ -2299,7 +2318,7 @@ createVMsAll()
     AZ=${AZS[$(($netno%$NOAZS))]}
     THISNOVM=$((($NOVMS+$NONETS-$netno-1)/$NONETS))
     STMS[$netno]=$(date +%s)
-    ostackcmd_tm NOVABSTATS $(($NOVABOOTTIMEOUT+$THISNOVM*$DEFTIMEOUT/2)) nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone $AZ --security-groups ${SGROUPS[1]} --nic net-id=${NETS[$netno]} --user-data $UDTMP ${RPRE}VM_VM_NET$netno --min-count=$THISNOVM --max-count=$THISNOVM
+    ostackcmd_tm NOVABSTATS $(($NOVABOOTTIMEOUT+$THISNOVM*$DEFTIMEOUT/2)) nova boot --flavor $FLAVOR $IMAGE --key-name ${KEYPAIRS[1]} --availability-zone $AZ --security-groups ${SGROUPS[1]} --nic net-id=${NETS[$netno]} --user-data $UDTMP ${RPRE}VM_VM_NET$netno --min-count=$THISNOVM --max-count=$THISNOVM
     let ERRS+=$?
     # TODO: More error handling here?
   done
@@ -2321,11 +2340,16 @@ createVMs()
     echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}$no\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP.$no
   done
   if test -n "$BOOTFROMIMAGE"; then
+    if test -n "$VMVOLSIZE"; then
+      IMAGE="--block-device id=$IMGID,source=image,dest=volume,size=$VMVOLSIZE,shutdown=remove,bootindex=0"
+    else
+      IMAGE="--image $IMGID"
+    fi
     if test -n "$MANUALPORTSETUP"; then
-      createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
+      createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR $IMAGE --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
     else
       # SAVE: createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
-      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --image $IMGID --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
+      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR $IMAGE --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" --user-data $UDTMP.\$no ${RPRE}VM_VM\$no
     fi
   else
     if test -n "$MANUALPORTSETUP"; then
@@ -2664,7 +2688,7 @@ $OSTACKRESP
 #!/bin/bash
 let MAXW=90
 while test \$MAXW -ge 1; do
-  if test -e "\$1"; then exit 0; fi
+  if type -p "\$1">/dev/null; then exit 0; fi
   let MAXW-=1
   sleep 1
 done
@@ -2676,7 +2700,7 @@ EOT
     for JHNO in $(seq 0 $(($NOAZS-1))); do
       scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "StrictHostKeyChecking=no" -o "PasswordAuthentication=no" -i $DATADIR/${KEYPAIRS[0]}.pem -p ${RPRE}wait ${USER}@${FLOATS[$JHNO]}: >/dev/null
       if test -n "$LOGFILE"; then echo "ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@${FLOATS[$JHNO]} time echo 'scale=4000; 4*a(1)'" >> $LOGFILE; fi
-      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait /usr/bin/bc; sync; { TIMEFORMAT=%2U; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
+      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait bc; sync; { TIMEFORMAT=%2U; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
       # Handle GNU time output format
       if echo "$BENCH" | grep user >/dev/null 2>&1; then
         BENCH=$(echo "$BENCH" | grep user)
@@ -2863,7 +2887,7 @@ iperf3test()
 #!/bin/bash
 let MAXW=90
 while test \$MAXW -ge 1; do
-  if test -e "\$1"; then exit 0; fi
+  if type -p "\$1">/dev/null; then exit 0; fi
   let MAXW-=1
   sleep 1
 done
@@ -2883,11 +2907,12 @@ EOT
   echo -n "IPerf3 tests:"
   for VM in $(seq 0 $((NONETS-1))); do
     TGT=${IPS[$VM]}
-    SRC=${IPS[$VM+$NOVMS-$NONETS]}
+    SRC=${IPS[$(($VM+$NOVMS-$NONETS))]}
     FLT=${FLOATS[$(($VM%$NOAZS))]}
+    #echo -n "Test ($SRC,$(($VM+$NOVMS-$NONETS)),$FLT/$pno)->$TGT: "
     scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
     if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
-    IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "./${RPRE}wait /usr/bin/iperf3; iperf3 -t5 -J -c $TGT")
+    IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "./${RPRE}wait iperf3; iperf3 -t5 -J -c $TGT")
     if test $? != 0; then return 1; fi
     if test -n "$LOGFILE"; then echo "$IPJSON" >> $LOGFILE; fi
     SENDBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_sent.bits_per_second'))/1048576))
@@ -3283,6 +3308,7 @@ getToken()
   OCTAVIA_EP=$(getPublicEP octavia)
   SWIFT_EP=$(getPublicEP swift)
   if test -z "$OCTAVIA_EP"; then OCTAVIA_EP="$NEUTRON_EP"; fi
+  if test -z "$SWIFT_EP"; then SWIFT_EP=$(getPublicEP radosgw-swift); fi
   #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP"
   ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
   TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')

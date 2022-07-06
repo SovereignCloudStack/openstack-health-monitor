@@ -18,14 +18,27 @@
       }
     ]
   },
-  "description": "",
+  "description": "OpenStack scenario testing https://github.com/SovereignCloudStack/openstack-health-monitor",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": 2,
-  "iteration": 1652870179241,
-  "links": [],
-  "liveNow": false,
+  "iteration": 1653028191455,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": false,
+      "title": "openstack-health-monitor (github)",
+      "tooltip": "",
+      "type": "link",
+      "url": "https://github.com/SovereignCloudStack/openstack-health-monitor"
+    }
+  ],
+  "liveNow": true,
   "panels": [
     {
       "description": "",
@@ -39,7 +52,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               }
             ]
           }
@@ -85,7 +99,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -134,7 +148,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "#EAB839",
@@ -182,7 +197,7 @@
               "type": "time"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -233,7 +248,8 @@
             "mode": "percentage",
             "steps": [
               {
-                "color": "red"
+                "color": "red",
+                "value": null
               },
               {
                 "color": "#EAB839",
@@ -281,10 +297,10 @@
               "type": "time"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"gx-scs\" WHERE (\"cmd\" =~ /^$mycmd$/ AND \"method\" =~ /^$mymethod$/) AND $timeFilter",
+          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"$mycloud\" WHERE (\"cmd\" =~ /^$mycmd$/ AND \"method\" =~ /^$mymethod$/) AND $timeFilter",
           "rawQuery": true,
           "refId": "A",
           "resultFormat": "time_series",
@@ -332,7 +348,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               }
             ]
           }
@@ -378,10 +395,10 @@
               "type": "fill"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT count(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval) fill(null)",
+          "query": "SELECT count(\"return_code\") FROM \"$mycloud\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval) fill(null)",
           "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
@@ -423,7 +440,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "#EAB839",
@@ -471,10 +489,10 @@
               "type": "time"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT sum(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval)",
+          "query": "SELECT sum(\"return_code\") FROM \"$mycloud\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval)",
           "rawQuery": true,
           "refId": "A",
           "resultFormat": "time_series",
@@ -518,7 +536,8 @@
             "mode": "percentage",
             "steps": [
               {
-                "color": "red"
+                "color": "red",
+                "value": null
               },
               {
                 "color": "#EAB839",
@@ -566,10 +585,10 @@
               "type": "time"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "$mycloud",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"gx-scs\" WHERE (\"cmd\" = 'ssh') AND $timeFilter",
+          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"$mycloud\" WHERE (\"cmd\" = 'ssh') AND $timeFilter",
           "rawQuery": true,
           "refId": "A",
           "resultFormat": "time_series",
@@ -617,7 +636,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               }
             ]
           }
@@ -663,10 +683,10 @@
               "type": "fill"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT count(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval) fill(null)",
+          "query": "SELECT count(\"return_code\") FROM \"$mycloud\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval) fill(null)",
           "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
@@ -708,7 +728,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "#EAB839",
@@ -756,10 +777,10 @@
               "type": "time"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT sum(\"return_code\") FROM \"gx-scs\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval)",
+          "query": "SELECT sum(\"return_code\") FROM \"$mycloud\" WHERE (\"cmd\" = 'ssh') AND $timeFilter GROUP BY time($__interval)",
           "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
@@ -871,7 +892,7 @@
               "type": "tag"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -1031,10 +1052,10 @@
             }
           ],
           "hide": false,
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT \"duration\" FROM \"gx-scs\" WHERE $timeFilter GROUP BY time($__interval) fill(none)",
+          "query": "SELECT \"duration\" FROM \"$mycloud\" WHERE $timeFilter GROUP BY time($__interval) fill(none)",
           "rawQuery": false,
           "refId": "All",
           "resultFormat": "time_series",
@@ -1087,7 +1108,7 @@
           "format": "short",
           "label": "s",
           "logBase": 1,
-          "max": "13",
+          "max": "16",
           "min": "0",
           "show": true
         },
@@ -1171,7 +1192,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -1301,7 +1322,7 @@
               "type": "fill"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -1410,6 +1431,10 @@
       "steppedLine": false,
       "targets": [
         {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "kOQ-cJwnk"
+          },
           "groupBy": [
             {
               "params": [
@@ -1422,15 +1447,9 @@
                 "cmd"
               ],
               "type": "tag"
-            },
-            {
-              "params": [
-                "none"
-              ],
-              "type": "fill"
             }
           ],
-          "measurement": "gx-scs",
+          "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
           "refId": "A",
@@ -1495,7 +1514,7 @@
       }
     }
   ],
-  "refresh": "",
+  "refresh": false,
   "schemaVersion": 34,
   "style": "dark",
   "tags": [],
@@ -1504,8 +1523,8 @@
       {
         "current": {
           "selected": false,
-          "text": "neutron",
-          "value": "neutron"
+          "text": "All",
+          "value": "$__all"
         },
         "definition": "show tag values with key = cmd",
         "hide": 0,
@@ -1592,6 +1611,39 @@
         "tagsQuery": "",
         "type": "query",
         "useTags": false
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "plus-pco",
+          "value": "plus-pco"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Cloud",
+        "multi": false,
+        "name": "mycloud",
+        "options": [
+          {
+            "selected": true,
+            "text": "plus-pco",
+            "value": "plus-pco"
+          },
+          {
+            "selected": false,
+            "text": "gx-scs",
+            "value": "gx-scs"
+          },
+          {
+            "selected": false,
+            "text": "stackit",
+            "value": "stackit"
+          }
+        ],
+        "query": "plus-pco, gx-scs, stackit",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
       }
     ]
   },
@@ -1603,6 +1655,6 @@
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
   "uid": "9ltTEmlnk",
-  "version": 11,
+  "version": 2,
   "weekStart": ""
 }
