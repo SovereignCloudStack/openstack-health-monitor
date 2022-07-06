@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.77
+VERSION=1.78
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -649,7 +649,7 @@ translate()
     fi
   done
   OSTACKCMD=("$@")
-  if test "$1" == "myopenstack" -a -z "$OPENSTACKTOKEN" -o -z "$EP"; then shift; OSTACKCMD=("openstack" "$@"); return 0; fi
+  if test "$1" == "myopenstack" -a -z "$OPENSTACKTOKEN" -o -z "$EP"; then shift; OSTACKCMD=("openstack" "$@"); echo "No translation for $ORIGCMD $@: $EP" 1>&2; return 0; fi
   if test -z "$OPENSTACKCLIENT" -o "$1" == "openstack" -o "$1" == "myopenstack"; then return 0; fi
   if test -n "$LOGFILE"; then echo "#DEBUG: $@" >> $LOGFILE; fi
   #echo "#DEBUG: $@" 1>&2
@@ -934,7 +934,7 @@ ostackcmd_id()
     echo "$LSTART/$LEND/$ID/$STATUS: ${OSTACKCMD[@]} => $RC ($ID:$STATUS) $RESP" >> $LOGFILE
     if test "$RC" != "0" -a -z "$IGNORE_ERRORS"; then echo "$TIM $RC"; echo -e "${YELLOW}ERROR: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; return $RC; fi
   fi
-  if test "${TIM%.*}" -gt 10; then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; fi
+  if test "${TIM%.*}" -gt $((3+$TIMEOUT/4)); then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $RESP$NORM" 1>&2; fi
   echo "$TIM $ID $STATUS"
   return $RC
 }
@@ -990,7 +990,7 @@ ostackcmd_tm()
 
   eval "${STATNM}+=( $TIM )"
   echo "$LSTART/$LEND/: ${OSTACKCMD[@]} => $RC $OSTACKRESP" >> $LOGFILE
-  if test "${TIM%.*}" -gt 10; then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $OSTACKRESP$NORM" 1>&2; fi
+  if test "${TIM%.*}" -gt $((3+$TIMEOUT/4)); then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $OSTACKRESP$NORM" 1>&2; fi
   return $RC
 }
 
@@ -2300,6 +2300,8 @@ createVMsAll()
     if test -n "$IPERF"; then
       echo -e "  - iperf3 -Ds" >> $UDTMP
     fi
+  elif test -n "$IPERF"; then
+      echo -e "packages:\n  - iperf3 -Ds" >> $UDTMP
   fi
   declare -a STMS
   if test -n "$VMVOLSIZE"; then
@@ -2903,8 +2905,9 @@ EOT
   echo -n "IPerf3 tests:"
   for VM in $(seq 0 $((NONETS-1))); do
     TGT=${IPS[$VM]}
-    SRC=${IPS[$VM+$NOVMS-$NONETS]}
+    SRC=${IPS[$(($VM+$NOVMS-$NONETS))]}
     FLT=${FLOATS[$(($VM%$NOAZS))]}
+    #echo -n "Test ($SRC,$(($VM+$NOVMS-$NONETS)),$FLT/$pno)->$TGT: "
     scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
     if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
     IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "./${RPRE}wait iperf3; iperf3 -t5 -J -c $TGT")
@@ -3303,6 +3306,7 @@ getToken()
   OCTAVIA_EP=$(getPublicEP octavia)
   SWIFT_EP=$(getPublicEP swift)
   if test -z "$OCTAVIA_EP"; then OCTAVIA_EP="$NEUTRON_EP"; fi
+  if test -z "$SWIFT_EP"; then SWIFT_EP=$(getPublicEP radosgw-swift); fi
   #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP"
   ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
   TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')
