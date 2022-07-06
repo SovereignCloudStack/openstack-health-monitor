@@ -649,7 +649,8 @@ translate()
     fi
   done
   OSTACKCMD=("$@")
-  if test "$1" == "myopenstack" -a -z "$OPENSTACKTOKEN" -o -z "$EP"; then shift; OSTACKCMD=("openstack" "$@"); echo "No translation for $ORIGCMD $@: $EP" 1>&2; return 0; fi
+  if test "$1" == "myopenstack" -a -z "$OPENSTACKTOKEN"; then shift; OSTACKCMD=("openstack" "$@"); return 0; fi
+  if test -z "$EP"; then echo "No translation for $@" 1>&2; return 0; fi
   if test -z "$OPENSTACKCLIENT" -o "$1" == "openstack" -o "$1" == "myopenstack"; then return 0; fi
   if test -n "$LOGFILE"; then echo "#DEBUG: $@" >> $LOGFILE; fi
   #echo "#DEBUG: $@" 1>&2
