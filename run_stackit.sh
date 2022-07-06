@@ -6,15 +6,15 @@
 # You can freely mix ...
 export JHIMG="Ubuntu 20.04"
 #export JHIMG="openSUSE 15.2"
-export ADDJHVOLSIZE=10
+export ADDJHVOLSIZE=5
 export IMG="Ubuntu 20.04"
 #export IMG="openSUSE 15.2"
 export ADDVOLSIZE=10
 #export IMG="CentOS 8"
 # DEFLTUSER from image_original_user property
 #export DEFLTUSER=opensuse
-#export DEFLTUSER=ubuntu
-#export JHDEFLTUSER=ubuntu
+export DEFLTUSER=ubuntu
+export JHDEFLTUSER=ubuntu
 # You can use a filter when listing images (because your catalog is huge)
 #export JHIMGFILT="--property-filter os_version=openSUSE-15.0"
 #export IMGFILT="--property-filter os_version=openSUSE-15.0"
@@ -90,6 +90,6 @@ done
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
 #exec api_monitor.sh -o -C -D -N 2 -n 8 -s -e sender@domain.org "$@"
 #exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -a 2 -T -R "$@"
-exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -b -B -a 2 -T -R -S gx-scs "$@"
+exec ./api_monitor.sh -O -C -D -N 4 -n 8 -s -b -B -a 2 -z 5 -T -R -S gx-scs "$@"
 #exec ./api_monitor.sh -o -C -D -N 2 -n 8 -s -L -b -B -a 2 -T -R "$@"
 
