@@ -3346,7 +3346,8 @@ createnewprj()
 compress_and_upload()
 {
   local SZ=$(stat -c %s "$1") || return
-  local COMP EXT RESP
+  local COMP EXT RESP OLDLF
+  OLDLF="$LOGFILE"
   if test $SZ -gt 1000; then
     COMP=gzip; EXT=.gz
     if test $SZ -gt 1000000; then COMP=xz; EXT=.xz; fi
@@ -3356,8 +3357,7 @@ compress_and_upload()
     LOGFILE="${LOGFILE%/*}/.${LOGFILE##*/}.swift"
     RESP=$(ostackcmd_id etag $CINDERTIMEOUT swift upload "$SWIFTCONTAINER" "$1$EXT")
     if test $? = 0; then rm "$1$EXT"; fi
-    LOGFILE="${LOGFILE%.swift}"
-    LOGFILE="${LOGFILE#.}"
+    LOGFILE="$OLDLF"
   elif test -n "$S3BUCKET"; then
     MTYPE=$(file -i "$1$EXT")
     if test -n "$MTYPE"; then MTYPE="contentType=$MTYPE"; fi
