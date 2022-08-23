@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.78
+VERSION=1.79
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -127,6 +127,7 @@ SHPRJ="${OS_PROJECT_NAME%_Project}"
 ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_REGION_NAME}/${SHPRJ#*_}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
 GRAFANANM="${GRAFANANM:-api-monitoring}"
+WAITLB=${WAITLB:-15}
 
 # Number of VMs and networks
 if test -z "$AZS"; then
@@ -276,7 +277,8 @@ usage()
   echo " -O     like -o, but use token_endpoint auth (after getting token)"
   echo " -x     assume eXclusive project, clean all floating IPs found"
   echo " -I     dIsassociate floating IPs before deleting them"
-  echo " -L     create Loadbalancer (LBaaSv2/octavia) and test it"
+  echo " -L     create HTTP Loadbalancer (LBaaSv2/octavia) and test it"
+  echo " -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -b     run a simple compute benchmark"
   echo " -B     run iperf3"
   echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
@@ -334,6 +336,7 @@ while test -n "$1"; do
     "-I") DISASSOC=1;;
     "-r") ROUTERITER=$2; shift;;
     "-L") LOADBALANCER=1;;
+    "-LL") LOADBALANCER=1; TCP_LB=1;;
     "-b") BCBENCH=1;;
     "-B") IPERF=1;;
     "-t") let TIMEOUTFACT+=1;;
@@ -711,6 +714,7 @@ translate()
     if test "$C1" == "keypair" -a "$CMD" == "add"; then CMD="create"; fi
     C1=${C1//-/ }
     shift
+    if test "$CMD" == "show" -o "$CMD" == "list"; then LWAIT=""; else LWAIT="$LBWAIT"; fi
     #OSTACKCMD=($OPST $C1 $CMD $MYTAG "$@")
     OSTACKCMD=($OPST $C1 $CMD $MYTAG "${@//--property-filter/--property}")
     if test "$C1" == "subnet" -a "$CMD" == "create"; then
@@ -772,7 +776,7 @@ translate()
 	ARGS=$(echo "$@")
       fi
       EP="$OCTAVIA_EP"
-      OSTACKCMD=($OPST loadbalancer pool $CMD $LBWAIT $ARGS)
+      OSTACKCMD=($OPST loadbalancer pool $CMD $LWAIT $ARGS)
     elif test "$C1" == "lbaas listener"; then
       EP="$OCTAVIA_EP"
       if test -n "$OLD_OCTAVIA"; then
@@ -780,7 +784,7 @@ translate()
       else
 	ARGS=$(echo "$@" | sed 's/\-\-loadbalancer / /')
       fi
-      OSTACKCMD=($OPST loadbalancer listener $CMD $LBWAIT $ARGS)
+      OSTACKCMD=($OPST loadbalancer listener $CMD $LWAIT $ARGS)
     elif test "$C1" == "lbaas member"; then
       EP="$OCTAVIA_EP"
       if test -n "$OLD_OCTAVIA"; then
@@ -788,8 +792,8 @@ translate()
       else
 	ARGS=$(echo "$@" | sed -e 's/\-\-subnet\-id [^ ]*/ /g')
       fi
-      OSTACKCMD=($OPST loadbalancer member $CMD $LBWAIT $ARGS)
-      #OSTACKCMD=(openstack loadbalancer member $CMD $LBWAIT $ARGS)
+      OSTACKCMD=($OPST loadbalancer member $CMD $LWAIT $ARGS)
+      #OSTACKCMD=(openstack loadbalancer member $CMD $LWAIT $ARGS)
     elif test "$C1" == "lbaas healthmonitor"; then
       EP="$OCTAVIA_EP"
       if test -n "$OLD_OCTAVIA"; then
@@ -797,7 +801,7 @@ translate()
       else
         ARGS=$(echo "$@" | sed 's/\-\-pool //')
       fi
-      OSTACKCMD=($OPST loadbalancer healthmonitor $CMD $LBWAIT $ARGS)
+      OSTACKCMD=($OPST loadbalancer healthmonitor $CMD $LWAIT $ARGS)
     fi
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
   fi
@@ -2149,11 +2153,63 @@ waitdelLBs()
   fi
 }
 
+# $1 ARRAY
+# $2 index
+arrelem()
+{
+  local i=0
+  rst="$1"
+  while test -n "$rst"; do
+    if test $i = $2; then echo "${rst%% *}"; break; fi
+    if test "$rst" == "${rst#* }"; then break
+    else rst="${rst#* }"
+    fi
+    let i+=1
+  done
+}
+
+# $1 ARRAY
+# $2 index
+arrline()
+{
+  local i=0
+  while read line; do
+    if test $i = $2; then echo "$line"; break; fi
+    let i+=1
+  done < <(echo "$1")
+}
+
+killhttp()
+{
+  HALF=$((NOVMS/2))
+  killed=0
+  for i in $(seq 0 $((NOVMS-1))); do
+    if test $RANDOM -ge 16384; then continue; fi
+    JHNO=$((i%NOAZS))
+    rix=$((i/$NOAZS))
+    reds="${REDIRS[$JHNO]}"
+    red=$(arrline "$reds" $rix)
+    pno=${red#*tcp,}
+    pno=${pno%%,*}
+    #echo "DEBUG: $i: $JHNO/$rix $red $pno "
+    #testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
+    echo -n "$i: ${FLOATS[$JHNO]}:$pno (VM_VM_NET$(($i%$NONETS))_$(($i/$NONETS+1))) "
+    HOSTN=$(ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${DEFLTUSER}@${FLOATS[$JHNO]} "cat /var/run/www/htdocs/hostname; sudo killall python3")
+    if test $? == 0; then echo -n "($HOSTN) "; else -n "ERROR "; fi
+    #ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${DEFLTUSER}@${FLOATS[$JHNO]} "cat /var/run/www/htdocs/hostname; sudo killall python3"
+    let killed+=1
+    if test $killed -ge $HALF; then return; fi
+  done
+}
+
+
 testLBs()
 {
   local ERR=0
   echo -n "LBaaS2 "
-  createResources 1 LBSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol HTTP --lb-algorithm=ROUND_ROBIN --session-persistence type=HTTP_COOKIE --loadbalancer ${LBAASS[0]} # --wait
+  if test "$TCP_LB" = "1"; then echo -n "(TCP) "; PROTO=TCP; unset SESSPERS; unset URLPATH
+  else echo -n "(HTTP) "; PROTO=HTTP; SESSPERS="--session persistence type=HTTP_COOKIE"; URLPATH="--url-path /hostname"; fi
+  createResources 1 LBSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol $PROTO --lb-algorithm=ROUND_ROBIN $SESSPERS --loadbalancer ${LBAASS[0]} # --wait
   RC=$?
   let ERR+=$RC
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
@@ -2162,7 +2218,10 @@ testLBs()
     handleWaitErr "LB pool" LBSTATS $NETTIMEOUT neutron lbaas-pool-show
   fi
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
-  createResources 1 LBSTATS LISTENER POOL LBAAS "" id $FIPTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol HTTP --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
+  # FIXME: Normally, we should create listener -> pool -> hm, members
+  # https://docs.openstack.org/octavia/latest/user/guides/basic-cookbook.html
+  # For historical (OTC?) reasons, we create the pool b/f the listener
+  createResources 1 LBSTATS LISTENER POOL LBAAS "" id $FIPTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol $PROTO --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
   RC=$?
   let ERR+=$RC
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
@@ -2182,19 +2241,39 @@ testLBs()
   LBIP=$(echo "$OSTACKRESP" | grep ' floating_ip_address ' | sed 's/^|[^|]*| *\([a-f0-9:\.]*\).*$/\1/')
   LBFIPS=( $(echo "$OSTACKRESP" | grep ' id ' | sed 's/^|[^|]*| *\([a-f0-9\-]*\).*$/\1/') )
   echo "${LBFIPS[0]}"
+  if test "$STATE" != "ACTIVE"; then sleep 1; fi
+  createResources 1 LBSTATS HEALTHMON POOL NONE "" id $FIPTIMEOUT neutron lbaas-healthmonitor-create --name "${RPRE}HealthMon_0" --delay 3 --timeout 2 --max-retries 1 --max-retries-down 1 --type $PROTO $URLPATH --pool ${POOLS[0]}
+  let ERR+=$?
   #echo "DEBUG: IPS ${IPS[*]} SUBNETS ${SUBNETS[*]}"
   createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id \${SUBNETS[\$\(\(no%$NONETS\)\)]} --protocol-port 80 ${POOLS[0]}
-  #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $((FIPTIMEOUT+2)) neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id ${JHSUBNETS[0]} --protocol-port 80 ${POOLS[0]}
   #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   RC=$?
   let ERR+=$RC
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
-  # TODO: Implement health monitors?
-  createResources 1 LBSTATS HEALTHMON POOL NONE "" id $FIPTIMEOUT neutron lbaas-healthmonitor-create --name "${RPRE}HealthMon_0" --delay 3 --timeout 2 --max-retries 1 --type HTTP --url-path /hostname --pool ${POOLS[0]}
-  let ERR+=$?
-  if test "$STATE" != "ACTIVE"; then sleep 1; fi
   echo -n "Test LB at $LBIP:"
+  # Access LB NOVMS times (RR -> each server gets one request)
+  for i in $(seq 0 $NOVMS); do
+    ANS=$(curl -m4 http://$LBIP/hostname 2>/dev/null)
+    RC=$?
+    echo -n " $ANS"
+    if test $RC != 0; then
+      let ERR+=1
+      errwait $ERRWAIT
+    fi
+  done
+  ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
+  echo " $OSTACKRESP"
+  if test "$OSTACKRESP" != "ONLINE"; then let ERR+=1; fi
+  # Kill some backends
+  echo -n "Kill backends: "
+  killhttp
+  sleep $((1+WAITLB))
+  # TODO: Test for degraded status of pool, ERROR for members
+  ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
+  echo $OSTACKRESP
+  if test "$OSTACKRESP" != "DEGRADED"; then let ERR+=1; fi
+  echo -n "Retest LB at $LBIP (after $((1+WAITLB)) s):"
   # Access LB NOVMS times (RR -> each server gets one request)
   for i in $(seq 0 $NOVMS); do
     ANS=$(curl -m4 http://$LBIP/hostname 2>/dev/null)
@@ -2210,7 +2289,6 @@ testLBs()
     sendalarm 2 "Errors connecting to LB $LBIP port 80" "$ERR" 4
     if test -n "$EXITERR"; then exit 3; fi
   fi
-  # TODO: With health monitors, we could now retry after killing a few instances' http server ...
   LBERRORS+=$ERR
   return $ERR
 }
@@ -2219,11 +2297,11 @@ cleanLBs()
 {
   if test -z "$LBAASS"; then return; fi
   echo -n "LBaaS2 "
-  deleteResources LBSTATS HEALTHMON "" $FIPTIMEOUT neutron lbaas-healthmonitor-delete
-  if test "$STATE" = "PENDING_DELETE"; then sleep 1; fi
-  echo -n " "
   deleteResources LBSTATS MEMBER "" $FIPTIMEOUT neutron lbaas-member-delete ${POOLS[0]}
   # FIXME: Wait until they're gone
+  if test "$STATE" = "PENDING_DELETE"; then sleep 1; fi
+  echo -n " "
+  deleteResources LBSTATS HEALTHMON "" $FIPTIMEOUT neutron lbaas-healthmonitor-delete
   if test "$STATE" = "PENDING_DELETE"; then sleep 1; fi
   echo -n " "
   deleteResources LBSTATS LISTENER "" $FIPTIMEOUT neutron lbaas-listener-delete
@@ -2581,11 +2659,13 @@ BENCH=""
 testlsandping()
 {
   unset SSH_AUTH_SOCK
+  # Jumphost
   if test -z "$3" -o "$3" = "22"; then
     MAXWAIT=36
     unset pport
     ssh-keygen -R $2 -f ~/.ssh/known_hosts.$RPRE >/dev/null 2>&1
     USER="$JHDEFLTUSER"
+  # VM
   else
     MAXWAIT=26
     pport="-p $3"
@@ -2983,7 +3063,11 @@ stats()
   if test -n "$MACHINE"; then
     echo "#$NM: $NO|$MIN|$MED|$AVG|$NFP|$MAX" | tee -a $LOGFILE
   else
-    echo "$NAME: Num $NO Min $MIN Med $MED Avg $AVG $PCT% $NFP Max $MAX" | tee -a $LOGFILE
+    if test $PCT -ge 50; then
+      echo "$NAME: Num $NO Min $MIN Med $MED Avg $AVG $PCT% $NFP Max $MAX" | tee -a $LOGFILE
+    else
+      echo "$NAME: Num $NO Min $MIN $PCT% $NFP Med $MED Avg $AVG Max $MAX" | tee -a $LOGFILE
+    fi
   fi
 }
 
