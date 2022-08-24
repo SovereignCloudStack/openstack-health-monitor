@@ -2314,7 +2314,7 @@ testLBs()
   done
   echo
   if test $LBERR != 0; then
-    sendalarm 2 "Errors connecting to LB $LBIP port 80" "$LBERR" 4
+    sendalarm 2 "Errors connecting to LB $LBIP port 80: $ERRREASON" "$LBERR" 4
     if test -n "$EXITERR"; then exit 3; fi
   fi
   LBERRORS+=$LBERR
