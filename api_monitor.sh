@@ -611,6 +611,34 @@ errwait()
   fi
 }
 
+# Helper: get $2th element of $1
+# $1 => "Space separated array"
+# $2 => index
+arrelem()
+{
+  local i=0
+  rst="$1"
+  while test -n "$rst"; do
+    if test $i = $2; then echo "${rst%% *}"; break; fi
+    if test "$rst" == "${rst#* }"; then break
+    else rst="${rst#* }"
+    fi
+    let i+=1
+  done
+}
+
+# Helper: get $2th element of $1
+# $1 => "Newline separated array"
+# $2 => index
+arrline()
+{
+  local i=0
+  while read line; do
+    if test $i = $2; then echo "$line"; break; fi
+    let i+=1
+  done < <(echo "$1")
+}
+
 
 # Timeout killer
 # $1 => PID to kill
@@ -1929,6 +1957,26 @@ calcRedirs()
   fi
 }
 
+VMINFO=()
+## Collect information on VM ...
+# $1 => Number of VM
+# fill in VMINFO array
+# UUID, PORTUUID, AZNO, NETNO, NETIDX, NAME, FIP, PORT, USERNM
+vmInfo()
+{
+  # UUID is trival, as is PORTUUID
+  local AZNO NETNO NETIDX NAME FIP PORT USERNM
+  AZNO=$(($1%$NOAZS))
+  NETNO=$(($1%$NONETS))
+  NETIDX=$(($1/$NONETS))
+  NAME=VM_VM_NET${NETNO}_$(($NETIDX+1))
+  FIP=${FLOATS[$AZNO]}
+  PORT=$(arrline "${REDIRS[$AZNO]}" $(($1/NOAZS)))
+  PORT=${PORT#*tcp,}
+  PORT=${PORT%%,*}
+  VMINFO=(${VMS[$1]} ${PORTS[$1]} $AZNO $NETNO $NETIDX $NAME $FIP $PORT $DEFLTUSER)
+}
+
 if [[ "$JHIMG" = "openSUSE"* ]] || [[ "$JHIMG" = "SLES"* ]]; then JHIPERF3=iperf; else JHIPERF3=iperf3; fi
 if [[ "$IMG" = "openSUSE"* ]] || [[ "$IMG" = "SLES"* ]]; then IPERF3=iperf; else IPERF3=iperf3; fi
 
@@ -2153,65 +2201,51 @@ waitdelLBs()
   fi
 }
 
-# $1 ARRAY
-# $2 index
-arrelem()
-{
-  local i=0
-  rst="$1"
-  while test -n "$rst"; do
-    if test $i = $2; then echo "${rst%% *}"; break; fi
-    if test "$rst" == "${rst#* }"; then break
-    else rst="${rst#* }"
-    fi
-    let i+=1
-  done
-}
-
-# $1 ARRAY
-# $2 index
-arrline()
-{
-  local i=0
-  while read line; do
-    if test $i = $2; then echo "$line"; break; fi
-    let i+=1
-  done < <(echo "$1")
-}
-
 killhttp()
 {
   HALF=$((NOVMS/2))
   killed=0
   for i in $(seq 0 $((NOVMS-1))); do
     if test $RANDOM -ge 16384; then continue; fi
-    JHNO=$((i%NOAZS))
-    rix=$((i/$NOAZS))
-    reds="${REDIRS[$JHNO]}"
-    red=$(arrline "$reds" $rix)
-    pno=${red#*tcp,}
-    pno=${pno%%,*}
-    #echo "DEBUG: $i: $JHNO/$rix $red $pno "
+    vmInfo $i
+    # (0)UUID, (1)PORTUUID, (2)AZNO, (3)NETNO, (4)NETIDX, (5)NAME, (6)FIP, (7)PORT, (8)USERNM
+    #echo "DEBUG: $i: ${VMINFO[*]}"
     #testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
-    echo -n "$i: ${FLOATS[$JHNO]}:$pno (VM_VM_NET$(($i%$NONETS))_$(($i/$NONETS+1))) "
-    HOSTN=$(ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${DEFLTUSER}@${FLOATS[$JHNO]} "cat /var/run/www/htdocs/hostname; sudo killall python3")
+    echo -n "$i: ${VMINFO[6]}[${VMINFO[2]}]}:${VMINFO[7]} ($VMINFO[5]}) "
+    HOSTN=$(ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${VMINFO[8]}@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3")
     if test $? == 0; then echo -n "($HOSTN) "; else -n "ERROR "; fi
-    #ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${DEFLTUSER}@${FLOATS[$JHNO]} "cat /var/run/www/htdocs/hostname; sudo killall python3"
+    #ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${VMINFO[8]}@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3"
     let killed+=1
     if test $killed -ge $HALF; then return; fi
   done
 }
 
 
+ERRREASON=""
+LBERR=0
+RC=0
+## Handle LB Errors
+# $1 => $RC
+# $2-* => Error text
+handleLBErr()
+{
+  RC=$1
+  local ABORT=$2
+  shift; shift
+  if test $RC = 0; then return; fi
+  ERRREASON="$ERRREASON$* "
+  let LBERR+=$RC
+}
+
 testLBs()
 {
-  local ERR=0
+  LBERR=0
+  ERRREASON=""
   echo -n "LBaaS2 "
   if test "$TCP_LB" = "1"; then echo -n "(TCP) "; PROTO=TCP; unset SESSPERS; unset URLPATH
   else echo -n "(HTTP) "; PROTO=HTTP; SESSPERS="--session persistence type=HTTP_COOKIE"; URLPATH="--url-path /hostname"; fi
   createResources 1 LBSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol $PROTO --lb-algorithm=ROUND_ROBIN $SESSPERS --loadbalancer ${LBAASS[0]} # --wait
-  RC=$?
-  let ERR+=$RC
+  handleLBErr $? "PoolCreate"
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test -z "$LBWAIT"; then
     waitlistResources LBSTATS POOL NONE NONE "ACTIVE" "NONONO" 4 $NETTIMEOUT neutron lbaas-pool-list
@@ -2222,8 +2256,7 @@ testLBs()
   # https://docs.openstack.org/octavia/latest/user/guides/basic-cookbook.html
   # For historical (OTC?) reasons, we create the pool b/f the listener
   createResources 1 LBSTATS LISTENER POOL LBAAS "" id $FIPTIMEOUT neutron lbaas-listener-create --name "${RPRE}Listener_0" --default-pool ${POOLS[0]} --protocol $PROTO --protocol-port 80 --loadbalancer ${LBAASS[0]} # --wait
-  RC=$?
-  let ERR+=$RC
+  handleLBErr $? "ListenerCreate"
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test -z "$LBWAIT"; then
     waitResources LBSTATS LISTENER NONE NONE "ACTIVE" "NONONO" "provisioning_status" $NETTIMEOUT neutron lbaas-listener-show
@@ -2233,64 +2266,59 @@ testLBs()
   # For now push member creation after FIP allocation
   # Assign a FIP to the LB
   ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show ${LBAASS[0]} -f value -c vip_port_id
-  let ERR+=$?
+  handleLBErr $? "ShowLB"
   LBPORT=$OSTACKRESP
   echo -n "Attach FIP to LB port $LBPORT: "
   ostackcmd_tm FIPSTATS $FIPTIMEOUT neutron floatingip-create --port $LBPORT --description ${RPRE}LB $EXTNET
-  let ERR+=$?
+  handleLBErr $? "FIPCreate"
   LBIP=$(echo "$OSTACKRESP" | grep ' floating_ip_address ' | sed 's/^|[^|]*| *\([a-f0-9:\.]*\).*$/\1/')
   LBFIPS=( $(echo "$OSTACKRESP" | grep ' id ' | sed 's/^|[^|]*| *\([a-f0-9\-]*\).*$/\1/') )
   echo "${LBFIPS[0]}"
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
   createResources 1 LBSTATS HEALTHMON POOL NONE "" id $FIPTIMEOUT neutron lbaas-healthmonitor-create --name "${RPRE}HealthMon_0" --delay 3 --timeout 2 --max-retries 1 --max-retries-down 1 --type $PROTO $URLPATH --pool ${POOLS[0]}
-  let ERR+=$?
+  handleLBErr $? "HealthMonCreate"
   #echo "DEBUG: IPS ${IPS[*]} SUBNETS ${SUBNETS[*]}"
   createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id \${SUBNETS[\$\(\(no%$NONETS\)\)]} --protocol-port 80 ${POOLS[0]}
   #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
-  RC=$?
-  let ERR+=$RC
+  handleLBErr $? "MemberCreate"
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
   echo -n "Test LB at $LBIP:"
   # Access LB NOVMS times (RR -> each server gets one request)
   for i in $(seq 0 $NOVMS); do
     ANS=$(curl -m4 http://$LBIP/hostname 2>/dev/null)
-    RC=$?
+    handleLBErr $? "Connect $LBIP"
     echo -n " $ANS"
-    if test $RC != 0; then
-      let ERR+=1
-      errwait $ERRWAIT
-    fi
+    if test $RC != 0; then errwait $ERRWAIT; fi
   done
   ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
+  handleLBErr $? "PoolShow"
   echo " $OSTACKRESP"
-  if test "$OSTACKRESP" != "ONLINE"; then let ERR+=1; fi
+  test "$OSTACKRESP" != "ONLINE" && handleLBErr 1 "OpStatusNotOnline"
   # Kill some backends
   echo -n "Kill backends: "
   killhttp
   sleep $((1+WAITLB))
   # TODO: Test for degraded status of pool, ERROR for members
   ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
+  handleLBErr $? "PoolShow2"
   echo $OSTACKRESP
-  if test "$OSTACKRESP" != "DEGRADED"; then let ERR+=1; fi
+  test "$OSTACKRESP" != "DEGRADED" && handleLBErr 1 "OpStatusNotDegraded"
   echo -n "Retest LB at $LBIP (after $((1+WAITLB)) s):"
   # Access LB NOVMS times (RR -> each server gets one request)
   for i in $(seq 0 $NOVMS); do
     ANS=$(curl -m4 http://$LBIP/hostname 2>/dev/null)
-    RC=$?
+    handleLBErr $? "Connect $LBIP"
     echo -n " $ANS"
-    if test $RC != 0; then
-      let ERR+=1
-      errwait $ERRWAIT
-    fi
+    if test $RC != 0; then errwait $ERRWAIT; fi
   done
   echo
-  if test $ERR != 0; then
-    sendalarm 2 "Errors connecting to LB $LBIP port 80" "$ERR" 4
+  if test $LBERR != 0; then
+    sendalarm 2 "Errors connecting to LB $LBIP port 80" "$LBERR" 4
     if test -n "$EXITERR"; then exit 3; fi
   fi
-  LBERRORS+=$ERR
-  return $ERR
+  LBERRORS+=$LBERR
+  return $LBERR
 }
 
 cleanLBs()
