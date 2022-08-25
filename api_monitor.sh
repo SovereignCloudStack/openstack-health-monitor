@@ -3951,7 +3951,7 @@ else # test "$1" = "DEPLOY"; then
  if test -n "$RESHUFFLE"; then let MAXCYC+=$((2*$NFACT*$NOVMS)); fi
  if test -n "$FULLCONN"; then let MAXCYC+=$(($NOVMS*$NOVMS/10)); fi
  if test -n "$IPERF"; then let MAXCYC+=$((6*$NONETS)); fi
- if test -n "$LOADBALANCER"; then let MAXCYC+=$((32+4*$NOVMS)); fi
+ if test -n "$LOADBALANCER"; then let MAXCYC+=$((36+4*$NOVMS+$WAITLB)); fi
  # FIXME: We could check THISRUNSUCCESS instead?
  if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $MAXCYC; then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME (max $MAXCYC)" $MAXCYC
