@@ -1961,20 +1961,22 @@ VMINFO=()
 ## Collect information on VM ...
 # $1 => Number of VM
 # fill in VMINFO array
-# UUID, PORTUUID, AZNO, NETNO, NETIDX, NAME, FIP, PORT, USERNM
+# (0)UUID, (1)PORTUUID, (2)AZNO, (3)NETNO, (4)NETIDX, (5)NAME, (6)FIP, (7)PORT, (8)INTIP
 vmInfo()
 {
   # UUID is trival, as is PORTUUID
-  local AZNO NETNO NETIDX NAME FIP PORT USERNM
+  local AZNO NETNO NETIDX NAME FIP PORT INTIP
   AZNO=$(($1%$NOAZS))
   NETNO=$(($1%$NONETS))
   NETIDX=$(($1/$NONETS))
   NAME=VM_VM_NET${NETNO}_$(($NETIDX+1))
   FIP=${FLOATS[$AZNO]}
   PORT=$(arrline "${REDIRS[$AZNO]}" $(($1/NOAZS)))
+  INTIP=${PORT%,tcp*}
+  INTIP=${INTIP##*,}
   PORT=${PORT#*tcp,}
   PORT=${PORT%%,*}
-  VMINFO=(${VMS[$1]} ${PORTS[$1]} $AZNO $NETNO $NETIDX $NAME $FIP $PORT $DEFLTUSER)
+  VMINFO=(${VMS[$1]} ${PORTS[$1]} $AZNO $NETNO $NETIDX $NAME $FIP $PORT $INTIP)
 }
 
 if [[ "$JHIMG" = "openSUSE"* ]] || [[ "$JHIMG" = "SLES"* ]]; then JHIPERF3=iperf; else JHIPERF3=iperf3; fi
@@ -2208,13 +2210,13 @@ killhttp()
   for i in $(seq 0 $((NOVMS-1))); do
     if test $RANDOM -ge 16384; then continue; fi
     vmInfo $i
-    # (0)UUID, (1)PORTUUID, (2)AZNO, (3)NETNO, (4)NETIDX, (5)NAME, (6)FIP, (7)PORT, (8)USERNM
+    # (0)UUID, (1)PORTUUID, (2)AZNO, (3)NETNO, (4)NETIDX, (5)NAME, (6)FIP, (7)PORT, (8)INTIP
     #echo "DEBUG: $i: ${VMINFO[*]}"
     #testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
-    echo -n "$i: ${VMINFO[6]}[${VMINFO[2]}]}:${VMINFO[7]} ($VMINFO[5]}) "
-    HOSTN=$(ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${VMINFO[8]}@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3")
+    echo -n "$i: ${VMINFO[6]}[${VMINFO[2]}]}:${VMINFO[7]} (${VMINFO[5]}/${VMINFO[8]}) "
+    HOSTN=$(ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3")
     if test $? == 0; then echo -n "($HOSTN) "; else -n "ERROR "; fi
-    #ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${VMINFO[8]}@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3"
+    #ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3"
     let killed+=1
     if test $killed -ge $HALF; then return; fi
   done
