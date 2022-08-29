@@ -133,7 +133,7 @@ WAITLB=${WAITLB:-15}
 if test -z "$AZS"; then
   #AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
   #AZS=$(openstack availability zone list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | grep -v '| Zone Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
-  AZS=$(openstack availability zone list -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
+  AZS=$(openstack availability zone list --compute -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
   if test -z "$AZS"; then AZS=$(otc.sh vm listaz 2>/dev/null | grep -v region | sort -u); fi
 fi
 AZS=($AZS)
