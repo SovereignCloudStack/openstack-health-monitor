@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.79
+VERSION=1.80
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -202,16 +202,20 @@ JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
 IMG="${IMG:-Standard_CentOS_7_latest}"
 #IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
 # ssh login names with injected key
-DEFLTUSER=${DEFLTUSER:-linux}
-JHDEFLTUSER=${JHDEFLTUSER:-$DEFLTUSER}
-# OTC flavor names as defaults
-#JHFLAVOR=${JHFLAVOR:-computev1-1}
-JHFLAVOR=${JHFLAVOR:-s2.medium.1}
-FLAVOR=${FLAVOR:-s2.medium.1}
-
-if [[ "$JHIMG" != *openSUSE* ]]; then
-  echo "WARN: port forwarding via SUSEfirewall2-snat user_data is better tested ..." >/dev/null
+if test "${IMG:0:6}" = "Ubuntu"; then
+  DEFLTUSER=${DEFLTUSER:-ubuntu}
+else
+  DEFLTUSER=${DEFLTUSER:-linux}
 fi
+if test "${JHIMG:0:6}" = "Ubuntu"; then
+  JHDEFLTUSER=${JHDEFLTUSER:-ubuntu}
+else
+  JHDEFLTUSER=${JHDEFLTUSER:-linux}
+fi
+# SCS flavor names as defaults
+#JHFLAVOR=${JHFLAVOR:-computev1-1}
+JHFLAVOR=${JHFLAVOR:-SCS-1V:2:5}
+FLAVOR=${FLAVOR:-SCS-1V:2:5}
 
 # Optionally increase JH and VM volume sizes beyond image size
 # (slows things down due to preventing quick_start and growpart)
@@ -2740,8 +2744,8 @@ testlsandping()
   sleep 2
   PING=$(ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
-  echo -n "x"
   if test $RC == 0; then return 0; fi
+  echo -n "x "
   echo "$PING"
   ERR=$PING
   #sleep 1
@@ -2799,11 +2803,13 @@ $OSTACKRESP
   if test -n "$BCBENCH"; then
     cat >${RPRE}wait <<EOT
 #!/bin/bash
-let MAXW=90
+let MAXW=100
 while test \$MAXW -ge 1; do
   if type -p "\$1">/dev/null; then exit 0; fi
   let MAXW-=1
   sleep 1
+  if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 1; fi
+  echo -n "." 1>&2
 done
 exit 1
 EOT
@@ -2998,11 +3004,13 @@ iperf3test()
 {
   cat >${RPRE}wait <<EOT
 #!/bin/bash
-let MAXW=90
+let MAXW=100
 while test \$MAXW -ge 1; do
   if type -p "\$1">/dev/null; then exit 0; fi
   let MAXW-=1
   sleep 1
+  if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 1; fi
+  echo -n "." 1>&2
 done
 exit 1
 EOT
@@ -3026,7 +3034,13 @@ EOT
     scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
     if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
     IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "./${RPRE}wait iperf3; iperf3 -t5 -J -c $TGT")
-    if test $? != 0; then return 1; fi
+    if test $? != 0; then
+      # Clients may need more startup time
+      echo -n " retry "
+      sleep 32
+      IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "iperf3 -t5 -J -c $TGT")
+      if test $? != 0; then return 1; fi
+    fi
     if test -n "$LOGFILE"; then echo "$IPJSON" >> $LOGFILE; fi
     SENDBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_sent.bits_per_second'))/1048576))
     RECVBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_received.bits_per_second'))/1048576))
@@ -3956,9 +3970,15 @@ else # test "$1" = "DEPLOY"; then
  if test -n "$IPERF"; then let MAXCYC+=$((6*$NONETS)); fi
  if test -n "$LOADBALANCER"; then let MAXCYC+=$((36+4*$NOVMS+$WAITLB)); fi
  # FIXME: We could check THISRUNSUCCESS instead?
+ SLOW=0
  if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $MAXCYC; then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME (max $MAXCYC)" $MAXCYC
     #waiterr $WAITERR
+    SLOW=1
+ fi
+ if test -n "$GRAFANANM"; then
+   RELPERF=$(echo "scale=2; 10*$THISRUNTIME/$MAXCYC" | bc -l)
+   curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=totDur,method=$MAXCYC duration=$RELPERF,return_code=$SLOW" >> grafana.log
  fi
  sendbufferedalarms
  sendrecoveryalarm
