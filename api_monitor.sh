@@ -2411,7 +2411,10 @@ createVMsAll()
       echo -e "  - iperf3 -Ds" >> $UDTMP
     fi
   elif test -n "$IPERF"; then
-      echo -e "packages:\n  - $IPERF3\nruncmd:\n  - iperf3 -Ds" >> $UDTMP
+    echo -e "packages:\n  - $IPERF3\nruncmd:\n  - iperf3 -Ds" >> $UDTMP
+    if [[ "$IMG" = "openSUSE"* ]]; then
+      echo -e "  - sed -i 's/FW_SERVICES_EXT_TCP=\"\"/FW_SERVICES_EXT_TCP=\"targus-getdata1\"/' /etc/sysconfig/SuSEfirewall2\n  - \"systemctl status SuSEfirewall2 && systemctl restart SuSEfirewall2\"" >> $UDTMP
+    fi
   fi
   declare -a STMS
   if test -n "$VMVOLSIZE"; then
