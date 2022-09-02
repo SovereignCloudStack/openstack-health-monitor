@@ -2804,7 +2804,7 @@ $OSTACKRESP
     cat >${RPRE}wait <<EOT
 #!/bin/bash
 let MAXW=100
-if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 3; fi
+if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 5; sync; fi
 while test \$MAXW -ge 1; do
   if type -p "\$1">/dev/null; then exit 0; fi
   let MAXW-=1
@@ -3006,7 +3006,7 @@ iperf3test()
   cat >${RPRE}wait <<EOT
 #!/bin/bash
 let MAXW=100
-if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 3; fi
+if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 5; sync; fi
 while test \$MAXW -ge 1; do
   if type -p "\$1">/dev/null; then exit 0; fi
   let MAXW-=1
@@ -3039,7 +3039,7 @@ EOT
     if test $? != 0; then
       # Clients may need more startup time
       echo -n " retry "
-      sleep 32
+      sleep 16
       IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "iperf3 -t5 -J -c $TGT")
       if test $? != 0; then return 1; fi
     fi
