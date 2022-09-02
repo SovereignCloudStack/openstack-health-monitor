@@ -2804,6 +2804,7 @@ $OSTACKRESP
     cat >${RPRE}wait <<EOT
 #!/bin/bash
 let MAXW=100
+if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 3; fi
 while test \$MAXW -ge 1; do
   if type -p "\$1">/dev/null; then exit 0; fi
   let MAXW-=1
@@ -3005,6 +3006,7 @@ iperf3test()
   cat >${RPRE}wait <<EOT
 #!/bin/bash
 let MAXW=100
+if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 3; fi
 while test \$MAXW -ge 1; do
   if type -p "\$1">/dev/null; then exit 0; fi
   let MAXW-=1
