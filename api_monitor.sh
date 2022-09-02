@@ -1297,7 +1297,7 @@ waitlistResources()
   local NERR=0
   shift; shift; shift; shift; shift; shift; shift
   local TIMEOUT=$1; shift
-  #echo "waitListResource $STATNM $RNM $COMP1 $COL $@"
+  #echo "waitlistResources $STATNM $RNM $COMP1 $COL $@"
   #if test $TIMEOUTFACT -gt 1; then let TIMEOUT+=2; fi
   local STATI=()
   eval local RLIST=( \"\${${RNM}S[@]}\" )
