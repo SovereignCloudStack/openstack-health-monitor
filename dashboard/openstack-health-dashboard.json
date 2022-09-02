@@ -22,8 +22,8 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 2,
-  "iteration": 1653028191455,
+  "id": 1,
+  "iteration": 1661849432468,
   "links": [
     {
       "asDropdown": false,
@@ -1638,9 +1638,14 @@
             "selected": false,
             "text": "stackit",
             "value": "stackit"
+          },
+          {
+            "selected": false,
+            "text": "wavestack1",
+            "value": "wavestack1"
           }
         ],
-        "query": "plus-pco, gx-scs, stackit",
+        "query": "plus-pco, gx-scs, stackit, wavestack1",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"
@@ -1655,6 +1660,6 @@
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
   "uid": "9ltTEmlnk",
-  "version": 2,
+  "version": 4,
   "weekStart": ""
 }
