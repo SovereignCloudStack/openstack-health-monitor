@@ -23,7 +23,7 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": 1,
-  "iteration": 1662155714819,
+  "iteration": 1662155714827,
   "links": [
     {
       "asDropdown": false,
@@ -1393,7 +1393,7 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "axisLabel": "s, Gb/s",
+            "axisLabel": "s, Gb/s, s, %maxt*10",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
@@ -1794,6 +1794,6 @@
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
   "uid": "9ltTEmlnk",
-  "version": 8,
+  "version": 9,
   "weekStart": ""
 }
