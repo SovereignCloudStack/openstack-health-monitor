@@ -2810,7 +2810,6 @@ while test \$MAXW -ge 1; do
   let MAXW-=1
   sleep 1
   if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 1; fi
-  echo -n "." 1>&2
 done
 exit 1
 EOT
@@ -3012,7 +3011,6 @@ while test \$MAXW -ge 1; do
   let MAXW-=1
   sleep 1
   if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 1; fi
-  echo -n "." 1>&2
 done
 exit 1
 EOT
