@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.79
+VERSION=1.81
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -202,16 +202,20 @@ JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
 IMG="${IMG:-Standard_CentOS_7_latest}"
 #IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
 # ssh login names with injected key
-DEFLTUSER=${DEFLTUSER:-linux}
-JHDEFLTUSER=${JHDEFLTUSER:-$DEFLTUSER}
-# OTC flavor names as defaults
-#JHFLAVOR=${JHFLAVOR:-computev1-1}
-JHFLAVOR=${JHFLAVOR:-s2.medium.1}
-FLAVOR=${FLAVOR:-s2.medium.1}
-
-if [[ "$JHIMG" != *openSUSE* ]]; then
-  echo "WARN: port forwarding via SUSEfirewall2-snat user_data is better tested ..." >/dev/null
+if test "${IMG:0:6}" = "Ubuntu"; then
+  DEFLTUSER=${DEFLTUSER:-ubuntu}
+else
+  DEFLTUSER=${DEFLTUSER:-linux}
 fi
+if test "${JHIMG:0:6}" = "Ubuntu"; then
+  JHDEFLTUSER=${JHDEFLTUSER:-ubuntu}
+else
+  JHDEFLTUSER=${JHDEFLTUSER:-linux}
+fi
+# SCS flavor names as defaults
+#JHFLAVOR=${JHFLAVOR:-computev1-1}
+JHFLAVOR=${JHFLAVOR:-SCS-1V:2:5}
+FLAVOR=${FLAVOR:-SCS-1V:2:5}
 
 # Optionally increase JH and VM volume sizes beyond image size
 # (slows things down due to preventing quick_start and growpart)
@@ -927,7 +931,7 @@ ostackcmd_id()
   if test -n "$GRAFANA"; then
       # log time / rc to grafana
       rc2grafana $RC
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$CMD,method=$2 duration=$TIM,return_code=$GRC" >> grafana.log
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$CMD,method=$2 duration=$TIM,return_code=$GRC" >> ${RPRE}grafana.log
   fi
 
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
@@ -950,7 +954,7 @@ ostackcmd_id()
     if test -n "$GRAFANA"; then
       # log time / rc to grafana
       rc2grafana $RC
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$CMD,method=$2 duration=$TIM,return_code=$GRC" >> grafana.log
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$CMD,method=$2 duration=$TIM,return_code=$GRC" >> ${RPRE}grafana.log
     fi
     if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
       sendalarm $RC "$*" "$RESP" $TIMEOUT
@@ -1018,7 +1022,7 @@ ostackcmd_tm()
     rc2grafana $RC
     # Note: We log untranslated commands to grafana here, for continuity reasons
     # (This is why we do translation in the first place ...)
-    curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,CMD=$1,method=$2 duration=$TIM,return_code=$GRC" >> grafana.log
+    curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,CMD=$1,method=$2 duration=$TIM,return_code=$GRC" >> ${RPRE}grafana.log
   fi
   # TODO: Implement retry for HTTP 409 similar to ostackcmd_id
 
@@ -1254,7 +1258,7 @@ waitResources()
         if test -n "$GRAFANA"; then
           # log time / rc to grafana
           if test $STE -ge 2; then RC=0; else RC=$STE; fi
-          curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC" >> grafana.log
+          curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC" >> ${RPRE}grafana.log
         fi
         unset SLIST[$i]
       fi
@@ -1293,7 +1297,7 @@ waitlistResources()
   local NERR=0
   shift; shift; shift; shift; shift; shift; shift
   local TIMEOUT=$1; shift
-  #echo "waitListResource $STATNM $RNM $COMP1 $COL $@"
+  #echo "waitlistResources $STATNM $RNM $COMP1 $COL $@"
   #if test $TIMEOUTFACT -gt 1; then let TIMEOUT+=2; fi
   local STATI=()
   eval local RLIST=( \"\${${RNM}S[@]}\" )
@@ -1360,7 +1364,7 @@ waitlistResources()
           if test -n "$GRAFANA"; then
             # log time / rc to grafana
             if test $STE -ge 2; then RC=0; else RC=$STE; fi
-            curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC" >> grafana.log
+            curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC" >> ${RPRE}grafana.log
           fi
         fi
       fi
@@ -1434,7 +1438,7 @@ waitdelResources()
       if test -n "$GRAFANA"; then
         # log time / rc to grafana
         rc2grafana $RC
-        curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=DEL duration=$TM,return_code=$GRC" >> grafana.log
+        curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=DEL duration=$TM,return_code=$GRC" >> ${RPRE}grafana.log
       fi
       #echo -en "WaitDel $RNM: $STATSTR\r"
     done
@@ -2208,7 +2212,7 @@ killhttp()
   HALF=$((NOVMS/2))
   killed=0
   for i in $(seq 0 $((NOVMS-1))); do
-    if test $RANDOM -ge 16384; then continue; fi
+    if test $RANDOM -ge 16384 -a $i != $((NOVMS-1)); then continue; fi
     vmInfo $i
     # (0)UUID, (1)PORTUUID, (2)AZNO, (3)NETNO, (4)NETIDX, (5)NAME, (6)FIP, (7)PORT, (8)INTIP
     #echo "DEBUG: $i: ${VMINFO[*]}"
@@ -2411,7 +2415,10 @@ createVMsAll()
       echo -e "  - iperf3 -Ds" >> $UDTMP
     fi
   elif test -n "$IPERF"; then
-      echo -e "packages:\n  - $IPERF3\nruncmd:\n  - iperf3 -Ds" >> $UDTMP
+    echo -e "packages:\n  - $IPERF3\nruncmd:\n  - iperf3 -Ds" >> $UDTMP
+    if [[ "$IMG" = "openSUSE"* ]]; then
+      echo -e "  - sed -i 's/FW_SERVICES_EXT_TCP=\"\"/FW_SERVICES_EXT_TCP=\"targus-getdata1\"/' /etc/sysconfig/SuSEfirewall2\n  - \"systemctl status SuSEfirewall2 && systemctl restart SuSEfirewall2\"" >> $UDTMP
+    fi
   fi
   declare -a STMS
   if test -n "$VMVOLSIZE"; then
@@ -2626,7 +2633,7 @@ wait222()
     fi
     if test -n "$GRAFANA"; then
       TIM=$(($(date +%s)-$ST))
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$perr" >> grafana.log
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$perr" >> ${RPRE}grafana.log
     fi
     if [ $ctr -ge $MAXWAIT ]; then
       # It does not make sense to wait for machines behind JH if JH is not reachable
@@ -2668,7 +2675,7 @@ $OSTACKRESP" 0
       MAXWAIT=42
       if test -n "$GRAFANA"; then
         TIM=$(($(date +%s)-$ST))
-        curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=VM$JHNO:$pno duration=$TIM,return_code=$verr" >> grafana.log
+        curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=VM$JHNO:$pno duration=$TIM,return_code=$verr" >> ${RPRE}grafana.log
       fi
       let vmno+=1
     done
@@ -2737,8 +2744,8 @@ testlsandping()
   sleep 2
   PING=$(ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
-  echo -n "x"
   if test $RC == 0; then return 0; fi
+  echo -n "x "
   echo "$PING"
   ERR=$PING
   #sleep 1
@@ -2796,11 +2803,13 @@ $OSTACKRESP
   if test -n "$BCBENCH"; then
     cat >${RPRE}wait <<EOT
 #!/bin/bash
-let MAXW=90
+let MAXW=100
+if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 5; sync; fi
 while test \$MAXW -ge 1; do
   if type -p "\$1">/dev/null; then exit 0; fi
   let MAXW-=1
   sleep 1
+  if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 1; fi
 done
 exit 1
 EOT
@@ -2823,7 +2832,7 @@ EOT
       echo -en "${BOLD} $BENCH s${NORM}"
       if test -n "$LOGFILE"; then echo -n " $BENCH s" >> $LOGFILE; fi
       if test -n "$GRAFANA"; then
-        curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=4000pi,method=JHVM$JHNO duration=$BENCH,return_code=0" >/dev/null
+        curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=4000pi,method=JHVM$JHNO duration=$BENCH,return_code=0" >>${RPRE}grafana.log
       fi
       PITIME+=($BENCH)
     done
@@ -2995,11 +3004,13 @@ iperf3test()
 {
   cat >${RPRE}wait <<EOT
 #!/bin/bash
-let MAXW=90
+let MAXW=100
+if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 5; sync; fi
 while test \$MAXW -ge 1; do
   if type -p "\$1">/dev/null; then exit 0; fi
   let MAXW-=1
   sleep 1
+  if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 1; fi
 done
 exit 1
 EOT
@@ -3023,7 +3034,18 @@ EOT
     scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
     if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
     IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "./${RPRE}wait iperf3; iperf3 -t5 -J -c $TGT")
-    if test $? != 0; then return 1; fi
+    if test $? != 0; then
+      # Clients may need more startup time
+      echo -n " retry "
+      sleep 16
+      IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "iperf3 -t5 -J -c $TGT")
+      if test $? != 0; then
+        if test -n "$GRAFANA"; then
+          curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=s$VM duration=0,return_code=1" >>${RPRE}grafana.log
+        fi
+        continue
+      fi
+    fi
     if test -n "$LOGFILE"; then echo "$IPJSON" >> $LOGFILE; fi
     SENDBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_sent.bits_per_second'))/1048576))
     RECVBW=$(($(printf "%.0f\n" $(echo "$IPJSON" | jq '.end.sum_received.bits_per_second'))/1048576))
@@ -3035,8 +3057,8 @@ EOT
     SBW=$(echo "scale=2; $SENDBW/1000" | bc -l)
     RBW=$(echo "scale=2; $RECVBW/1000" | bc -l)
     if test -n "$GRAFANA"; then
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=s$VM duration=$SBW,return_code=0" >/dev/null
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=r$VM duration=$RBW,return_code=0" >/dev/null
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=s$VM duration=$SBW,return_code=0" >>${RPRE}grafana.log
+      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=r$VM duration=$RBW,return_code=0" >>${RPRE}grafana.log
     fi
   done
   rm ${RPRE}wait
@@ -3953,16 +3975,23 @@ else # test "$1" = "DEPLOY"; then
  if test -n "$IPERF"; then let MAXCYC+=$((6*$NONETS)); fi
  if test -n "$LOADBALANCER"; then let MAXCYC+=$((36+4*$NOVMS+$WAITLB)); fi
  # FIXME: We could check THISRUNSUCCESS instead?
+ SLOW=0
  if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $MAXCYC; then
     sendalarm 1 "SLOW PERFORMANCE" "Cycle time: $THISRUNTIME (max $MAXCYC)" $MAXCYC
     #waiterr $WAITERR
+    SLOW=1
+ fi
+ if test -n "$GRAFANA"; then
+   if test -z "$THISRUNSUCCESS"; then let SLOW+=1; fi
+   RELPERF=$(echo "scale=2; 10*$THISRUNTIME/$MAXCYC" | bc -l)
+   curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=totDur,method=$MAXCYC duration=$RELPERF,return_code=$SLOW" >> ${RPRE}grafana.log
  fi
  sendbufferedalarms
  sendrecoveryalarm
  allstats
  if test -n "$FULLCONN"; then CONNTXT="$CONNERRORS Conn Errors, "; else CONNTXT=""; fi
  if test -n "$LOADBALANCER"; then LBTXT="$LBERRORS LB Errors, "; else LBTXT=""; fi
- echo "This run ($((loop+1))/$MAXITER): Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS CLI calls: $(($(date +%s)-$MSTART))+${TESTTIME}s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, ${CONNTXT}${LBTXT}$(date +'%Y-%m-%d %H:%M:%S %Z')"
+ echo -e "This run ($((loop+1))/$MAXITER): Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS CLI calls: $(($(date +%s)-$MSTART))s+${TESTTIME}s=${THISRUNTIME}s $((100*$THISRUNTIME/$MAXCYC))%\n $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors\n ${CONNTXT}${LBTXT}$(date +'%Y-%m-%d %H:%M:%S %Z')"
 #else
 #  usage
 fi
@@ -4067,6 +4096,7 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   #LASTDATE="$CDATE"
   STARTDATE=$(date +%s)
   rm -f $DATADIR/${RPRE}Keypair_JH.pem $DATADIR/${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
+  if test -n "$GRAFANA"; then compress_and_upload ${RPRE}grafana.log; fi
   if test "$LOGFILE" == "${RPRE%_}.log"; then
     RPRE="APIMonitor_${STARTDATE}_"
     compress_and_upload "$LOGFILE"
