@@ -3991,7 +3991,7 @@ else # test "$1" = "DEPLOY"; then
  allstats
  if test -n "$FULLCONN"; then CONNTXT="$CONNERRORS Conn Errors, "; else CONNTXT=""; fi
  if test -n "$LOADBALANCER"; then LBTXT="$LBERRORS LB Errors, "; else LBTXT=""; fi
- echo "This run ($((loop+1))/$MAXITER): Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS CLI calls: $(($(date +%s)-$MSTART))+${TESTTIME}s, $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors, ${CONNTXT}${LBTXT}$(date +'%Y-%m-%d %H:%M:%S %Z')"
+ echo -e "This run ($((loop+1))/$MAXITER): Overall $ROUNDVMS / ($NOVMS + $NOAZS) VMs, $APICALLS CLI calls: $(($(date +%s)-$MSTART))s+${TESTTIME}s=${THISRUNTIME}s $((100*$THISRUNTIME/$MAXCYC))%\n $VMERRORS VM login errors, $WAITERRORS VM timeouts, $APIERRORS API errors (of which $APITIMEOUTS API timeouts), $PINGERRORS Ping Errors\n ${CONNTXT}${LBTXT}$(date +'%Y-%m-%d %H:%M:%S %Z')"
 #else
 #  usage
 fi
