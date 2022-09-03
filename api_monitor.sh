@@ -3043,7 +3043,7 @@ EOT
         if test -n "$GRAFANA"; then
           curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=s$VM duration=0,return_code=1" >>${RPRE}grafana.log
         fi
-        return 1
+        continue
       fi
     fi
     if test -n "$LOGFILE"; then echo "$IPJSON" >> $LOGFILE; fi
