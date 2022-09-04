@@ -864,7 +864,7 @@ log_grafana()
   if test -z "$GRAFANA"; then return; fi
   GRC="$4"
   if test -n "$5"; then rc2grafana $5; fi
-  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$3,return_code=$GRC"
+  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$3,return_code=$GRC" >/dev/null
 }
 
 # Wrapper for calling openstack
