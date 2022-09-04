@@ -23,7 +23,7 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": 1,
-  "iteration": 1662155714827,
+  "iteration": 1662312378966,
   "links": [
     {
       "asDropdown": false,
@@ -893,7 +893,9 @@
             "sum"
           ],
           "displayMode": "table",
-          "placement": "right"
+          "placement": "right",
+          "sortBy": "Total",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "single"
@@ -1042,7 +1044,9 @@
             "max"
           ],
           "displayMode": "table",
-          "placement": "right"
+          "placement": "right",
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -1188,7 +1192,9 @@
             "max"
           ],
           "displayMode": "table",
-          "placement": "right"
+          "placement": "right",
+          "sortBy": "Total",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "single"
@@ -1324,7 +1330,9 @@
             "count"
           ],
           "displayMode": "table",
-          "placement": "right"
+          "placement": "right",
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -1585,10 +1593,12 @@
             "max",
             "mean",
             "count",
-            "lastNotNull"
+            "sum"
           ],
           "displayMode": "table",
-          "placement": "right"
+          "placement": "right",
+          "sortBy": "Total",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "single"
@@ -1794,6 +1804,6 @@
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
   "uid": "9ltTEmlnk",
-  "version": 9,
+  "version": 11,
   "weekStart": ""
 }
