@@ -55,6 +55,7 @@ for fip in $FIPS; do
 	if test -n "$FIP"; then FIPLIST="${FIPLIST}${FIP}_
 "; fi
 done
+FIPLIST=$(echo "$FIPLIST" | grep -v '^$' | sort -u)
 # Cleanup previous interrupted runs
 SERVERS=$(openstack server  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 VOLUMES=$(openstack volume  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
