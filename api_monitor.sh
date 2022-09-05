@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.81
+VERSION=1.82
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -853,6 +853,20 @@ math()
   fi
 }
 
+# Send results to telegraf IF enabled ($GRAFANA=1)
+# $1 => CMD
+# $2 => METHOD
+# $3 => DURATION
+# $4 => RETURN_CODE (can be empty if $5 is passed)
+# $5 => optional: RC that needs translation to RETURN_CODE
+log_grafana()
+{
+  if test -z "$GRAFANA"; then return; fi
+  GRC="$4"
+  if test -n "$5"; then rc2grafana $5; fi
+  curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$3,return_code=$GRC" >/dev/null
+}
+
 # Wrapper for calling openstack
 # Allows to inject OS_TOKEN and OS_URL to enforce token_endpoint auth
 myopenstack()
@@ -928,12 +942,7 @@ ostackcmd_id()
   test "$1" = "openstack" -o "$1" = "myopenstack" && shift
   CMD="$1"
   if test "$CMD" = "neutron" -a "${2:0:5}" = "lbaas"; then CMD=octavia; fi
-  if test -n "$GRAFANA"; then
-      # log time / rc to grafana
-      rc2grafana $RC
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$CMD,method=$2 duration=$TIM,return_code=$GRC" >> ${RPRE}grafana.log
-  fi
-
+  log_grafana "$CMD" "$2" "$TIM" "" "$RC"
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
     sendalarm $RC "$*" "$RESP" $TIMEOUT
     errwait $ERRWAIT
@@ -951,11 +960,7 @@ ostackcmd_id()
     local RC=$?
     local LEND=$(date +%s.%3N)
     local TIM=$(math "%.2f" "$LEND-$LSTART")
-    if test -n "$GRAFANA"; then
-      # log time / rc to grafana
-      rc2grafana $RC
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$CMD,method=$2 duration=$TIM,return_code=$GRC" >> ${RPRE}grafana.log
-    fi
+    log_grafana "$MCD" "$2" "$TIM" "" "$RC"
     if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
       sendalarm $RC "$*" "$RESP" $TIMEOUT
       errwait $ERRWAIT
@@ -1017,13 +1022,9 @@ ostackcmd_tm()
   test "$1" = "openstack" -o "$1" = "myopenstack" && shift
   CMD="$1"
   if test "$CMD" = "neutron" -a "${2:0:5}" = "lbaas"; then CMD=octavia; fi
-  if test -n "$GRAFANA"; then
-    # log time / rc to grafana telegraph
-    rc2grafana $RC
-    # Note: We log untranslated commands to grafana here, for continuity reasons
-    # (This is why we do translation in the first place ...)
-    curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,CMD=$1,method=$2 duration=$TIM,return_code=$GRC" >> ${RPRE}grafana.log
-  fi
+  # Note: We log untranslated commands to grafana here, for continuity reasons
+  #log_grafana "$1" "$2" "$TIM" "" "$RC"
+  log_grafana "$CMD" "$2" "$TIM" "" "$RC"
   # TODO: Implement retry for HTTP 409 similar to ostackcmd_id
 
   eval "${STATNM}+=( $TIM )"
@@ -1255,11 +1256,8 @@ waitResources()
         TM=$(date +%s)
         TM=$(math "%i" "$TM-${SLIST[$i]}")
         eval ${CSTAT}+="($TM)"
-        if test -n "$GRAFANA"; then
-          # log time / rc to grafana
-          if test $STE -ge 2; then RC=0; else RC=$STE; fi
-          curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC" >> ${RPRE}grafana.log
-        fi
+        if test $STE -ge 2; then GRC=0; else GRC=$STE; fi
+        log_grafana "wait$RNM" "$COMP1" "$TIM" "$GRC"
         unset SLIST[$i]
       fi
     done
@@ -1361,11 +1359,8 @@ waitlistResources()
         #echo -e "State $STAT reached for ($i) $rsrc in $TM secs, remain \"${SLIST[*]}\"" 1>&2
         if test -n "$CSTAT"; then
           eval ${CSTAT}+="($TM)"
-          if test -n "$GRAFANA"; then
-            # log time / rc to grafana
-            if test $STE -ge 2; then RC=0; else RC=$STE; fi
-            curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=$COMP1 duration=$TM,return_code=$RC" >> ${RPRE}grafana.log
-          fi
+          if test $STE -ge 2; then GRC=0; else GRC=$STE; fi
+          log_grafana "wait$RNM" "$COMP1" "$TM" "$GRC"
         fi
       fi
     done
@@ -1435,11 +1430,7 @@ waitdelResources()
       fi
       STATI[$i]=$STAT
       STATSTR+=$(colstat "$STAT" "XDELX" "")
-      if test -n "$GRAFANA"; then
-        # log time / rc to grafana
-        rc2grafana $RC
-        curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=wait$RNM,method=DEL duration=$TM,return_code=$GRC" >> ${RPRE}grafana.log
-      fi
+      log_grafana "wait$RNM" "DEL" "$TM" "" "$RC"
       #echo -en "WaitDel $RNM: $STATSTR\r"
     done
     echo -en "WaitDel $RNM: $STATSTR \r"
@@ -2066,6 +2057,7 @@ collectPorts()
 
 # When NOT creating ports before JHVM starts, we cannot pass the port fwd information
 # via user-data as we don't know the IP addresses. So modify VM via ssh.
+# NO LONGER USED
 setPortForward()
 {
   if test -n "$MANUALPORTSETUP"; then return; fi
@@ -2100,7 +2092,10 @@ setPortForwardGen()
   if test -z "${PORTS[*]}"; then collectPorts; fi
   calcRedirs
   #echo "#DEBUG: sPF VIP REDIR $VIP ${REDIRS[*]}"
+  echo -n "Enable port forwarding on "
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
+    echo -n "JHVM$JHNUM: "
+    if test -n "$LOGFILE"; then echo "Enable port forwarding on JHVM$JHNUM" >> $LOGFILE; fi
     if test -z "${REDIRS[$JHNUM]}"; then
       echo -e "${YELLOW}ERROR: No redirections?$NORM" 1>&2
       return 1
@@ -2137,10 +2132,20 @@ else
       SCRIPT=$(echo -e "$SCRIPT\n  iptables -t nat -A PREROUTING -s $saddr -i \$DEV -j DNAT -p $proto --dport $port --to-destination $daddr:$dport")
     done
     SCRIPT=$(echo -e "$SCRIPT\nfi")
+    # FIXME: Need to report errors here
     echo "$SCRIPT" | ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_ipt" >/dev/null 2>&1
     # -tt is a workaround for a RHEL/CentOS 7 bug
     ssh -tt -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_ipt" >/dev/null 2>&1
+    RC=$?
+    if test "$RC" = "0"; then
+      echo -n "OK "
+      if test -n "$LOGFILE"; then echo " => OK" >> $LOGFILE; fi
+    else
+      echo -n "FAILED $RC "
+      if test -n "$LOGFILE"; then echo " => ERROR $RC" >> $LOGFILE; fi
+    fi
   done
+  echo
 }
 
 
@@ -2631,10 +2636,8 @@ wait222()
       let waiterr+=1
       let perr+=1
     fi
-    if test -n "$GRAFANA"; then
-      TIM=$(($(date +%s)-$ST))
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$perr" >> ${RPRE}grafana.log
-    fi
+    TIM=$(($(date +%s)-$ST))
+    log_grafana "ssh" "JHVM$JHNO" "$TIM" "$perr"
     if [ $ctr -ge $MAXWAIT ]; then
       # It does not make sense to wait for machines behind JH if JH is not reachable
       local skip=$(echo ${REDIRS[$JHNO]} | wc -w)
@@ -2673,10 +2676,8 @@ $OSTACKRESP" 0
         fi
       fi
       MAXWAIT=42
-      if test -n "$GRAFANA"; then
-        TIM=$(($(date +%s)-$ST))
-        curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=VM$JHNO:$pno duration=$TIM,return_code=$verr" >> ${RPRE}grafana.log
-      fi
+      TIM=$(($(date +%s)-$ST))
+      log_grafana "ssh" "VM$JHNO:$pno" "$TIM" "$verr"
       let vmno+=1
     done
     MAXWAIT=60
@@ -2716,7 +2717,9 @@ testlsandping()
     # no user_data on JumpHosts
     ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 8;
     ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n "........"; sleep 16;
-    ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=20" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1; }; } || return 2
+    ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=20" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1; }; } || {
+	if test -n "$LOGFILE"; then echo "ERROR ssh ls on $2" >> $LOGFILE; fi
+	return 2; }
   else
     if test -n "$LOGFILE"; then
       echo "ssh -i $DATADIR/$1.pem $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}[$4]" >> $LOGFILE
@@ -2725,29 +2728,35 @@ testlsandping()
     if test -n "$BOOTALLATONCE"; then
       # no indiv user data per VM when mass booting ...
       ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "o"; sleep 4;
-      ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || return 2
+      ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || {
+	if test -n "$LOGFILE"; then echo "ERROR ssh grep on $2:$3" >> $LOGFILE; fi
+	return 2; }
     else
       ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "O"; sleep 4;
-      ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || return 2
+      ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || {
+	if test -n "$LOGFILE"; then echo "ERROR ssh grep on $2:$3" >> $LOGFILE; fi
+	return 2; }
     fi
   fi
-  #
+  # PING
   if test -n "$LOGFILE"; then
-    echo "ssh -i $DATADIR/$1.pem $pport -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
+    echo "timeout 24 ssh -i $DATADIR/$1.pem $pport -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
   fi
   #nslookup $PINGTARGET >/dev/null 2>&1
-  PING=$(ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
+  PING=$(timeout 24 ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
   if test $RC = 0; then echo $PING; return 0; fi
   #nslookup $PINGTARGET2 >/dev/null 2>&1
   echo -n "x"
+  if test -n "$LOGFILE"; then echo "ERROR ssh ping on $pport $2: $RC" >> $LOGFILE; fi
   sleep 2
-  PING=$(ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
+  PING=$(timeout 24 ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
   if test $RC == 0; then return 0; fi
   echo -n "x "
   echo "$PING"
   ERR=$PING
+  if test -n "$LOGFILE"; then echo "ERROR ssh ping on $pport $2: $RC" >> $LOGFILE; fi
   #sleep 1
   #PING=$(ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 9.9.9.9 >/dev/null 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   if test $RC != 0; then return 1; else return 0; fi
@@ -2789,10 +2798,8 @@ $OSTACKRESP
     fi
 # We skip wait222 now for failed JHs, so we need to record this here in case of failure
 # Don't generate entry for success here, we'll test this again in wait222, which records the success/time
-    if test -n "$GRAFANA" -a $R != 0; then
-      TIM=$(($(date +%s)-$ST))
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=ssh,method=JHVM$JHNO duration=$TIM,return_code=$R" >/dev/null
-    fi
+    TIM=$(($(date +%s)-$ST))
+    log_grafana "ssh" "JHVM$JHNO" "$TIM" "$R"
   done
   if test $RC = 0; then
     echo -e "$GREEN SUCCESS $NORM ($(($(date +%s)-$ST))s)"
@@ -2831,9 +2838,7 @@ EOT
       fi
       echo -en "${BOLD} $BENCH s${NORM}"
       if test -n "$LOGFILE"; then echo -n " $BENCH s" >> $LOGFILE; fi
-      if test -n "$GRAFANA"; then
-        curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=4000pi,method=JHVM$JHNO duration=$BENCH,return_code=0" >>${RPRE}grafana.log
-      fi
+      log_grafana "4000pi" "JHVM$JHNO" "$BENCH" 0
       PITIME+=($BENCH)
     done
     echo; if test -n "$LOGFILE"; then echo >> $LOGFILE; fi
@@ -3040,9 +3045,7 @@ EOT
       sleep 16
       IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "iperf3 -t5 -J -c $TGT")
       if test $? != 0; then
-        if test -n "$GRAFANA"; then
-          curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=s$VM duration=0,return_code=1" >>${RPRE}grafana.log
-        fi
+	log_grafana "iperf3" "s$VM" "0" "1"
         continue
       fi
     fi
@@ -3056,10 +3059,8 @@ EOT
     BANDWIDTH+=($SENDBW $RECVBW)
     SBW=$(echo "scale=2; $SENDBW/1000" | bc -l)
     RBW=$(echo "scale=2; $RECVBW/1000" | bc -l)
-    if test -n "$GRAFANA"; then
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=s$VM duration=$SBW,return_code=0" >>${RPRE}grafana.log
-      curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=iperf3,method=r$VM duration=$RBW,return_code=0" >>${RPRE}grafana.log
-    fi
+    log_grafana "iperf3" "s$VM" "$SBW" 0
+    log_grafana "iperf3" "r$VM" "$RBW" 0
   done
   rm ${RPRE}wait
   echo -en "\b"
@@ -3981,11 +3982,9 @@ else # test "$1" = "DEPLOY"; then
     #waiterr $WAITERR
     SLOW=1
  fi
- if test -n "$GRAFANA"; then
-   if test -z "$THISRUNSUCCESS"; then let SLOW+=1; fi
-   RELPERF=$(echo "scale=2; 10*$THISRUNTIME/$MAXCYC" | bc -l)
-   curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=totDur,method=$MAXCYC duration=$RELPERF,return_code=$SLOW" >> ${RPRE}grafana.log
- fi
+ if test -z "$THISRUNSUCCESS"; then let SLOW+=1; fi
+ RELPERF=$(echo "scale=2; 10*$THISRUNTIME/$MAXCYC" | bc -l)
+ log_grafana "totDur" "$MAXCYC" "$RELPERF" "$SLOW"
  sendbufferedalarms
  sendrecoveryalarm
  allstats
@@ -4096,7 +4095,6 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   #LASTDATE="$CDATE"
   STARTDATE=$(date +%s)
   rm -f $DATADIR/${RPRE}Keypair_JH.pem $DATADIR/${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
-  if test -n "$GRAFANA"; then compress_and_upload ${RPRE}grafana.log; fi
   if test "$LOGFILE" == "${RPRE%_}.log"; then
     RPRE="APIMonitor_${STARTDATE}_"
     compress_and_upload "$LOGFILE"
