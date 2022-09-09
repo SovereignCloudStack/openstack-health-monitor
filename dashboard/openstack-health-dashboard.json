@@ -22,8 +22,8 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 1,
-  "iteration": 1662312378966,
+  "id": 2,
+  "iteration": 1662627390643,
   "links": [
     {
       "asDropdown": false,
@@ -1177,7 +1177,7 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
+        "h": 5,
         "w": 24,
         "x": 0,
         "y": 25
@@ -1295,7 +1295,7 @@
             }
           },
           "mappings": [],
-          "max": 512,
+          "max": 256,
           "min": 4,
           "thresholds": {
             "mode": "absolute",
@@ -1318,7 +1318,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 31
+        "y": 30
       },
       "id": 16,
       "options": {
@@ -1430,6 +1430,8 @@
             }
           },
           "mappings": [],
+          "max": 32,
+          "min": 0.25,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1451,7 +1453,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 40
+        "y": 39
       },
       "id": 18,
       "options": {
@@ -1464,7 +1466,9 @@
             "lastNotNull"
           ],
           "displayMode": "table",
-          "placement": "right"
+          "placement": "right",
+          "sortBy": "Mean",
+          "sortDesc": true
         },
         "tooltip": {
           "mode": "multi"
@@ -1584,7 +1588,7 @@
         "h": 5,
         "w": 24,
         "x": 0,
-        "y": 49
+        "y": 48
       },
       "id": 20,
       "options": {
@@ -1804,6 +1808,6 @@
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
   "uid": "9ltTEmlnk",
-  "version": 11,
+  "version": 4,
   "weekStart": ""
 }
