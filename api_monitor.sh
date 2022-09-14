@@ -2654,6 +2654,10 @@ wait222()
       declare -i ctr=0
       echo -n " $pno "
       if test -n "$LOGFILE"; then echo "nc $NCPROXY -w 2 ${FLOATS[$JHNO]} $pno" >> $LOGFILE; fi
+      if test -n "$LOGFILE"; then
+        vno=$((vmno*NOAZS+JHNO))
+        ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${VMS[$vno]}
+      fi
       while [ $ctr -le $MAXWAIT ]; do
         echo "quit" | nc $NCPROXY -w 2 ${FLOATS[$JHNO]} $pno >/dev/null 2>&1 && break
         echo -n "."
@@ -2773,6 +2777,10 @@ testjhinet()
   declare -i RC=0
   for JHNO in $(seq 0 $(($NOAZS-1))); do
     echo -n "Access JH$JHNO (${FLOATS[$JHNO]}): "
+    if test -n "$LOGFILE"; then
+      # Create info for the logfile
+      ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${JHVMS[$JHNO]}
+    fi
     # Do wait up to 60s for ping
     declare -i ctr=0
     while test $ctr -lt 15; do
@@ -3378,8 +3386,10 @@ waitnetgone()
   # FIXME: We occasionally leaks ports from octavia
   if test -n "$LOADBALANCER"; then
     SUBNETS=( $(findres "" neutron subnet-list) )
-    for sub in "$SUBNETS"; do
+    for sub in ${SUBNETS[*]}; do
+      if ! echo "$sub" | grep '[0-9a-f\-]+' >/dev/null; then continue; fi
       PORTS=( $(findres "octavia-lb-vrrp" neutron port-list --fixed-ip subnet=$sub) )
+      echo "Cleaning ports ${PORTS[*]} in subnet $sub ..."
       deletePorts
     done
   fi
