@@ -13,7 +13,7 @@ Failures are noted and alarms are generated.
 - Live Volume and NIC attachment not yet implemented
 - Log too verbose for permament operation ...
 - Script allows to create multiple nets/subnets independent from no of AZs, which may need more testing.
-- Done: Convert from neutron/cinder/nova/... to openstack (-o / -O)
+- Done: Convert from neutron/cinder/nova/... to openstack (`-o` / `-O`)
 
 ## TODO
 
@@ -22,12 +22,14 @@ Failures are noted and alarms are generated.
 ## Copyright
 
 (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017-7/2017
+(c) Kurt Garloff <scs@garloff.de>, 2/2020-4/2021
+(c) Kurt Garloff <garloff@osb-alliance.com>, 5/2021-9/2022
 
 License: CC-BY-SA (2.0)
 
 ## Description of the flow
 
-- create router (VPC)
+- create router (VPC in OTC/AWS speak)
 - create 1+$NONETS (1+2) nets -- $NONETS is normally the # of AZs
 - create 1+$NONETS subnets
 - create security groups
@@ -42,16 +44,18 @@ License: CC-BY-SA (2.0)
 - JumpHosts do SNAT for outbound traffic and port forwarding for inbound
    (this requires SUSE images with SFW2-snat package to work)
 - create N internal VMs striped over the nets and AZs by
-   a) creating disks (from image) -- if option -d is not used
-   b) creating a port -- if option -P is not used
-   c) creating VM (from volume or from image, dep. on -d)
+   a) creating disks (from image) -- if option `-d` is not used
+   b) creating a port -- if option `-P` is not used
+   c) creating VM (from volume or from image, dep. on `-d`)
     (Steps a and c take long, so we do many in parallel and poll for progress)
    d) do some property changes to VMs
 - after everything is complete, we wait for the VMs to be up
 - we ping them, log in via ssh and see whether they can ping to the outside world (quad9)
-- a full cross connectivity check (can each VM ping each other?) with -C
-- we create a loadbalancer and check accessing all VMs as members (RR) with -L
-- attach additional NICs and test (options -2, -3, -4)
+- a full cross connectivity check (can each VM ping each other?) with `-C`
+- we create a loadbalancer and check accessing all VMs as members (RR) with `-L`/`-LL`
+- we kill some backends and check that the LB's health monitor detects this and
+  routes the request to the alive backend members
+- attach additional NICs and test (options `-2`, `-3`, `-4`)
 - NOT YET: attach additional disks to running VMs
  
 - Finally, we clean up ev'thing in reverse order
@@ -64,10 +68,10 @@ License: CC-BY-SA (2.0)
 So we end up testing: Router, incl. default route (for SNAT instance),
 networks, subnets, and virtual IP, security groups and floating IPs,
 volume creation from image, deletion after VM destruction,
-VM creation from bootable volume (and from image if -d is given,)
+VM creation from bootable volume (and from image if `-d` is given,)
 Metadata service (without it ssh key injection fails of course),
 Images (openSUSE OTC, upstream, CentOS and Ubuntu work),
-Loadbalancer (-L),
+Loadbalancer (`-L`/`-LL`),
 Waiting for volumes and VMs,
 Destroying all of these resources again
 
@@ -87,13 +91,13 @@ Completed (use option -O (not used for volume create)).
 ## Prerequisites
 
 - Working python-XXXclient tools (openstack, glance, neutron, nova, cinder)
-- `OS_` environment variables set to run openstack CLI commands (or OS_CLOUD with clouds.yaml/secure.yaml)
-- otc.sh from otc-tools (only if using optional SMN -m and project creation -p)
-- sendmail (only if email notification is requested)
-- jq (for JSON processing)
-- bc and python2 or 3 for math used to calc statistics
+- `OS_` environment variables set to run openstack CLI commands (or `OS_CLOUD` with `clouds.yaml`/`secure.yaml`)
+- `otc.sh` from otc-tools (only if using optional SMN `-m` and project creation `-p`)
+- `sendmail` (only if email notification is requested)
+- `jq` (for JSON processing)
+- `bc` and python2 or 3 for math used to calc statistics
 - Any image for the VMs that allows login as user DEFLTUSER (linux) with injected key
-  (If we use -2/-3/-4, we also need a SUSE image to have the cloud-multiroute pkg in there.)
+  (If we use `-2`/`-3`/`-4`, we also need a SUSE image to have the `cloud-multiroute` pkg in there.)
 
 ## Usage
 
@@ -116,6 +120,7 @@ Usage: api_monitor.sh [options]
  -S [NM] sends stats to grafana via local telegraf http_listener (def for NM=api-monitoring)
  -q     do not send any alarms
  -d     boot Directly from image (not via volume)
+ -z SZ  boots VMs from volume of size SZ
  -P     do not create Port before VM creation
  -D     create all VMs with one API call (implies -d -P)
  -i N   sets max number of iterations (def = -1 = inf)
@@ -132,22 +137,24 @@ Usage: api_monitor.sh [options]
  -O     like -o, but use token_endpoint auth (after getting token)
  -x     assume eXclusive project, clean all floating IPs found
  -I     dIsassociate floating IPs before deleting them
- -L     create Loadbalancer (LBaaSv2/octavia) and test it
+ -L     create HTTP Loadbalancer (LBaaSv2/octavia) and test it
+ -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it
  -b     run a simple compute benchmark
  -B     run iperf3
  -t     long Timeouts (2x, multiple times for 3x, 4x, ...)
+ -T     assign tags to resources; use to clean up floating IPs
  -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test
  -3     Create 2ndary subnets, attach, test, reshuffle and retest
  -4     Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest
  -R     Recreate 2ndary ports after detaching (OpenStack <= Mitaka bug)
-Or: api_monitor.sh [-f] CLEANUP XXX to clean up all resources with prefix XXX
+Or: api_monitor.sh [-f] [-o/-O] CLEANUP XXX to clean up all resources with prefix XXX
         Option -f forces the deletion
 Or: api_monitor.sh [Options] CONNTEST XXX for full conn test for existing env XXX
         Options: [-2/3/4] [-o/O] [-i N] [-e ADR] [-E] [-w/W/V N] [-l LOGFILE]
 You need to have the OS_ variables set to allow OpenStack CLI tools to work.
 You can override defaults by exporting the environment variables AZS, VAZS, RPRE,
  PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,
- ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES[],
+ ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES,
  NAMESERVER, SWIFTCONTAINER.
 Typically, you should configure [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER.
 ```
@@ -166,3 +173,5 @@ The included file `run.sh` also demonstrates how to use `api_monitor.sh`.
 The script has been used successfully on several OpenStack clouds with keystone v3 (OTC, ECP, CityCloud),
 started manually or from Jenkins, partially with recording stats to a local Telegraf to report timings
 and failures into a Grafana dashboard.
+Configuration files for telegraf, influxdb and a nice grafana dashboard can be found in the `dashboard/`
+subdirectory.
