@@ -23,7 +23,7 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
   "id": 2,
-  "iteration": 1662627390643,
+  "iteration": 1662627390675,
   "links": [
     {
       "asDropdown": false,
@@ -153,7 +153,7 @@
               },
               {
                 "color": "#EAB839",
-                "value": 2
+                "value": 3
               },
               {
                 "color": "red",
@@ -166,7 +166,7 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 3,
+        "w": 2,
         "x": 3,
         "y": 0
       },
@@ -268,7 +268,7 @@
       "gridPos": {
         "h": 5,
         "w": 3,
-        "x": 6,
+        "x": 5,
         "y": 0
       },
       "id": 25,
@@ -359,7 +359,7 @@
       "gridPos": {
         "h": 5,
         "w": 3,
-        "x": 9,
+        "x": 8,
         "y": 0
       },
       "id": 23,
@@ -458,8 +458,8 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 3,
-        "x": 12,
+        "w": 2,
+        "x": 11,
         "y": 0
       },
       "id": 24,
@@ -556,7 +556,7 @@
       "gridPos": {
         "h": 5,
         "w": 3,
-        "x": 15,
+        "x": 13,
         "y": 0
       },
       "id": 22,
@@ -647,7 +647,7 @@
       "gridPos": {
         "h": 5,
         "w": 3,
-        "x": 18,
+        "x": 16,
         "y": 0
       },
       "id": 27,
@@ -737,7 +737,7 @@
               },
               {
                 "color": "red",
-                "value": 20
+                "value": 15
               }
             ]
           }
@@ -746,8 +746,8 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 3,
-        "x": 21,
+        "w": 2,
+        "x": 19,
         "y": 0
       },
       "id": 26,
@@ -809,6 +809,112 @@
       ],
       "title": "Resrc errors",
       "type": "stat"
+    },
+    {
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "max": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "percentage",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "#EAB839",
+                "value": 98
+              },
+              {
+                "color": "green",
+                "value": 99.8
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 3,
+        "x": 21,
+        "y": 0
+      },
+      "id": 30,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "text": {}
+      },
+      "pluginVersion": "8.3.5",
+      "targets": [
+        {
+          "alias": "API falis",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "jS735JXnz"
+          },
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            }
+          ],
+          "measurement": "$mycloud",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"$mycloud\" WHERE (\"cmd\" = 'iperf3') AND $timeFilter",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "return_code"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "sum"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "cmd",
+              "operator": "=~",
+              "value": "/^$mycmd$/"
+            },
+            {
+              "condition": "AND",
+              "key": "method",
+              "operator": "=~",
+              "value": "/^$mymethod$/"
+            }
+          ]
+        }
+      ],
+      "title": "iperf success rate",
+      "type": "gauge"
     },
     {
       "collapsed": false,
@@ -1295,8 +1401,8 @@
             }
           },
           "mappings": [],
-          "max": 256,
-          "min": 4,
+          "max": 384,
+          "min": 6,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1808,6 +1914,6 @@
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
   "uid": "9ltTEmlnk",
-  "version": 4,
+  "version": 6,
   "weekStart": ""
 }
