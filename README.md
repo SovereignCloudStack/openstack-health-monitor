@@ -54,7 +54,7 @@ License: CC-BY-SA (2.0)
 - a full cross connectivity check (can each VM ping each other?) with `-C`
 - we create a loadbalancer and check accessing all VMs as members (RR) with `-L`/`-LL`
 - we kill some backends and check that the LB's health monitor detects this and
-  routes the request to the alive backend members
+  routes the requests to the alive backend members
 - attach additional NICs and test (options `-2`, `-3`, `-4`)
 - NOT YET: attach additional disks to running VMs
  
@@ -86,7 +86,7 @@ This takes rather long, as typical API calls take b/w 1 and 2s on OpenStack (inc
 
 Optimization possibilities:
 Cache token and reuse when creating a large number of resources in a loop. 
-Completed (use option -O (not used for volume create)).
+Completed (use option `-O` (not used for volume create)).
 
 ## Prerequisites
 
@@ -101,7 +101,7 @@ Completed (use option -O (not used for volume create)).
 
 ## Usage
 
-Use `api_monitor.sh -h` to get a list of the command line options.
+Use `api_monitor.sh -h` to get a list of the command line options. For reference find the output (from v1.82) here:
 
 ```
 Usage: api_monitor.sh [options]
