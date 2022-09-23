@@ -38,7 +38,9 @@ It also enables Viewer access for SovereignCloudStack org members on github.
 ![](oshm-grafana-gxscs-20220923-1.png)
 ![](oshm-grafana-gxscs-20220923-2.png)
 
-These screenshots show two days in the gx-scs development environment from PlusServer.
+These screenshots show two days in the gx-scs development cloud from PlusServer,
+nothing filtered out (all OpenStack services, all commands, all resource types,
+all benchmarks).
 
 There are a few things that can be observed, from most obvious to least obvious:
 
