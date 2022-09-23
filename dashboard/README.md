@@ -35,5 +35,5 @@ It also enables Viewer access for SovereignCloudStack org members on github.
 
 ## Screenshots
 
-![](SCS1-gxscshm-20220502.png)
-![](SCS2-gxscshm-20220502.png)
+![](oshm-grafana-gxscs-20220923-1.png)
+![](oshm-grafana-gxscs-20220923-2.png)
