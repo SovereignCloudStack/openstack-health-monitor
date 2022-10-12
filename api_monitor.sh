@@ -3959,7 +3959,9 @@ else # test "$1" = "DEPLOY"; then
       deleteJHVols
      # There is a chance that some VMs were not created, but ports were allocated, so clean ...
      fi; cleanupPorts; deleteSGroups
-    fi; waitdelLBs; deleteRIfaces
+    fi # Wait for LBs to vanish, try deleting again, in case they had been in PENDING_XXXX before
+    if ! waitdelLBs; then deleteLBs; waitdelLBs; fi
+    deleteRIfaces
    fi; deleteSubNets
   fi; deleteNets
  fi
