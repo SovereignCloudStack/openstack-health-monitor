@@ -269,6 +269,7 @@ usage()
   echo " -z SZ  boots VMs from volume of size SZ"
   echo " -P     do not create Port before VM creation"
   echo " -D     create all VMs with one API call (implies -d -P)"
+  echo " -dns [LIST] Supply space delimited list of nameservers to use (empty => subnet defaults)"
   echo " -i N   sets max number of iterations (def = -1 = inf)"
   echo " -r N   only recreate router after each Nth iteration"
   echo " -g N   increase VM volume size by N GB (ignored for -d/-D)"
@@ -321,6 +322,7 @@ while test -n "$1"; do
     "-d") BOOTFROMIMAGE=1;;
     "-z") VMVOLSIZE=$2; shift;;
     "-D") BOOTALLATONCE=1; BOOTFROMIMAGE=1; unset MANUALPORTSETUP;;
+    "-dns") NAMESERVER="$2"; shift;;
     "-e") if test -z "$EMAIL"; then EMAIL="$2"; else EMAIL2="$2"; fi; shift;;
     "-m") if test -z "$SMNID"; then SMNID="$2"; else SMNID2="$2"; fi; shift;;
     "-q") NOALARM=1;;
@@ -1542,13 +1544,23 @@ JHSUBNETIP=10.250.255.0/24
 createSubNets()
 {
   ERC=0
-  if test -n "$NAMESERVER"; then
-    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 5.1.66.255 --dns-nameserver $NAMESERVER --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP" || ERC=$?
-    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 185.150.99.255 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22" || ERC=$?
-  else
-    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP" || ERC=$?
-    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_VM_\$no" "\$VAL" "10.250.\$((no*4)).0/22" || ERC=$?
+  # Three cases:
+  # (a) one NAMESERVER passed, fill in 5.1.66.255 and 185.150.99.255
+  # (b) several NAMESERVER passed, push them into subnets
+  # (c) no NAMESERVER passed, don't put anything into subnets (use cloud defaults instead)
+  NDNS=$(echo "$NAMESERVER" | wc -w)
+  DNS1=""; DNS2=""
+  if test $NDNS = 1; then
+    DNS1="--dns-nameserver 5.1.66.255 --dns-nameserver $NAMESERVER"
+    DNS2="--dns-nameserver $NAMESERVER --dns-nameserver 185.150.99.255"
+  elif $NDNS -gt 1; then
+    for DNS in $NAMESERVER; do
+      DNS1="$DNS1--dns-nameserver $DNS "
+      DNS2="--dns-nameserver $DNS $DNS2"
+    done
   fi
+  createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create $DNS1 --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP" || ERC=$?
+  createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create $DNS2 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22" || ERC=$?
   return $ERC
 }
 
