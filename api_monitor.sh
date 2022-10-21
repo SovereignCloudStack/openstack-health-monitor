@@ -1553,7 +1553,7 @@ createSubNets()
   if test $NDNS = 1; then
     DNS1="--dns-nameserver 5.1.66.255 --dns-nameserver $NAMESERVER"
     DNS2="--dns-nameserver $NAMESERVER --dns-nameserver 185.150.99.255"
-  elif $NDNS -gt 1; then
+  elif test $NDNS -gt 1; then
     for DNS in $NAMESERVER; do
       DNS1="$DNS1--dns-nameserver $DNS "
       DNS2="--dns-nameserver $DNS $DNS2"
