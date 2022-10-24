@@ -151,10 +151,12 @@ NOVMS=12
 NONETS=$NOAZS
 MANUALPORTSETUP=1
 ROUTERITER=1
+if test -z "$DEFAULTNAMESERVER"; then
 if [[ $OS_AUTH_URL == *otc*t-systems.com* ]]; then
   NAMESERVER=${NAMESERVER:-100.125.4.25}
 fi
 if test -z "$NAMESERVER"; then NAMESERVER=8.8.8.8; fi
+fi
 
 MAXITER=-9999
 
@@ -299,7 +301,7 @@ usage()
   echo "You can override defaults by exporting the environment variables AZS, VAZS, RPRE,"
   echo " PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,"
   echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES,"
-  echo " NAMESERVER, SWIFTCONTAINER."
+  echo " NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER."
   echo "Typically, you should configure [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER."
   exit 0
 }
@@ -1257,7 +1259,7 @@ waitResources()
         TM=$(math "%i" "$TM-${SLIST[$i]}")
         eval ${CSTAT}+="($TM)"
         if test $STE -ge 2; then GRC=0; else GRC=$STE; fi
-        log_grafana "wait$RNM" "$COMP1" "$TIM" "$GRC"
+        log_grafana "wait$RNM" "$COMP1" "$TM" "$GRC"
         unset SLIST[$i]
       fi
     done
