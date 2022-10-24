@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.82
+VERSION=1.83
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -1157,7 +1157,7 @@ deleteResources()
     if test $RC != 0; then
       echo -e "${YELLOW}ERROR deleting $RNM $rsrc; retry and continue ...$NORM" 1>&2
       let ERR+=1
-      sleep 2
+      sleep 5
       TIRESP=$(ostackcmd_id id $(($TIMEOUT+8)) $@ $rsrc)
       RC=$?
       updAPIerr $RC
@@ -1304,6 +1304,7 @@ waitlistResources()
   eval RRLIST=( \"\${${RNM}S[@]}\" )
   eval local SLIST=( \"\${${STIME}[@]}\" )
   local LAST=$(( ${#RLIST[@]} - 1 ))
+  if test ${#RLIST[@]} != ${#SLIST[@]}; then echo " WARN: RLIST \"${RLIST[@]}\" SLIST \"${SLIST[@]}\""; fi
   local PARSE="^|"
   local WAITVAL
   #echo "waitlistResources \"${RLIST[*]}\" \"${SLIST[*]}\"" 1>&2
@@ -1317,7 +1318,7 @@ waitlistResources()
   local waitstart=$(date +%s)
   if test -n "$CSTAT" -a "$CLEANUPMODE" != "1"; then MAXWAIT=240; else MAXWAIT=30; fi
   if test -z "${RLIST[*]}"; then return 0; fi
-  while test -n "${SLIST[*]}" -a $ctr -le $MAXWAIT; do
+  while test -n "${RRLIST[*]}" -a $ctr -le $MAXWAIT; do
     local STATSTR=""
     local CMD=`eval echo $@ 2>&1`
     ostackcmd_tm $STATNM $TIMEOUT $CMD
@@ -1377,7 +1378,7 @@ waitlistResources()
   if test $ctr -ge $MAXWAIT; then let WERR+=${#SLIST[*]}; let misserr+=${#SLIST[*]}; fi
   if test -n "${SLIST[*]}"; then
     echo " TIMEOUT $(($(date +%s)-$waitstart))"
-    echo -e "\n${YELLOW}Wait TIMEOUT/ERROR${NORM} ($(($(date +%s)-$waitstart))s, $ctr iterations), LEFT: ${RED}${RRLIST[*]}:${SLIST[*]}${NORM}" 1>&2
+    echo -e "\n${YELLOW}Wait TIMEOUT/ERROR $misserr ${NORM} ($(($(date +%s)-$waitstart))s, $ctr iterations), LEFT: ${RED}${RRLIST[*]}:${SLIST[*]}${NORM}" 1>&2
     #FIXME: Shouldn't we send an alarm right here?
   else
     echo " ($(($(date +%s)-$waitstart))s, $ctr iterations)"
@@ -1410,7 +1411,7 @@ waitdelResources()
   local TIRESP
   #echo "waitdelResources $STATNM $RNM $DSTAT $DTIME - ${RLIST[*]} - ${DLIST[*]}"
   declare -i ctr=0
-  while test -n "${DLIST[*]}"i -a $ctr -le 320; do
+  while test -n "${DLIST[*]}" -a $ctr -le 320; do
     local STATSTR=""
     for i in $(seq 0 $LAST); do
       local rsrc=${RLIST[$i]}
@@ -3961,7 +3962,10 @@ else # test "$1" = "DEPLOY"; then
       deleteJHVols
      # There is a chance that some VMs were not created, but ports were allocated, so clean ...
      fi; cleanupPorts; deleteSGroups
-    fi; waitdelLBs; deleteRIfaces
+    fi # Wait for LBs to vanish, try deleting again, in case they had been in PENDING_XXXX before
+    CLEANUPMODE=1
+    if ! waitdelLBs; then unset CLEANUPMODE LBDSTATS; LBAASS=(${DELLBAASS[*]}); deleteLBs; waitdelLBs; fi
+    unset CLEANUPMODE; deleteRIfaces
    fi; deleteSubNets
   fi; deleteNets
  fi
