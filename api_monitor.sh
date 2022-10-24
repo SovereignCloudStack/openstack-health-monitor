@@ -1257,7 +1257,7 @@ waitResources()
         TM=$(math "%i" "$TM-${SLIST[$i]}")
         eval ${CSTAT}+="($TM)"
         if test $STE -ge 2; then GRC=0; else GRC=$STE; fi
-        log_grafana "wait$RNM" "$COMP1" "$TIM" "$GRC"
+        log_grafana "wait$RNM" "$COMP1" "$TM" "$GRC"
         unset SLIST[$i]
       fi
     done
