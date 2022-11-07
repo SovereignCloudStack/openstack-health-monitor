@@ -1837,7 +1837,7 @@ createFIPs()
   # Not needed on OTC, but for most other OpenStack clouds:
   # Connect Router to external network gateway
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET
-  if test -n "$FIPWAITPORTDEVOWNER"
+  if test -n "$FIPWAITPORTDEVOWNER"; then
     # Actually this fails if the port is not assigned to a VM yet
     #  -- we can not associate a FIP to a port w/o dev owner on some clouds
     # So wait for JHPORTS having a device owner
