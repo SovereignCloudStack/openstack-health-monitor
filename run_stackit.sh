@@ -35,6 +35,9 @@ export SWIFTCONTAINER=OS-HM-Logfiles
 # NAMESERVER
 export NAMESERVER=8.8.8.8
 
+# Set region
+export OS_REGION_NAME=RegionOne
+
 # Assume OS_ parameters have already been sourced from some .openrc file
 # export OS_CLOUD=gx-scs-healthmgr
 
