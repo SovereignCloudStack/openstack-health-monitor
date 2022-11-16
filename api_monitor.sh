@@ -2310,7 +2310,7 @@ testLBs()
   done
   ENTM=$(date +%s.%N)
   LBDUR=$(echo "$ENTM-$STTM" | bc -l)
-  LBDUR=$(printf %.2f $LBDUR)
+  LBDUR=$(printf %.3f $LBDUR)
   log_grafana LBconn $NOVMS $LBDUR $LBCERR
   ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
   handleLBErr $? "PoolShow"
@@ -2338,7 +2338,7 @@ testLBs()
   done
   ENTM=$(date +%s.%N)
   LBDUR=$(echo "$ENTM-$STTM" | bc -l)
-  LBDUR=$(printf %.2f $LBDUR)
+  LBDUR=$(printf %.3f $LBDUR)
   log_grafana LBconn $NOVMS $LBDUR $LBCERR
   echo
   if test $LBERR != 0; then
