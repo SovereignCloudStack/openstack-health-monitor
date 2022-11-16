@@ -2298,13 +2298,20 @@ testLBs()
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
   echo -n "Test LB at $LBIP:"
+  LBCERR=0
+  STTM=$(date +%s.%N)
   # Access LB NOVMS times (RR -> each server gets one request)
   for i in $(seq 0 $NOVMS); do
     ANS=$(curl -m4 http://$LBIP/hostname 2>/dev/null)
     handleLBErr $? "Connect $LBIP"
     echo -n " $ANS"
     if test $RC != 0; then errwait $ERRWAIT; fi
+    let LBCERR+=$RC
   done
+  ENTM=$(date +%s.%N)
+  LBDUR=$(echo "$ENTM-$STTM" | bc -l)
+  LBDUR=$(printf %.2f $LBDUR)
+  log_grafana LBconn $NOVMS $LBDUR $LBCERR
   ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
   handleLBErr $? "PoolShow"
   echo " $OSTACKRESP"
@@ -2319,13 +2326,20 @@ testLBs()
   echo $OSTACKRESP
   test "$OSTACKRESP" != "DEGRADED" && handleLBErr 1 "OpStatusNotDegraded"
   echo -n "Retest LB at $LBIP (after $((1+WAITLB)) s):"
+  LBCERR=0
+  STTM=$(date +%s.%N)
   # Access LB NOVMS times (RR -> each server gets one request)
   for i in $(seq 0 $NOVMS); do
     ANS=$(curl -m4 http://$LBIP/hostname 2>/dev/null)
     handleLBErr $? "Connect $LBIP"
     echo -n " $ANS"
     if test $RC != 0; then errwait $ERRWAIT; fi
+    let LBCERR+=$RC
   done
+  ENTM=$(date +%s.%N)
+  LBDUR=$(echo "$ENTM-$STTM" | bc -l)
+  LBDUR=$(printf %.2f $LBDUR)
+  log_grafana LBconn $NOVMS $LBDUR $LBCERR
   echo
   if test $LBERR != 0; then
     sendalarm 2 "Errors connecting to LB $LBIP port 80: $ERRREASON" "$LBERR" 4
