@@ -2228,7 +2228,7 @@ killhttp()
     #testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
     echo -n "$i: ${VMINFO[6]}[${VMINFO[2]}]}:${VMINFO[7]} (${VMINFO[5]}/${VMINFO[8]}) "
     HOSTN=$(ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3")
-    if test $? == 0; then echo -n "($HOSTN) "; else -n "ERROR "; fi
+    if test $? == 0; then echo -n "($HOSTN) "; else echo -n "ERROR "; fi
     #ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3"
     let killed+=1
     if test $killed -ge $HALF; then return; fi
@@ -3837,20 +3837,20 @@ else # test "$1" = "DEPLOY"; then
            waitJHVols # TODO: Error handling
            if createJHVMs; then
             let ROUNDVMS=$NOAZS
-            waitVols  # TODO: Error handling
-            if createVMs; then
-             let ROUNDVMS+=$NOVMS
-             waitJHVMs
-             RC=$?
-             if test $RC != 0; then
+            if createFIPs; then
+             waitVols  # TODO: Error handling
+             if createVMs; then
+              let ROUNDVMS+=$NOVMS
+              waitJHVMs
+              RC=$?
+              if test $RC != 0; then
                #sendalarm $RC "Timeout waiting for JHVM ${RRLIST[*]}" "$WAITERRSTR" $((4*$MAXWAIT))
                # FIXME: Shouldn't we count errors and abort here? Without JumpHosts, the rest is hopeless ...
                if test $RC -gt $NOAZS; then let VMERRORS+=$NOAZS; else let VMERRORS+=$RC; fi
-             else
-              # loadbalancer
-              waitLBs
-              LBERRORS=$?
-              if createFIPs; then
+              else
+               # loadbalancer
+               waitLBs
+               LBERRORS=$?
                # No error handling here (but alarms are generated)
                waitVMs
                # Errors will be counted later again
@@ -3944,9 +3944,9 @@ else # test "$1" = "DEPLOY"; then
                 if test -n "$LOADBALANCER" -a "$LBACTIVE" = "1"; then cleanLBs; fi
                fi
                # TODO: Detach and delete disks again
-              fi; deleteFIPs
-             fi; #JH wait successful
-            fi; deleteVMs
+              fi; #JH wait successful
+             fi; deleteVMs
+            fi; deleteFIPs
            fi; deleteJHVMs
           fi; deleteKeypairs
          fi; waitdelVMs; deleteVols
