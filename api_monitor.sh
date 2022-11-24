@@ -2309,8 +2309,8 @@ testLBs()
     let LBCERR+=$RC
   done
   ENTM=$(date +%s.%N)
-  LBDUR=$(echo "$ENTM-$STTM" | bc -l)
-  LBDUR=$(printf %.3f $LBDUR)
+  LBDUR=$(echo "10*($ENTM-$STTM)" | bc -l)
+  LBDUR=$(printf %.2f $LBDUR)
   log_grafana LBconn $NOVMS $LBDUR $LBCERR
   ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
   handleLBErr $? "PoolShow"
@@ -2337,8 +2337,8 @@ testLBs()
     let LBCERR+=$RC
   done
   ENTM=$(date +%s.%N)
-  LBDUR=$(echo "$ENTM-$STTM" | bc -l)
-  LBDUR=$(printf %.3f $LBDUR)
+  LBDUR=$(echo "10*($ENTM-$STTM)" | bc -l)
+  LBDUR=$(printf %.2f $LBDUR)
   log_grafana LBconn $NOVMS $LBDUR $LBCERR
   echo
   if test $LBERR != 0; then
@@ -3767,7 +3767,7 @@ elif test "$1" = "CONNTEST"; then
      # Error counting done by fullconntest already
      errwait $ERRWAIT
    elif test $FPRETRY != 0; then
-     echo "Warning: Needed $FPRETRY ping retries"
+     echo "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
    fi
    if test -n "$RESHUFFLE"; then
      reShuffle
@@ -3916,7 +3916,7 @@ else # test "$1" = "DEPLOY"; then
                     sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
                     errwait $ERRWAIT
                   elif test $FPRETRY != 0; then
-                   echo "Warning: Needed $FPRETRY ping retries"
+                   echo "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
                   fi
                   if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
                     reShuffle

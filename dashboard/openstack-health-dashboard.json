@@ -1537,7 +1537,7 @@
           },
           "mappings": [],
           "max": 32,
-          "min": 0.0625,
+          "min": 1,
           "thresholds": {
             "mode": "absolute",
             "steps": [
