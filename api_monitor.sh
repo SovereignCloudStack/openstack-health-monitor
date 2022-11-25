@@ -1508,7 +1508,14 @@ showResources()
 createRouters()
 {
   if test -z "$ROUTERS"; then
-    createResources 1 NETSTATS ROUTER NONE NONE "" id $FIPTIMEOUT neutron router-create ${RPRE}Router
+    createResources 1 NETSTATS ROUTER NONE NONE "" id $FIPTIMEOUT neutron router-create ${RPRE}Router || return
+    # Need to attach external net gateway
+    ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list || return
+    #EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\2/')
+    EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\1/')
+    # Not needed on OTC, but for most other OpenStack clouds:
+    # Connect Router to external network gateway
+    ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET
   fi
 }
 
@@ -1831,12 +1838,6 @@ createFIPs()
 {
   local FLOAT RESP
   #createResources $NOAZS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --security-group ${SGROUPS[0]} --name "${RPRE}Port_JH\${no}" ${JHNETS[0]} || return
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list || return 1
-  #EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\2/')
-  EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\1/')
-  # Not needed on OTC, but for most other OpenStack clouds:
-  # Connect Router to external network gateway
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET
   # Actually this fails if the port is not assigned to a VM yet
   #  -- we can not associate a FIP to a port w/o dev owner
   # So wait for JHPORTS having a device owner
