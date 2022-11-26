@@ -1510,12 +1510,13 @@ createRouters()
   if test -z "$ROUTERS"; then
     createResources 1 NETSTATS ROUTER NONE NONE "" id $FIPTIMEOUT neutron router-create ${RPRE}Router || return
     # Need to attach external net gateway
-    ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list || return
+    ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list
+    if test $? != 0; then deleteRouters; return 1; fi
     #EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\2/')
     EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\1/')
     # Not needed on OTC, but for most other OpenStack clouds:
     # Connect Router to external network gateway
-    ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET
+    ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET || true
   fi
 }
 
