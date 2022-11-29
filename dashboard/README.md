@@ -12,26 +12,35 @@ an ssh port-forward of port 3000.
 The default config in grafana.ini needs some work to complete the SSL setup
 by having a DNS resolvable hostname (you can get one on sovereignit.cloud
 from the SCS project if you want) and generate a valid cert for it.
-It also enables Viewer access for SovereignCloudStack org members on github.
+You can also enable Viewer access for SovereignCloudStack org members on github.
+
+The below config files are for an openSUSE 15.3/15.4 image -- grab one from
+<https://kfg.images.obs-website.eu-de.otc.t-systems.com/> and install
+telegraf, influxdb and grafana: `sudo zypper install telegraf influxdb grafana`.
 
 ## The config files
 
 * `telegraf.conf` is a default config file for [telegraf](https://www.influxdata.com/time-series-platform/telegraf/)
   from openSUSE 15.3 with minimal edits to work for us. The relevant pieces here are the
   `inputs.influxdb_listener` (on `:8186`) and the `outputs.influxdb` (to `localhost:8086`).
+  Put it into `/etc/telegraf/` (root:root 0644).
 * `config.toml` is the default config file for [influxdb](https://www.influxdata.com/time-series-platform/)
-  from openSUSE 15.3 without any edits.
+  from openSUSE 15.3 without any edits. This belongs to to `/etc/influxdb/' (root:influxdb 0640).
 * `grafana.ini` is the default config file for [grafana](https://grafana.com/)
   from openSUSE 15.3 with the admin password changed to `SCS_Admin` and `allow_signup` set to `false`.
+  It belongs into `/etc/grafana/' (root:grafana 0640).
   The configuration is prepared to be exposed to the internet -- to do so, change the admin password,
   fill in a hostname that you control (or reach out to SCS for getting a registration on sovereignit.cloud),
   generate SSL certs (e.g. via Let's Encrypt) and put them to `/etc/grafana/health-fullchain.pem`
-  and `health-key.pem`. Note that all github users that belong to the SovereignCloudStack org
-  have Viewer access to the dashboards.
+  and `health-key.pem` (belonging to group grafana and group-readable). Ensure to open up port 3000
+  in your firewall config and security groups.
+  Note that you can make all github users that belong to the SovereignCloudStack org
+  getting Viewer access to the dashboards by adding a `client_id` and `client_secret` in the
+  `[github.auth]` section that you request from the SCS github admins (github's oauth auth).
 * `openstack-health-dashboard.json` contains the dashboard exported to JSON and is the one piece here
-  that has received significant work. Screenshots from the dashboard can be seen below. You can import
-  the dashboard -- you will also need to create a influxdb datasource connecting to `localhost:8086` to
-  the `telegraf` database.
+  that has received significant work. Screenshots from the dashboard can be seen below.
+  To set up the dashboard, first create an influxdb datasource via `localhost:8086` connecting to
+  the `telegraf` database and then import the JSON as dashboard.
 
 ## Screenshots
 
