@@ -301,7 +301,7 @@ usage()
   echo "You can override defaults by exporting the environment variables AZS, VAZS, RPRE,"
   echo " PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,"
   echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES,"
-  echo " NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER."
+  echo " NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER, FIPWAITPORTDEVOWNER."
   echo "Typically, you should configure [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER."
   exit 0
 }
@@ -1839,11 +1839,12 @@ createFIPs()
 {
   local FLOAT RESP
   #createResources $NOAZS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --security-group ${SGROUPS[0]} --name "${RPRE}Port_JH\${no}" ${JHNETS[0]} || return
-  # Actually this fails if the port is not assigned to a VM yet
-  #  -- we can not associate a FIP to a port w/o dev owner
-  # So wait for JHPORTS having a device owner
-  #echo "Wait for JHPorts: "
-  waitResources NETSTATS JHPORT JPORTSTAT JVMSTIME "NONNULL" "NONONO" "device_owner" $NETTIMEOUT neutron port-show
+  if test -n "$FIPWAITPORTDEVOWNER"; then
+    # Actually this fails if the port is not assigned to a VM yet
+    #  -- we can not associate a FIP to a port w/o dev owner on some clouds
+    # So wait for JHPORTS having a device owner
+    waitResources NETSTATS JHPORT JPORTSTAT JVMSTIME "NONNULL" "NONONO" "device_owner" $NETTIMEOUT neutron port-show
+  fi
   # Now FIP creation is safe
   createResources $NOAZS FIPSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL --description ${RPRE}JH\$no $EXTNET
   if test $? != 0 -o -n "$INJECTFIPERR"; then return 1; fi
@@ -2327,13 +2328,20 @@ testLBs()
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
   echo -n "Test LB at $LBIP:"
+  LBCERR=0
+  STTM=$(date +%s.%N)
   # Access LB NOVMS times (RR -> each server gets one request)
   for i in $(seq 0 $NOVMS); do
     ANS=$(curl -m4 http://$LBIP/hostname 2>/dev/null)
     handleLBErr $? "Connect $LBIP"
     echo -n " $ANS"
     if test $RC != 0; then errwait $ERRWAIT; fi
+    let LBCERR+=$RC
   done
+  ENTM=$(date +%s.%N)
+  LBDUR=$(echo "10*($ENTM-$STTM)" | bc -l)
+  LBDUR=$(printf %.2f $LBDUR)
+  log_grafana LBconn $NOVMS $LBDUR $LBCERR
   ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
   handleLBErr $? "PoolShow"
   echo " $OSTACKRESP"
@@ -2348,13 +2356,20 @@ testLBs()
   echo $OSTACKRESP
   test "$OSTACKRESP" != "DEGRADED" && handleLBErr 1 "OpStatusNotDegraded"
   echo -n "Retest LB at $LBIP (after $((1+WAITLB)) s):"
+  LBCERR=0
+  STTM=$(date +%s.%N)
   # Access LB NOVMS times (RR -> each server gets one request)
   for i in $(seq 0 $NOVMS); do
     ANS=$(curl -m4 http://$LBIP/hostname 2>/dev/null)
     handleLBErr $? "Connect $LBIP"
     echo -n " $ANS"
     if test $RC != 0; then errwait $ERRWAIT; fi
+    let LBCERR+=$RC
   done
+  ENTM=$(date +%s.%N)
+  LBDUR=$(echo "10*($ENTM-$STTM)" | bc -l)
+  LBDUR=$(printf %.2f $LBDUR)
+  log_grafana LBconn $NOVMS $LBDUR $LBCERR
   echo
   if test $LBERR != 0; then
     sendalarm 2 "Errors connecting to LB $LBIP port 80: $ERRREASON" "$LBERR" 4
@@ -3782,7 +3797,7 @@ elif test "$1" = "CONNTEST"; then
      # Error counting done by fullconntest already
      errwait $ERRWAIT
    elif test $FPRETRY != 0; then
-     echo "Warning: Needed $FPRETRY ping retries"
+     echo "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
    fi
    if test -n "$RESHUFFLE"; then
      reShuffle
@@ -3931,7 +3946,7 @@ else # test "$1" = "DEPLOY"; then
                     sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
                     errwait $ERRWAIT
                   elif test $FPRETRY != 0; then
-                   echo "Warning: Needed $FPRETRY ping retries"
+                   echo "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
                   fi
                   if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
                     reShuffle
