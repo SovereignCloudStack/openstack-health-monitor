@@ -3378,7 +3378,7 @@ cleanup()
   if test -n "$LOADBALANCER"; then
     for sub in ${SUBNETS[*]}; do
       if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then continue; fi
-      PORTS=( $(findres "octavia-lb-vrrp" neutron port-list --fixed-ip subnet=$sub) )
+      PORTS=( $(findres "octavia-lb" neutron port-list --fixed-ip subnet=$sub) )
       echo "Cleaning octavia ports ${PORTS[*]} in subnet $sub ..."
       deletePorts
     done
@@ -3445,7 +3445,7 @@ waitnetgone()
   if test -n "$LOADBALANCER"; then
     for sub in ${SUBNETS[*]}; do
       if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then continue; fi
-      PORTS=( $(findres "octavia-lb-vrrp" neutron port-list --fixed-ip subnet=$sub) )
+      PORTS=( $(findres "octavia-lb" neutron port-list --fixed-ip subnet=$sub) )
       echo "Cleaning octavia ports ${PORTS[*]} in subnet $sub ..."
       deletePorts
     done
