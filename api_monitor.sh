@@ -3375,14 +3375,14 @@ cleanup()
   waitdelLBs
   SUBNETS=( $(findres "" neutron subnet-list) )
   # FIXME: We occasionally leaks ports from octavia
-  if test -n "$LOADBALANCER"; then
+  #if test -n "$LOADBALANCER"; then
     for sub in ${SUBNETS[*]}; do
-      if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then continue; fi
+      if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then echo "#DEBUG: Skip port clean subnet $sub"; continue; fi
       PORTS=( $(findres "octavia-lb" neutron port-list --fixed-ip subnet=$sub) )
       echo "Cleaning octavia ports ${PORTS[*]} in subnet $sub ..."
       deletePorts
     done
-  fi
+  #fi
   SGROUPS=( $(findres "" neutron security-group-list) )
   deleteSGroups
   #SUBNETS=( $(findres "" neutron subnet-list) )
@@ -3444,7 +3444,7 @@ waitnetgone()
   # FIXME: We occasionally leaks ports from octavia
   if test -n "$LOADBALANCER"; then
     for sub in ${SUBNETS[*]}; do
-      if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then continue; fi
+      if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then echo "#DEBUG: Skip port cleanup in subnet $sub"; continue; fi
       PORTS=( $(findres "octavia-lb" neutron port-list --fixed-ip subnet=$sub) )
       echo "Cleaning octavia ports ${PORTS[*]} in subnet $sub ..."
       deletePorts
