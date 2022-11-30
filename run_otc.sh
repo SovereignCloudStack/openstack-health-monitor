@@ -34,9 +34,10 @@ export AZS="eu-de-01 eu-de-03"
 export VAZS="eu-de-01 eu-de-03"
 # Upload (compressed) logfiles and stats to container
 export SWIFTCONTAINER=OS-HM-Logfiles
-# NAMESERVER
+# OTC Settings: NAMESERVER ...
 export NAMESERVER=100.125.4.25
-
+export DEFAULTNAMESERVER=1
+export FIPWAITPORTDEVOWNER=1
 export OLD_OCTAVIA=1
 
 # Assume OS_ parameters have already been sourced from some .openrc file
