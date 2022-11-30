@@ -3314,8 +3314,9 @@ cleanup_new()
   deleteKeypairs
   delete2ndPorts; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
   NOFITLERTAG=1
-  deleteSGroups
   waitdelLBs
+  # TODO: Delete remaining LB ports
+  deleteSGroups
   deleteRIfaces
   deleteSubNets; deleteJHSubNets
   deleteNets; deleteJHNets
@@ -3371,10 +3372,20 @@ cleanup()
   JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
   delete2ndPorts; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
   NOFILTERTAG=1
-  SGROUPS=( $(findres "" neutron security-group-list) )
-  deleteSGroups
   waitdelLBs
   SUBNETS=( $(findres "" neutron subnet-list) )
+  # FIXME: We occasionally leaks ports from octavia
+  if test -n "$LOADBALANCER"; then
+    for sub in ${SUBNETS[*]}; do
+      if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then continue; fi
+      PORTS=( $(findres "octavia-lb-vrrp" neutron port-list --fixed-ip subnet=$sub) )
+      echo "Cleaning octavia ports ${PORTS[*]} in subnet $sub ..."
+      deletePorts
+    done
+  fi
+  SGROUPS=( $(findres "" neutron security-group-list) )
+  deleteSGroups
+  #SUBNETS=( $(findres "" neutron subnet-list) )
   JHSUBNETS=()
   deleteRIfaces
   deleteSubNets
@@ -3435,7 +3446,7 @@ waitnetgone()
     for sub in ${SUBNETS[*]}; do
       if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then continue; fi
       PORTS=( $(findres "octavia-lb-vrrp" neutron port-list --fixed-ip subnet=$sub) )
-      echo "Cleaning ports ${PORTS[*]} in subnet $sub ..."
+      echo "Cleaning octavia ports ${PORTS[*]} in subnet $sub ..."
       deletePorts
     done
   fi
