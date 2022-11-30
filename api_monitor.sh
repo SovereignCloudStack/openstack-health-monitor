@@ -301,7 +301,7 @@ usage()
   echo "You can override defaults by exporting the environment variables AZS, VAZS, RPRE,"
   echo " PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,"
   echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES,"
-  echo " NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER."
+  echo " NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER, FIPWAITPORTDEVOWNER."
   echo "Typically, you should configure [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER."
   exit 0
 }
@@ -1837,11 +1837,12 @@ createFIPs()
   # Not needed on OTC, but for most other OpenStack clouds:
   # Connect Router to external network gateway
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET
-  # Actually this fails if the port is not assigned to a VM yet
-  #  -- we can not associate a FIP to a port w/o dev owner
-  # So wait for JHPORTS having a device owner
-  #echo "Wait for JHPorts: "
-  waitResources NETSTATS JHPORT JPORTSTAT JVMSTIME "NONNULL" "NONONO" "device_owner" $NETTIMEOUT neutron port-show
+  if test -n "$FIPWAITPORTDEVOWNER"; then
+    # Actually this fails if the port is not assigned to a VM yet
+    #  -- we can not associate a FIP to a port w/o dev owner on some clouds
+    # So wait for JHPORTS having a device owner
+    waitResources NETSTATS JHPORT JPORTSTAT JVMSTIME "NONNULL" "NONONO" "device_owner" $NETTIMEOUT neutron port-show
+  fi
   # Now FIP creation is safe
   createResources $NOAZS FIPSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL --description ${RPRE}JH\$no $EXTNET
   if test $? != 0 -o -n "$INJECTFIPERR"; then return 1; fi
