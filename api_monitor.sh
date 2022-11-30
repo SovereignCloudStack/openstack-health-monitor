@@ -3316,8 +3316,9 @@ cleanup_new()
   deleteKeypairs
   delete2ndPorts; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
   NOFITLERTAG=1
-  deleteSGroups
   waitdelLBs
+  # TODO: Delete remaining LB ports
+  deleteSGroups
   deleteRIfaces
   deleteSubNets; deleteJHSubNets
   deleteNets; deleteJHNets
@@ -3373,10 +3374,20 @@ cleanup()
   JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
   delete2ndPorts; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
   NOFILTERTAG=1
-  SGROUPS=( $(findres "" neutron security-group-list) )
-  deleteSGroups
   waitdelLBs
   SUBNETS=( $(findres "" neutron subnet-list) )
+  # FIXME: We occasionally leaks ports from octavia
+  #if test -n "$LOADBALANCER"; then
+    for sub in ${SUBNETS[*]}; do
+      if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then echo "#DEBUG: Skip port clean subnet $sub"; continue; fi
+      PORTS=( $(findres "octavia-lb" neutron port-list --fixed-ip subnet=$sub) )
+      echo "Cleaning octavia ports ${PORTS[*]} in subnet $sub ..."
+      deletePorts
+    done
+  #fi
+  SGROUPS=( $(findres "" neutron security-group-list) )
+  deleteSGroups
+  #SUBNETS=( $(findres "" neutron subnet-list) )
   JHSUBNETS=()
   deleteRIfaces
   deleteSubNets
@@ -3430,20 +3441,19 @@ waitnetgone()
   PORTS=( $(findres "" neutron port-list) )
   IGNORE_ERRORS=1
   deletePorts
+  SUBNETS=( $(findres "" neutron subnet-list) )
+  NETS=( $(findres "" neutron net-list) )
   # FIXME: We occasionally leaks ports from octavia
   if test -n "$LOADBALANCER"; then
-    SUBNETS=( $(findres "" neutron subnet-list) )
     for sub in ${SUBNETS[*]}; do
-      if ! echo "$sub" | grep '[0-9a-f\-]+' >/dev/null; then continue; fi
-      PORTS=( $(findres "octavia-lb-vrrp" neutron port-list --fixed-ip subnet=$sub) )
-      echo "Cleaning ports ${PORTS[*]} in subnet $sub ..."
+      if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then echo "#DEBUG: Skip port cleanup in subnet $sub"; continue; fi
+      PORTS=( $(findres "octavia-lb" neutron port-list --fixed-ip subnet=$sub) )
+      echo "Cleaning octavia ports ${PORTS[*]} in subnet $sub ..."
       deletePorts
     done
   fi
   unset IGNORE_ERRORS
   echo -n "Wait for subnets/nets to disappear: "
-  SUBNETS=( $(findres "" neutron subnet-list) )
-  NETS=( $(findres "" neutron net-list) )
   deleteSubNets
   deleteNets
   while test $to -lt 40; do
