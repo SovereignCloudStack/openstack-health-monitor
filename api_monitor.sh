@@ -3428,11 +3428,12 @@ waitnetgone()
   PORTS=( $(findres "" neutron port-list) )
   IGNORE_ERRORS=1
   deletePorts
+  SUBNETS=( $(findres "" neutron subnet-list) )
+  NETS=( $(findres "" neutron net-list) )
   # FIXME: We occasionally leaks ports from octavia
   if test -n "$LOADBALANCER"; then
-    SUBNETS=( $(findres "" neutron subnet-list) )
     for sub in ${SUBNETS[*]}; do
-      if ! echo "$sub" | grep '[0-9a-f\-]+' >/dev/null; then continue; fi
+      if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then continue; fi
       PORTS=( $(findres "octavia-lb-vrrp" neutron port-list --fixed-ip subnet=$sub) )
       echo "Cleaning ports ${PORTS[*]} in subnet $sub ..."
       deletePorts
@@ -3440,8 +3441,6 @@ waitnetgone()
   fi
   unset IGNORE_ERRORS
   echo -n "Wait for subnets/nets to disappear: "
-  SUBNETS=( $(findres "" neutron subnet-list) )
-  NETS=( $(findres "" neutron net-list) )
   deleteSubNets
   deleteNets
   while test $to -lt 40; do
