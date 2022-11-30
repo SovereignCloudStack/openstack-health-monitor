@@ -739,7 +739,9 @@ translate()
       ARGS=$(echo "$@" | sed -e 's@set @@' -e 's@\([a-zA-Z_0-9]*=[^ ]*\)@--property \1@g')
       OSTACKCMD=($OPST $DEFCMD set $ARGS)
     elif test "$DEFCMD" == "object" -a "$CMD" == "upload"; then
-      OSTACKCMD=($OPST $DEFCMD create "$@")
+      if test "$1" == "--object-name"; then ON="--name"; else ON="$1"; fi
+      shift
+      OSTACKCMD=($OPST $DEFCMD create "$ON" "$@")
     fi
   else
     C1=${1%-*}
@@ -3561,7 +3563,7 @@ compress_and_upload()
   fi
   if test -n "$SWIFTCONTAINER"; then
     LOGFILE="${LOGFILE%/*}/.${LOGFILE##*/}.swift"
-    RESP=$(ostackcmd_id etag $CINDERTIMEOUT swift upload "$SWIFTCONTAINER" "$1$EXT")
+    RESP=$(ostackcmd_id etag $CINDERTIMEOUT swift upload --object-name ${1##*/}$EXT "$SWIFTCONTAINER" "$1$EXT")
     if test $? = 0; then rm "$1$EXT"; fi
     LOGFILE="$OLDLF"
   elif test -n "$S3BUCKET"; then
