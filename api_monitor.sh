@@ -2062,7 +2062,7 @@ collectPorts()
   # FIXME: We could use the new reporting: -c ID -c "Fixed IP Addressess" -c "Device ID"
   # (but that does not help either to recover the lost device_id fields)
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
-  #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'"
+  #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'\n\'$IPRESP\'"
   #echo "#DEBUG: cP VMs ${VMS[*]}"
   if test -n "$SECONDNET" -a -z "$SECONDPORTS"; then COLLSECOND=1; else unset COLLSECOND; fi
   for vm in $(seq 0 $(($NOVMS-1))); do
