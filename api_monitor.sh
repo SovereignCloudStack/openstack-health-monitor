@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.83
+VERSION=1.84
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -1927,7 +1927,7 @@ calcRedirs()
   #  secondary port reshuffling and (b) PORTS needs to match VMS ordering
   # This is why we use orderVMs
   # Optimization: Do neutron port-list once and parse multiple times ...
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
   if test ${#PORTS[*]} -gt 0; then
     declare -i ptn=222
     declare -i pi=0
@@ -1988,7 +1988,7 @@ createJHVMs()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   calcRedirs
-  #echo "#DEBUG: $VIP ${REDIRS[*]}"
+  #echo "#DEBUG: cJHVM VIP $VIP REDIR ${REDIRS[*]}"
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
     if test -z "${REDIRS[$JHNUM]}"; then
       # No fwdmasq config possible yet
@@ -2028,9 +2028,9 @@ $RD
 }
 
 # Fill PORTS array by matching part's device_ids with the VM UUIDs
-collectPorts()
+collectPorts_Old()
 {
-  local vm vmid
+  local vm vmid ports port
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
   #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'"
   #echo "#DEBUG: cP VMs ${VMS[*]}"
@@ -2040,13 +2040,7 @@ collectPorts()
     if test -z "$vmid"; then sendalarm 1 "nova list" "VM $vm not found" $NOVATIMEOUT; continue; fi
     #port=$(echo "$OSTACKRESP" | jq -r '.[]' | grep -C4 "$vmid")
     #echo -e "#DEBUG: $port"
-    if test -z "$OPENSTACKCLIENT"; then
-      ports=$(echo "$OSTACKRESP" | jq -r ".[] | select(.device_id == \"$vmid\") | .id+\" \"+.fixed_ips[].ip_address" | tr -d '"')
-    else
-      ports=$(echo "$OSTACKRESP" | jq -r "def str(s): s|tostring; .[] | select(.device_id == \"$vmid\") | .ID+\" \"+str(.[\"Fixed IP Addresses\"])" | tr -d '"')
-      #if echo "$ports" | grep ip_address >/dev/null 2>&1; then ports=$(echo "$ports" | jq '.[].ip_address'); fi
-      ports=$(echo -e "$ports" | tr -d '"' | sed "$PORTFIXED2")
-    fi
+    ports=$(echo "$OSTACKRESP" | jq -r ".[] | select(.device_id == \"$vmid\") | .id+\" \"+.fixed_ips[].ip_address" | tr -d '"')
     port=$(echo -e "$ports" | grep 10.250 | sed 's/^\([^ ]*\) .*$/\1/')
     PORTS[$vm]=$port
     if test -n "$COLLSECOND"; then
@@ -2054,9 +2048,42 @@ collectPorts()
       SECONDPORTS[$vm]=$port2
     fi
   done
-  echo "VM Ports: ${PORTS[*]}"
-  if test -n "$SECONDPORTS"; then echo "VM Ports2: ${SECONDPORTS[*]}"; fi
+  echo "#VM Ports: ${PORTS[*]}"
+  if test -n "$SECONDPORTS"; then echo "#VM Ports2: ${SECONDPORTS[*]}"; fi
+}
 
+# Fill PORTS array by matching VM's IP address with port
+collectPorts()
+{
+  local vm vmid ipaddr ipaddr2 port port2
+  if test -z "$OPENSTACKCLIENT"; then collectPorts_Old; return; fi
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc -f json -c Name -c ID -c Networks
+  IPRESP="$OSTACKRESP"
+  # FIXME: We could use the new reporting: -c ID -c "Fixed IP Addressess" -c "Device ID"
+  # (but that does not help either to recover the lost device_id fields)
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
+  #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'"
+  #echo "#DEBUG: cP VMs ${VMS[*]}"
+  if test -n "$SECONDNET" -a -z "$SECONDPORTS"; then COLLSECOND=1; else unset COLLSECOND; fi
+  for vm in $(seq 0 $(($NOVMS-1))); do
+    vmid=${VMS[$vm]}
+    if test -z "$vmid"; then sendalarm 1 "nova list" "VM $vm not found" $NOVATIMEOUT; continue; fi
+    # FIXME: In theory, we need to filter for the correct subnet as well
+    # (In practice: An IP address conflict is very unlikely ...)
+    ipaddr=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.250\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+    if test -n "$COLLSECOND"; then
+      ipaddr2=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.251\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+    fi
+    port=$(echo "$OSTACKRESP" | jq ".[] | select(.\"Fixed IP Addresses\"[].ip_address == \"$ipaddr\").ID" | tr -d '"')
+    #echo -e "#DEBUG: Search Port for VM $vmid with IP $ipaddr => port $port"
+    PORTS[$vm]=$port
+    if test -n "$COLLSECOND"; then
+      port2=$(echo "$OSTACKRESP" | jq ".[] | select(.\"Fixed IP Addresses\"[].ip_address == \"$ipaddr2\").ID" | tr -d '"')
+      SECONDPORTS[$vm]=$port2
+    fi
+  done
+  echo "#VM Ports: ${PORTS[*]}"
+  if test -n "$SECONDPORTS"; then echo "#VM Ports2: ${SECONDPORTS[*]}"; fi
 }
 
 # When NOT creating ports before JHVM starts, we cannot pass the port fwd information
@@ -2069,7 +2096,7 @@ setPortForward()
   # If we need to collect port info, do so now
   if test -z "${PORTS[*]}"; then collectPorts; fi
   calcRedirs
-  #echo "#DEBUG: sPF VIP REDIR $VIP ${REDIRS[*]}"
+  #echo "#DEBUG: sPF VIP $VIP REDIR ${REDIRS[*]} PORTS \"${PORTS[*]}\""
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
     if test -z "${REDIRS[$JHNUM]}"; then
       echo -e "${YELLOW}ERROR: No redirections?$NORM" 1>&2
@@ -2095,7 +2122,7 @@ setPortForwardGen()
   # If we need to collect port info, do so now
   if test -z "${PORTS[*]}"; then collectPorts; fi
   calcRedirs
-  #echo "#DEBUG: sPF VIP REDIR $VIP ${REDIRS[*]}"
+  #echo "#DEBUG: sPFG VIP $VIP REDIR ${REDIRS[*]} PORTS \"${PORTS[*]}\""
   echo -n "Enable port forwarding on "
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
     echo -n "JHVM$JHNUM: "
