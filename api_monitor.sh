@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.82
+VERSION=1.84
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -151,10 +151,12 @@ NOVMS=12
 NONETS=$NOAZS
 MANUALPORTSETUP=1
 ROUTERITER=1
+if test -z "$DEFAULTNAMESERVER"; then
 if [[ $OS_AUTH_URL == *otc*t-systems.com* ]]; then
   NAMESERVER=${NAMESERVER:-100.125.4.25}
 fi
 if test -z "$NAMESERVER"; then NAMESERVER=8.8.8.8; fi
+fi
 
 MAXITER=-9999
 
@@ -299,7 +301,7 @@ usage()
   echo "You can override defaults by exporting the environment variables AZS, VAZS, RPRE,"
   echo " PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,"
   echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES,"
-  echo " NAMESERVER, SWIFTCONTAINER."
+  echo " NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER, FIPWAITPORTDEVOWNER."
   echo "Typically, you should configure [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER."
   exit 0
 }
@@ -1155,7 +1157,7 @@ deleteResources()
     if test $RC != 0; then
       echo -e "${YELLOW}ERROR deleting $RNM $rsrc; retry and continue ...$NORM" 1>&2
       let ERR+=1
-      sleep 2
+      sleep 5
       TIRESP=$(ostackcmd_id id $(($TIMEOUT+8)) $@ $rsrc)
       RC=$?
       updAPIerr $RC
@@ -1257,7 +1259,7 @@ waitResources()
         TM=$(math "%i" "$TM-${SLIST[$i]}")
         eval ${CSTAT}+="($TM)"
         if test $STE -ge 2; then GRC=0; else GRC=$STE; fi
-        log_grafana "wait$RNM" "$COMP1" "$TIM" "$GRC"
+        log_grafana "wait$RNM" "$COMP1" "$TM" "$GRC"
         unset SLIST[$i]
       fi
     done
@@ -1302,6 +1304,7 @@ waitlistResources()
   eval RRLIST=( \"\${${RNM}S[@]}\" )
   eval local SLIST=( \"\${${STIME}[@]}\" )
   local LAST=$(( ${#RLIST[@]} - 1 ))
+  if test ${#RLIST[@]} != ${#SLIST[@]}; then echo " WARN: RLIST \"${RLIST[@]}\" SLIST \"${SLIST[@]}\""; fi
   local PARSE="^|"
   local WAITVAL
   #echo "waitlistResources \"${RLIST[*]}\" \"${SLIST[*]}\"" 1>&2
@@ -1315,7 +1318,7 @@ waitlistResources()
   local waitstart=$(date +%s)
   if test -n "$CSTAT" -a "$CLEANUPMODE" != "1"; then MAXWAIT=240; else MAXWAIT=30; fi
   if test -z "${RLIST[*]}"; then return 0; fi
-  while test -n "${SLIST[*]}" -a $ctr -le $MAXWAIT; do
+  while test -n "${RRLIST[*]}" -a $ctr -le $MAXWAIT; do
     local STATSTR=""
     local CMD=`eval echo $@ 2>&1`
     ostackcmd_tm $STATNM $TIMEOUT $CMD
@@ -1375,7 +1378,7 @@ waitlistResources()
   if test $ctr -ge $MAXWAIT; then let WERR+=${#SLIST[*]}; let misserr+=${#SLIST[*]}; fi
   if test -n "${SLIST[*]}"; then
     echo " TIMEOUT $(($(date +%s)-$waitstart))"
-    echo -e "\n${YELLOW}Wait TIMEOUT/ERROR${NORM} ($(($(date +%s)-$waitstart))s, $ctr iterations), LEFT: ${RED}${RRLIST[*]}:${SLIST[*]}${NORM}" 1>&2
+    echo -e "\n${YELLOW}Wait TIMEOUT/ERROR $misserr ${NORM} ($(($(date +%s)-$waitstart))s, $ctr iterations), LEFT: ${RED}${RRLIST[*]}:${SLIST[*]}${NORM}" 1>&2
     #FIXME: Shouldn't we send an alarm right here?
   else
     echo " ($(($(date +%s)-$waitstart))s, $ctr iterations)"
@@ -1408,7 +1411,7 @@ waitdelResources()
   local TIRESP
   #echo "waitdelResources $STATNM $RNM $DSTAT $DTIME - ${RLIST[*]} - ${DLIST[*]}"
   declare -i ctr=0
-  while test -n "${DLIST[*]}"i -a $ctr -le 320; do
+  while test -n "${DLIST[*]}" -a $ctr -le 320; do
     local STATSTR=""
     for i in $(seq 0 $LAST); do
       local rsrc=${RLIST[$i]}
@@ -1834,11 +1837,12 @@ createFIPs()
   # Not needed on OTC, but for most other OpenStack clouds:
   # Connect Router to external network gateway
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET
-  # Actually this fails if the port is not assigned to a VM yet
-  #  -- we can not associate a FIP to a port w/o dev owner
-  # So wait for JHPORTS having a device owner
-  #echo "Wait for JHPorts: "
-  waitResources NETSTATS JHPORT JPORTSTAT JVMSTIME "NONNULL" "NONONO" "device_owner" $NETTIMEOUT neutron port-show
+  if test -n "$FIPWAITPORTDEVOWNER"; then
+    # Actually this fails if the port is not assigned to a VM yet
+    #  -- we can not associate a FIP to a port w/o dev owner on some clouds
+    # So wait for JHPORTS having a device owner
+    waitResources NETSTATS JHPORT JPORTSTAT JVMSTIME "NONNULL" "NONONO" "device_owner" $NETTIMEOUT neutron port-show
+  fi
   # Now FIP creation is safe
   createResources $NOAZS FIPSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL --description ${RPRE}JH\$no $EXTNET
   if test $? != 0 -o -n "$INJECTFIPERR"; then return 1; fi
@@ -1923,7 +1927,7 @@ calcRedirs()
   #  secondary port reshuffling and (b) PORTS needs to match VMS ordering
   # This is why we use orderVMs
   # Optimization: Do neutron port-list once and parse multiple times ...
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
   if test ${#PORTS[*]} -gt 0; then
     declare -i ptn=222
     declare -i pi=0
@@ -1984,7 +1988,7 @@ createJHVMs()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   calcRedirs
-  #echo "#DEBUG: $VIP ${REDIRS[*]}"
+  #echo "#DEBUG: cJHVM VIP $VIP REDIR ${REDIRS[*]}"
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
     if test -z "${REDIRS[$JHNUM]}"; then
       # No fwdmasq config possible yet
@@ -2024,9 +2028,9 @@ $RD
 }
 
 # Fill PORTS array by matching part's device_ids with the VM UUIDs
-collectPorts()
+collectPorts_Old()
 {
-  local vm vmid
+  local vm vmid ports port
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
   #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'"
   #echo "#DEBUG: cP VMs ${VMS[*]}"
@@ -2036,13 +2040,7 @@ collectPorts()
     if test -z "$vmid"; then sendalarm 1 "nova list" "VM $vm not found" $NOVATIMEOUT; continue; fi
     #port=$(echo "$OSTACKRESP" | jq -r '.[]' | grep -C4 "$vmid")
     #echo -e "#DEBUG: $port"
-    if test -z "$OPENSTACKCLIENT"; then
-      ports=$(echo "$OSTACKRESP" | jq -r ".[] | select(.device_id == \"$vmid\") | .id+\" \"+.fixed_ips[].ip_address" | tr -d '"')
-    else
-      ports=$(echo "$OSTACKRESP" | jq -r "def str(s): s|tostring; .[] | select(.device_id == \"$vmid\") | .ID+\" \"+str(.[\"Fixed IP Addresses\"])" | tr -d '"')
-      #if echo "$ports" | grep ip_address >/dev/null 2>&1; then ports=$(echo "$ports" | jq '.[].ip_address'); fi
-      ports=$(echo -e "$ports" | tr -d '"' | sed "$PORTFIXED2")
-    fi
+    ports=$(echo "$OSTACKRESP" | jq -r ".[] | select(.device_id == \"$vmid\") | .id+\" \"+.fixed_ips[].ip_address" | tr -d '"')
     port=$(echo -e "$ports" | grep 10.250 | sed 's/^\([^ ]*\) .*$/\1/')
     PORTS[$vm]=$port
     if test -n "$COLLSECOND"; then
@@ -2050,9 +2048,42 @@ collectPorts()
       SECONDPORTS[$vm]=$port2
     fi
   done
-  echo "VM Ports: ${PORTS[*]}"
-  if test -n "$SECONDPORTS"; then echo "VM Ports2: ${SECONDPORTS[*]}"; fi
+  echo "#VM Ports: ${PORTS[*]}"
+  if test -n "$SECONDPORTS"; then echo "#VM Ports2: ${SECONDPORTS[*]}"; fi
+}
 
+# Fill PORTS array by matching VM's IP address with port
+collectPorts()
+{
+  local vm vmid ipaddr ipaddr2 port port2
+  if test -z "$OPENSTACKCLIENT"; then collectPorts_Old; return; fi
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc -f json -c Name -c ID -c Networks
+  IPRESP="$OSTACKRESP"
+  # FIXME: We could use the new reporting: -c ID -c "Fixed IP Addressess" -c "Device ID"
+  # (but that does not help either to recover the lost device_id fields)
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
+  #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'"
+  #echo "#DEBUG: cP VMs ${VMS[*]}"
+  if test -n "$SECONDNET" -a -z "$SECONDPORTS"; then COLLSECOND=1; else unset COLLSECOND; fi
+  for vm in $(seq 0 $(($NOVMS-1))); do
+    vmid=${VMS[$vm]}
+    if test -z "$vmid"; then sendalarm 1 "nova list" "VM $vm not found" $NOVATIMEOUT; continue; fi
+    # FIXME: In theory, we need to filter for the correct subnet as well
+    # (In practice: An IP address conflict is very unlikely ...)
+    ipaddr=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.250\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+    if test -n "$COLLSECOND"; then
+      ipaddr2=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.251\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+    fi
+    port=$(echo "$OSTACKRESP" | jq ".[] | select(.\"Fixed IP Addresses\"[].ip_address == \"$ipaddr\").ID" | tr -d '"')
+    #echo -e "#DEBUG: Search Port for VM $vmid with IP $ipaddr => port $port"
+    PORTS[$vm]=$port
+    if test -n "$COLLSECOND"; then
+      port2=$(echo "$OSTACKRESP" | jq ".[] | select(.\"Fixed IP Addresses\"[].ip_address == \"$ipaddr2\").ID" | tr -d '"')
+      SECONDPORTS[$vm]=$port2
+    fi
+  done
+  echo "#VM Ports: ${PORTS[*]}"
+  if test -n "$SECONDPORTS"; then echo "#VM Ports2: ${SECONDPORTS[*]}"; fi
 }
 
 # When NOT creating ports before JHVM starts, we cannot pass the port fwd information
@@ -2065,7 +2096,7 @@ setPortForward()
   # If we need to collect port info, do so now
   if test -z "${PORTS[*]}"; then collectPorts; fi
   calcRedirs
-  #echo "#DEBUG: sPF VIP REDIR $VIP ${REDIRS[*]}"
+  #echo "#DEBUG: sPF VIP $VIP REDIR ${REDIRS[*]} PORTS \"${PORTS[*]}\""
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
     if test -z "${REDIRS[$JHNUM]}"; then
       echo -e "${YELLOW}ERROR: No redirections?$NORM" 1>&2
@@ -2091,7 +2122,7 @@ setPortForwardGen()
   # If we need to collect port info, do so now
   if test -z "${PORTS[*]}"; then collectPorts; fi
   calcRedirs
-  #echo "#DEBUG: sPF VIP REDIR $VIP ${REDIRS[*]}"
+  #echo "#DEBUG: sPFG VIP $VIP REDIR ${REDIRS[*]} PORTS \"${PORTS[*]}\""
   echo -n "Enable port forwarding on "
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
     echo -n "JHVM$JHNUM: "
@@ -2224,7 +2255,7 @@ killhttp()
     #testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
     echo -n "$i: ${VMINFO[6]}[${VMINFO[2]}]}:${VMINFO[7]} (${VMINFO[5]}/${VMINFO[8]}) "
     HOSTN=$(ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3")
-    if test $? == 0; then echo -n "($HOSTN) "; else -n "ERROR "; fi
+    if test $? == 0; then echo -n "($HOSTN) "; else echo -n "ERROR "; fi
     #ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3"
     let killed+=1
     if test $killed -ge $HALF; then return; fi
@@ -2295,13 +2326,20 @@ testLBs()
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
   echo -n "Test LB at $LBIP:"
+  LBCERR=0
+  STTM=$(date +%s.%N)
   # Access LB NOVMS times (RR -> each server gets one request)
   for i in $(seq 0 $NOVMS); do
     ANS=$(curl -m4 http://$LBIP/hostname 2>/dev/null)
     handleLBErr $? "Connect $LBIP"
     echo -n " $ANS"
     if test $RC != 0; then errwait $ERRWAIT; fi
+    let LBCERR+=$RC
   done
+  ENTM=$(date +%s.%N)
+  LBDUR=$(echo "10*($ENTM-$STTM)" | bc -l)
+  LBDUR=$(printf %.2f $LBDUR)
+  log_grafana LBconn $NOVMS $LBDUR $LBCERR
   ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
   handleLBErr $? "PoolShow"
   echo " $OSTACKRESP"
@@ -2316,13 +2354,20 @@ testLBs()
   echo $OSTACKRESP
   test "$OSTACKRESP" != "DEGRADED" && handleLBErr 1 "OpStatusNotDegraded"
   echo -n "Retest LB at $LBIP (after $((1+WAITLB)) s):"
+  LBCERR=0
+  STTM=$(date +%s.%N)
   # Access LB NOVMS times (RR -> each server gets one request)
   for i in $(seq 0 $NOVMS); do
     ANS=$(curl -m4 http://$LBIP/hostname 2>/dev/null)
     handleLBErr $? "Connect $LBIP"
     echo -n " $ANS"
     if test $RC != 0; then errwait $ERRWAIT; fi
+    let LBCERR+=$RC
   done
+  ENTM=$(date +%s.%N)
+  LBDUR=$(echo "10*($ENTM-$STTM)" | bc -l)
+  LBDUR=$(printf %.2f $LBDUR)
+  log_grafana LBconn $NOVMS $LBDUR $LBCERR
   echo
   if test $LBERR != 0; then
     sendalarm 2 "Errors connecting to LB $LBIP port 80: $ERRREASON" "$LBERR" 4
@@ -3750,7 +3795,7 @@ elif test "$1" = "CONNTEST"; then
      # Error counting done by fullconntest already
      errwait $ERRWAIT
    elif test $FPRETRY != 0; then
-     echo "Warning: Needed $FPRETRY ping retries"
+     echo "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
    fi
    if test -n "$RESHUFFLE"; then
      reShuffle
@@ -3833,20 +3878,20 @@ else # test "$1" = "DEPLOY"; then
            waitJHVols # TODO: Error handling
            if createJHVMs; then
             let ROUNDVMS=$NOAZS
-            waitVols  # TODO: Error handling
-            if createVMs; then
-             let ROUNDVMS+=$NOVMS
-             waitJHVMs
-             RC=$?
-             if test $RC != 0; then
+            if createFIPs; then
+             waitVols  # TODO: Error handling
+             if createVMs; then
+              let ROUNDVMS+=$NOVMS
+              waitJHVMs
+              RC=$?
+              if test $RC != 0; then
                #sendalarm $RC "Timeout waiting for JHVM ${RRLIST[*]}" "$WAITERRSTR" $((4*$MAXWAIT))
                # FIXME: Shouldn't we count errors and abort here? Without JumpHosts, the rest is hopeless ...
                if test $RC -gt $NOAZS; then let VMERRORS+=$NOAZS; else let VMERRORS+=$RC; fi
-             else
-              # loadbalancer
-              waitLBs
-              LBERRORS=$?
-              if createFIPs; then
+              else
+               # loadbalancer
+               waitLBs
+               LBERRORS=$?
                # No error handling here (but alarms are generated)
                waitVMs
                # Errors will be counted later again
@@ -3899,7 +3944,7 @@ else # test "$1" = "DEPLOY"; then
                     sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
                     errwait $ERRWAIT
                   elif test $FPRETRY != 0; then
-                   echo "Warning: Needed $FPRETRY ping retries"
+                   echo "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
                   fi
                   if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
                     reShuffle
@@ -3940,9 +3985,9 @@ else # test "$1" = "DEPLOY"; then
                 if test -n "$LOADBALANCER" -a "$LBACTIVE" = "1"; then cleanLBs; fi
                fi
                # TODO: Detach and delete disks again
-              fi; deleteFIPs
-             fi; #JH wait successful
-            fi; deleteVMs
+              fi; #JH wait successful
+             fi; deleteVMs
+            fi; deleteFIPs
            fi; deleteJHVMs
           fi; deleteKeypairs
          fi; waitdelVMs; deleteVols
@@ -3959,7 +4004,10 @@ else # test "$1" = "DEPLOY"; then
       deleteJHVols
      # There is a chance that some VMs were not created, but ports were allocated, so clean ...
      fi; cleanupPorts; deleteSGroups
-    fi; waitdelLBs; deleteRIfaces
+    fi # Wait for LBs to vanish, try deleting again, in case they had been in PENDING_XXXX before
+    CLEANUPMODE=1
+    if ! waitdelLBs; then unset CLEANUPMODE LBDSTATS; LBAASS=(${DELLBAASS[*]}); deleteLBs; waitdelLBs; fi
+    unset CLEANUPMODE; deleteRIfaces
    fi; deleteSubNets
   fi; deleteNets
  fi

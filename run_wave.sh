@@ -31,6 +31,7 @@ export FROM=kurt@garloff.de
 #export AZS="az1"
 # Upload (compressed) logfiles and stats to container
 #export SWIFTCONTAINER=OS-HM-Logfiles
+export DEFAULTNAMESERVER="true"
 
 # Assume OS_ parameters have already been sourced from some .openrc file
 # export OS_CLOUD=gx-scs-healthmgr
