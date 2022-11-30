@@ -1537,7 +1537,7 @@
           },
           "mappings": [],
           "max": 32,
-          "min": 0.25,
+          "min": 0.5,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1858,7 +1858,7 @@
         "options": [],
         "query": "show tag values with key = cmd",
         "refresh": 1,
-        "regex": "/^(4000pi|iperf3|ssh|totDur)$/",
+        "regex": "/^(4000pi|iperf3|ssh|totDur|LBconn)$/",
         "skipUrlSync": false,
         "sort": 0,
         "tagValuesQuery": "",
