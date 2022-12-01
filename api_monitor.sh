@@ -2052,7 +2052,7 @@ $RD
 }
 
 # Fill PORTS array by matching part's device_ids with the VM UUIDs
-collectPorts()
+collectPorts_Old()
 {
   local vm vmid
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
@@ -2081,6 +2081,40 @@ collectPorts()
   echo "VM Ports: ${PORTS[*]}"
   if test -n "$SECONDPORTS"; then echo "VM Ports2: ${SECONDPORTS[*]}"; fi
 
+# Fill PORTS array by matching VM's IP address with port
+collectPorts()
+{
+  local vm vmid ipaddr ipaddr2 port port2
+  if test -z "$OPENSTACKCLIENT"; then collectPorts_Old; return; fi
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc -f json -c Name -c ID -c Networks
+  IPRESP="$OSTACKRESP"
+  # FIXME: We could use the new reporting: -c ID -c "Fixed IP Addressess" -c "Device ID"
+  # (but that does not help either to recover the lost device_id fields)
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
+  #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'\n\'$IPRESP\'"
+  #echo "#DEBUG: cP VMs ${VMS[*]}"
+  if test -n "$SECONDNET" -a -z "$SECONDPORTS"; then COLLSECOND=1; else unset COLLSECOND; fi
+  for vm in $(seq 0 $(($NOVMS-1))); do
+    vmid=${VMS[$vm]}
+    if test -z "$vmid"; then sendalarm 1 "nova list" "VM $vm not found" $NOVATIMEOUT; continue; fi
+    # FIXME: In theory, we need to filter for the correct subnet as well
+    # (In practice: An IP address conflict is very unlikely ...)
+    ipaddr=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.250\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+    ipaddr="${ipaddr##*=}"; ipaddr="${ipaddr%\"}"
+    if test -n "$COLLSECOND"; then
+      ipaddr2=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.251\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+      ipaddr2="${ipaddr2##*=}"; ipaddr2="${ipaddr2%\"}"
+    fi
+    port=$(echo "$OSTACKRESP" | jq ".[] | select(.\"Fixed IP Addresses\"[].ip_address == \"$ipaddr\").ID" | tr -d '"')
+    #echo -e "#DEBUG: Search Port for VM $vmid with IP $ipaddr => port $port"
+    PORTS[$vm]=$port
+    if test -n "$COLLSECOND"; then
+      port2=$(echo "$OSTACKRESP" | jq ".[] | select(.\"Fixed IP Addresses\"[].ip_address == \"$ipaddr2\").ID" | tr -d '"')
+      SECONDPORTS[$vm]=$port2
+    fi
+  done
+  echo "#VM Ports: ${PORTS[*]}"
+  if test -n "$SECONDPORTS"; then echo "#VM Ports2: ${SECONDPORTS[*]}"; fi
 }
 
 # When NOT creating ports before JHVM starts, we cannot pass the port fwd information
