@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.84
+VERSION=1.85
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -1508,7 +1508,15 @@ showResources()
 createRouters()
 {
   if test -z "$ROUTERS"; then
-    createResources 1 NETSTATS ROUTER NONE NONE "" id $FIPTIMEOUT neutron router-create ${RPRE}Router
+    createResources 1 NETSTATS ROUTER NONE NONE "" id $FIPTIMEOUT neutron router-create ${RPRE}Router || return
+    # Need to attach external net gateway
+    ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list
+    if test $? != 0; then deleteRouters; return 1; fi
+    #EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\2/')
+    EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\1/')
+    # Not needed on OTC, but for most other OpenStack clouds:
+    # Connect Router to external network gateway
+    ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET || true
   fi
 }
 
@@ -1831,12 +1839,6 @@ createFIPs()
 {
   local FLOAT RESP
   #createResources $NOAZS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --security-group ${SGROUPS[0]} --name "${RPRE}Port_JH\${no}" ${JHNETS[0]} || return
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list || return 1
-  #EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\2/')
-  EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\1/')
-  # Not needed on OTC, but for most other OpenStack clouds:
-  # Connect Router to external network gateway
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET
   if test -n "$FIPWAITPORTDEVOWNER"; then
     # Actually this fails if the port is not assigned to a VM yet
     #  -- we can not associate a FIP to a port w/o dev owner on some clouds
@@ -2062,7 +2064,7 @@ collectPorts()
   # FIXME: We could use the new reporting: -c ID -c "Fixed IP Addressess" -c "Device ID"
   # (but that does not help either to recover the lost device_id fields)
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
-  #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'"
+  #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'\n\'$IPRESP\'"
   #echo "#DEBUG: cP VMs ${VMS[*]}"
   if test -n "$SECONDNET" -a -z "$SECONDPORTS"; then COLLSECOND=1; else unset COLLSECOND; fi
   for vm in $(seq 0 $(($NOVMS-1))); do
@@ -2071,8 +2073,10 @@ collectPorts()
     # FIXME: In theory, we need to filter for the correct subnet as well
     # (In practice: An IP address conflict is very unlikely ...)
     ipaddr=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.250\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+    ipaddr="${ipaddr##*=}"; ipaddr="${ipaddr%\"}"
     if test -n "$COLLSECOND"; then
       ipaddr2=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.251\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+      ipaddr2="${ipaddr2##*=}"; ipaddr2="${ipaddr2%\"}"
     fi
     port=$(echo "$OSTACKRESP" | jq ".[] | select(.\"Fixed IP Addresses\"[].ip_address == \"$ipaddr\").ID" | tr -d '"')
     #echo -e "#DEBUG: Search Port for VM $vmid with IP $ipaddr => port $port"
