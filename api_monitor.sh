@@ -2064,7 +2064,7 @@ collectPorts()
   # FIXME: We could use the new reporting: -c ID -c "Fixed IP Addressess" -c "Device ID"
   # (but that does not help either to recover the lost device_id fields)
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
-  #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'"
+  #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'\n\'$IPRESP\'"
   #echo "#DEBUG: cP VMs ${VMS[*]}"
   if test -n "$SECONDNET" -a -z "$SECONDPORTS"; then COLLSECOND=1; else unset COLLSECOND; fi
   for vm in $(seq 0 $(($NOVMS-1))); do
@@ -2073,8 +2073,10 @@ collectPorts()
     # FIXME: In theory, we need to filter for the correct subnet as well
     # (In practice: An IP address conflict is very unlikely ...)
     ipaddr=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.250\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+    ipaddr="${ipaddr##*=}"; ipaddr="${ipaddr%\"}"
     if test -n "$COLLSECOND"; then
       ipaddr2=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.251\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+      ipaddr2="${ipaddr2##*=}"; ipaddr2="${ipaddr2%\"}"
     fi
     port=$(echo "$OSTACKRESP" | jq ".[] | select(.\"Fixed IP Addresses\"[].ip_address == \"$ipaddr\").ID" | tr -d '"')
     #echo -e "#DEBUG: Search Port for VM $vmid with IP $ipaddr => port $port"
