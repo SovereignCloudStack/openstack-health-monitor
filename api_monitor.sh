@@ -3562,12 +3562,14 @@ compress_and_upload()
     $COMP "$1"
   fi
   if test -n "$SWIFTCONTAINER"; then
+    echo "# Swift upload logfile ${1##*/}$EXT to $SWIFTCONTAINER"
     LOGFILE="${LOGFILE%/*}/.${LOGFILE##*/}.swift"
     RESP=$(ostackcmd_id etag $CINDERTIMEOUT swift upload --object-name ${1##*/}$EXT "$SWIFTCONTAINER" "$1$EXT")
     if test $? = 0; then rm "$1$EXT"; fi
     LOGFILE="$OLDLF"
   elif test -n "$S3BUCKET"; then
     MTYPE=$(file -i "$1$EXT")
+    echo "# S3 upload logfile ${1##*/}$EXT to $S3CONTAINER"
     if test -n "$MTYPE"; then MTYPE="contentType=$MTYPE"; fi
     s3 put "$S3CONTAINER/$1$EXT" fileName="$1$EXT" $MTYPE
     if test $? = 0; then rm "$1$EXT"; fi
@@ -4169,10 +4171,10 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   #LASTDATE="$CDATE"
   STARTDATE=$(date +%s)
   rm -f $DATADIR/${RPRE}Keypair_JH.pem $DATADIR/${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
-  if test "$LOGFILE" == "${RPRE%_}.log"; then
+  if test "$LOGFILE" == "$DATADIR/${RPRE%_}.log"; then
     RPRE="APIMonitor_${STARTDATE}_"
-    compress_and_upload "$LOGFILE"
-    LOGFILE="${RPRE%_}.log"
+    compress_and_upload "$DATADIR/$LOGFILE"
+    LOGFILE="$DATADIR/${RPRE%_}.log"
   else
     RPRE="APIMonitor_${STARTDATE}_"
   fi
