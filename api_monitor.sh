@@ -739,7 +739,9 @@ translate()
       ARGS=$(echo "$@" | sed -e 's@set @@' -e 's@\([a-zA-Z_0-9]*=[^ ]*\)@--property \1@g')
       OSTACKCMD=($OPST $DEFCMD set $ARGS)
     elif test "$DEFCMD" == "object" -a "$CMD" == "upload"; then
-      OSTACKCMD=($OPST $DEFCMD create "$@")
+      if test "$1" == "--object-name"; then ON="--name"; else ON="$1"; fi
+      shift
+      OSTACKCMD=($OPST $DEFCMD create "$ON" "$@")
     fi
   else
     C1=${1%-*}
@@ -3560,12 +3562,14 @@ compress_and_upload()
     $COMP "$1"
   fi
   if test -n "$SWIFTCONTAINER"; then
+    echo "# Swift upload logfile ${1##*/}$EXT to $SWIFTCONTAINER"
     LOGFILE="${LOGFILE%/*}/.${LOGFILE##*/}.swift"
-    RESP=$(ostackcmd_id etag $CINDERTIMEOUT swift upload "$SWIFTCONTAINER" "$1$EXT")
+    RESP=$(ostackcmd_id etag $CINDERTIMEOUT swift upload --object-name ${1##*/}$EXT "$SWIFTCONTAINER" "$1$EXT")
     if test $? = 0; then rm "$1$EXT"; fi
     LOGFILE="$OLDLF"
   elif test -n "$S3BUCKET"; then
     MTYPE=$(file -i "$1$EXT")
+    echo "# S3 upload logfile ${1##*/}$EXT to $S3CONTAINER"
     if test -n "$MTYPE"; then MTYPE="contentType=$MTYPE"; fi
     s3 put "$S3CONTAINER/$1$EXT" fileName="$1$EXT" $MTYPE
     if test $? = 0; then rm "$1$EXT"; fi
@@ -3809,7 +3813,7 @@ elif test "$1" = "CONNTEST"; then
      # Error counting done by fullconntest already
      errwait $ERRWAIT
    elif test $FPRETRY != 0; then
-     echo "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
+     echo -e "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
    fi
    if test -n "$RESHUFFLE"; then
      reShuffle
@@ -3958,7 +3962,7 @@ else # test "$1" = "DEPLOY"; then
                     sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
                     errwait $ERRWAIT
                   elif test $FPRETRY != 0; then
-                   echo "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
+                   echo -e "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
                   fi
                   if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
                     reShuffle
@@ -4167,10 +4171,10 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   #LASTDATE="$CDATE"
   STARTDATE=$(date +%s)
   rm -f $DATADIR/${RPRE}Keypair_JH.pem $DATADIR/${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
-  if test "$LOGFILE" == "${RPRE%_}.log"; then
+  if test "$LOGFILE" == "$DATADIR/${RPRE%_}.log"; then
     RPRE="APIMonitor_${STARTDATE}_"
     compress_and_upload "$LOGFILE"
-    LOGFILE="${RPRE%_}.log"
+    LOGFILE="$DATADIR/${RPRE%_}.log"
   else
     RPRE="APIMonitor_${STARTDATE}_"
   fi
