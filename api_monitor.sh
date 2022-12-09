@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.85
+VERSION=1.86
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -3127,7 +3127,7 @@ EOT
 
 # [-m] STATLIST [DIGITS [NAME [PCTILE]]]
 # m for machine readable
-stats()
+stats_old()
 {
   local NM NO VAL LIST DIG OLDIFS SLIST MIN MAX MID MED NFQ NFQL NFQR NFQF NFP AVGC AVG
   if test "$1" = "-m"; then MACHINE=1; shift; else unset MACHINE; fi
@@ -3181,6 +3181,19 @@ stats()
       echo "$NAME: Num $NO Min $MIN $PCT% $NFP Med $MED Avg $AVG Max $MAX" | tee -a $LOGFILE
     fi
   fi
+}
+
+# [-m] STATLIST [DIGITS [NAME [PCTILE]]]
+# m for machine readable
+stats()
+{
+  if test "$1" = "-m"; then MACHINE="-m"; shift; else unset MACHINE; fi
+  if test -n "$3" -a -z "$MACHINE"; then NAME=$3; else NAME=$1; fi
+  DIG=${2:-2}
+  PCT=${4:-95}
+  echo -n "$NAME: " | tee -a $LOGFILE
+  eval LIST=( \"\${${1}[@]}\" )
+  echo "${LIST[*]}" | ./stats.py -d $DIG -p $PCT $MACHINE | tee -a $LOGFILE
 }
 
 # [-m] for machine readable
