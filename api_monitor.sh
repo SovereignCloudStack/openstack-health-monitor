@@ -1833,7 +1833,7 @@ createFIPs()
   #createResources $NOAZS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --security-group ${SGROUPS[0]} --name "${RPRE}Port_JH\${no}" ${JHNETS[0]} || return
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list || return 1
   #EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\2/')
-  EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\1/')
+  EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | head -n1 | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\1/')
   # Not needed on OTC, but for most other OpenStack clouds:
   # Connect Router to external network gateway
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET
