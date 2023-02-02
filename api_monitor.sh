@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.86
+VERSION=1.87
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -285,6 +285,7 @@ usage()
   echo " -I     dIsassociate floating IPs before deleting them"
   echo " -L     create HTTP Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it"
+  echo " -LP PROV  create TCP LB with provider PROV test it"
   echo " -b     run a simple compute benchmark"
   echo " -B     run iperf3"
   echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
@@ -343,6 +344,7 @@ while test -n "$1"; do
     "-r") ROUTERITER=$2; shift;;
     "-L") LOADBALANCER=1;;
     "-LL") LOADBALANCER=1; TCP_LB=1;;
+    "-LP") LOADBALANCER=1; TCP_LB=1; LB_PROVIDER="--provider $2"; shift;;
     "-b") BCBENCH=1;;
     "-B") IPERF=1;;
     "-t") let TIMEOUTFACT+=1;;
@@ -826,10 +828,18 @@ translate()
       if test -n "$OLD_OCTAVIA"; then
         ARGS=$(echo "$@" | sed -e 's/\-\-protocol\-port/--protocol_port/g' -e 's/\-\-subnet\-id/--subnet_id/g')
       else
-	ARGS=$(echo "$@" | sed -e 's/\-\-subnet\-id [^ ]*/ /g')
+	#ARGS=$(echo "$@" | sed -e 's/\-\-subnet\-id [^ ]*/ /g')
+	ARGS=$(echo "$@")
       fi
-      OSTACKCMD=($OPST loadbalancer member $CMD $LWAIT $ARGS)
-      #OSTACKCMD=(openstack loadbalancer member $CMD $LWAIT $ARGS)
+      if [[ "$ARGS" == *"--subnet-id"* ]]; then
+	# If we talk directly to octavia, the --subnet-id option won't work
+	# We could try to use the proxy via neutron or just do the std dance
+	#EP="$NEUTRON_EP"
+        #OSTACKCMD=($OPST loadbalancer member $CMD $LWAIT $ARGS)
+        OSTACKCMD=(openstack loadbalancer member $CMD $LWAIT $ARGS)
+      else
+        OSTACKCMD=($OPST loadbalancer member $CMD $LWAIT $ARGS)
+      fi
     elif test "$C1" == "lbaas healthmonitor"; then
       EP="$OCTAVIA_EP"
       if test -n "$OLD_OCTAVIA"; then
@@ -2190,8 +2200,8 @@ else
 createLBs()
 {
   if test -n "$LOADBALANCER"; then
-    #createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0"
-    createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-subnet-id ${JHSUBNETS[0]} --name "${RPRE}LB_0"
+    #createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0" $LB_PROVIDER $LB_FLAVOR
+    createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-subnet-id ${JHSUBNETS[0]} --name "${RPRE}LB_0" $LB_PROVIDER $LB_FLAVOR
   fi
 }
 
@@ -2289,10 +2299,12 @@ testLBs()
 {
   LBERR=0
   ERRREASON=""
+  if test -z "$LB_ALGO"; then LB_ALGO="--lb-algorithm=ROUND_ROBIN"; fi
   echo -n "LBaaS2 "
   if test "$TCP_LB" = "1"; then echo -n "(TCP) "; PROTO=TCP; unset SESSPERS; unset URLPATH
   else echo -n "(HTTP) "; PROTO=HTTP; SESSPERS="--session-persistence type=HTTP_COOKIE"; URLPATH="--url-path /hostname"; fi
-  createResources 1 LBSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol $PROTO --lb-algorithm=ROUND_ROBIN $SESSPERS --loadbalancer ${LBAASS[0]} # --wait
+  if test -n "$LB_PROVIDER"; then echo -n "(${LB_PROVIDER##* }) "; LB_ALGO="--lb-algorithm SOURCE_IP_PORT"; fi
+  createResources 1 LBSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol $PROTO $LB_ALGO $SESSPERS --loadbalancer ${LBAASS[0]} # --wait
   handleLBErr $? "PoolCreate"
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test -z "$LBWAIT"; then
