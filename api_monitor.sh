@@ -285,7 +285,7 @@ usage()
   echo " -I     dIsassociate floating IPs before deleting them"
   echo " -L     create HTTP Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it"
-  echo " -LP PROV  create TCP LB with provider PROV test it"
+  echo " -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)"
   echo " -b     run a simple compute benchmark"
   echo " -B     run iperf3"
   echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
@@ -345,6 +345,7 @@ while test -n "$1"; do
     "-L") LOADBALANCER=1;;
     "-LL") LOADBALANCER=1; TCP_LB=1;;
     "-LP") LOADBALANCER=1; TCP_LB=1; LB_PROVIDER="--provider $2"; shift;;
+    "-LO") LOADBALANCER=1; TCP_LB=1; LB_PROVIDER="--provider ovn";;
     "-b") BCBENCH=1;;
     "-B") IPERF=1;;
     "-t") let TIMEOUTFACT+=1;;
@@ -828,8 +829,12 @@ translate()
       if test -n "$OLD_OCTAVIA"; then
         ARGS=$(echo "$@" | sed -e 's/\-\-protocol\-port/--protocol_port/g' -e 's/\-\-subnet\-id/--subnet_id/g')
       else
-	#ARGS=$(echo "$@" | sed -e 's/\-\-subnet\-id [^ ]*/ /g')
-	ARGS=$(echo "$@")
+	if test -z "$LB_PROVIDER" && false; then
+	  # amphorae don't need subnet-id
+	  ARGS=$(echo "$@" | sed -e 's/\-\-subnet\-id [^ ]*/ /g')
+	else
+	  ARGS=$(echo "$@")
+	fi
       fi
       if [[ "$ARGS" == *"--subnet-id"* ]]; then
 	# If we talk directly to octavia, the --subnet-id option won't work
@@ -2293,6 +2298,7 @@ handleLBErr()
   if test $RC = 0; then return; fi
   ERRREASON="$ERRREASON$* "
   let LBERR+=$RC
+  let LBERRORS+=1
 }
 
 testLBs()
@@ -2303,7 +2309,7 @@ testLBs()
   echo -n "LBaaS2 "
   if test "$TCP_LB" = "1"; then echo -n "(TCP) "; PROTO=TCP; unset SESSPERS; unset URLPATH
   else echo -n "(HTTP) "; PROTO=HTTP; SESSPERS="--session-persistence type=HTTP_COOKIE"; URLPATH="--url-path /hostname"; fi
-  if test -n "$LB_PROVIDER"; then echo -n "(${LB_PROVIDER##* }) "; LB_ALGO="--lb-algorithm SOURCE_IP_PORT"; fi
+  if test "$LB_PROVIDER" = "--provider ovn"; then echo -n "(${LB_PROVIDER##* }) "; LB_ALGO="--lb-algorithm SOURCE_IP_PORT"; fi
   createResources 1 LBSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol $PROTO $LB_ALGO $SESSPERS --loadbalancer ${LBAASS[0]} # --wait
   handleLBErr $? "PoolCreate"
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
@@ -2338,7 +2344,8 @@ testLBs()
   createResources 1 LBSTATS HEALTHMON POOL NONE "" id $FIPTIMEOUT neutron lbaas-healthmonitor-create --name "${RPRE}HealthMon_0" --delay 3 --timeout 2 --max-retries 1 --max-retries-down 1 --type $PROTO $URLPATH --pool ${POOLS[0]}
   handleLBErr $? "HealthMonCreate"
   #echo "DEBUG: IPS ${IPS[*]} SUBNETS ${SUBNETS[*]}"
-  createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id \${SUBNETS[\$\(\(no%$NONETS\)\)]} --protocol-port 80 ${POOLS[0]}
+  #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id \${SUBNETS[\$\(\(no%$NONETS\)\)]} --protocol-port 80 ${POOLS[0]}
+  createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id ${JHSUBNETS[0]} --protocol-port 80 ${POOLS[0]}
   #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   handleLBErr $? "MemberCreate"
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
@@ -2363,6 +2370,7 @@ testLBs()
   echo " $OSTACKRESP"
   test "$OSTACKRESP" != "ONLINE" && handleLBErr 1 "OpStatusNotOnline"
   # Kill some backends
+  if test -z "$SKIPKILLLB"; then
   echo -n "Kill backends: "
   killhttp
   sleep $((1+WAITLB))
@@ -2386,12 +2394,13 @@ testLBs()
   LBDUR=$(echo "10*($ENTM-$STTM)" | bc -l)
   LBDUR=$(printf %.2f $LBDUR)
   log_grafana LBconn $NOVMS $LBDUR $LBCERR
+  fi
   echo
   if test $LBERR != 0; then
     sendalarm 2 "Errors connecting to LB $LBIP port 80: $ERRREASON" "$LBERR" 4
     if test -n "$EXITERR"; then exit 3; fi
   fi
-  LBERRORS+=$LBERR
+  #LBERRORS+=$LBERR
   return $LBERR
 }
 
