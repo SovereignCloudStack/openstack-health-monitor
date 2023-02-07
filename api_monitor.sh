@@ -2400,7 +2400,7 @@ testLBs()
   LBDUR=$(printf %.2f $LBDUR)
   log_grafana LBconn $NOVMS $LBDUR $LBCERR
   else
-    echo "WARNING: Skipped backend kill checks"
+    echo -e "${YELLOW}Warning:${NORM} Skipped LB backend kill checks (health mon)"
   fi
   echo
   if test $LBERR != 0; then
