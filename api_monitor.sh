@@ -750,7 +750,11 @@ translate()
     shift
     if test "$CMD" == "show" -o "$CMD" == "list"; then LWAIT=""; else LWAIT="$LBWAIT"; fi
     #OSTACKCMD=($OPST $C1 $CMD $MYTAG "$@")
-    OSTACKCMD=($OPST $C1 $CMD $MYTAG "${@//--property-filter/--property}")
+    ARGS=$(echo "${@//--property-filter/--property}" | sed -e 's/\-\-pub\-key/--public-key/')
+    OSTACKCMD=($OPST $C1 $CMD $MYTAG "$ARGS")
+    #if test "$C1" == "keypair" -a "$CMD" == "create"; then
+    #  OSTACKCMD=(openstack $C1 $CMD $MYTAG "${@//--property-filter/--property}")
+    #fi
     if test "$C1" == "subnet" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed -e 's@\-\-disable-dhcp@--no-dhcp@' -e 's@\-\-name \([^ ]*\) *\([^ ]*\) *\([^ ]*\)@--network \2 --subnet-range \3 \1@')
       OSTACKCMD=($OPST $C1 $CMD $MYTAG ${ARGS})
@@ -1807,7 +1811,7 @@ deleteVols()
   deleteResources VOLSTATS VOLUME "" $CINDERTIMEOUT cinder delete
 }
 
-createKeypairs()
+createKeypairs_old()
 {
   UMASK=$(umask)
   umask 0077
@@ -1818,6 +1822,21 @@ createKeypairs()
   echo "$OSTACKRESP" > $DATADIR/${RPRE}Keypair_VM.pem
   KEYPAIRS+=( "${RPRE}Keypair_VM" )
   umask $UMASK
+}
+
+createKeyPair()
+{
+  if test ! -r $DATADIR/$1; then
+    ssh-keygen -q -C $1@$HOSTNAME -t ed25519 -N "" -f $DATADIR/$1
+  fi
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova keypair-add --pub-key $DATADIR/$1.pub $1 || return 1
+  KEYPAIRS+=( "$1" )
+}
+
+createKeypairs()
+{
+  createKeyPair ${RPRE}Keypair_JH || return 1
+  createKeyPair ${RPRE}Keypair_VM
 }
 
 deleteKeypairs()
@@ -4113,7 +4132,7 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   unset STATSENT
   #LASTDATE="$CDATE"
   STARTDATE=$(date +%s)
-  rm -f $DATADIR/${RPRE}Keypair_JH.pem $DATADIR/${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
+  rm -f $DATADIR/${RPRE}Keypair_JH $DATADIR/${RPRE}Keypair_VM $DATADIR/${RPRE}Keypair_JH.pub $DATADIR/${RPRE}Keypair_VM.pub ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
   if test "$LOGFILE" == "${RPRE%_}.log"; then
     RPRE="APIMonitor_${STARTDATE}_"
     compress_and_upload "$LOGFILE"
@@ -4135,7 +4154,7 @@ done
 #if test -n "$LOGFILE"; then
 #  compress_and_upload "$LOGFILE"
 #fi
-rm -f $DATADIR/${RPRE}Keypair_JH.pem $DATADIR/${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
+rm -f $DATADIR/${RPRE}Keypair_JH $DATADIR/${RPRE}Keypair_VM $DATADIR/${RPRE}Keypair_JH.pub $DATADIR/${RPRE}Keypair_VM.pub ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
 if test "$REFRESHPRJ" != 0; then cleanprj; fi
 
 exit $TOTERR
