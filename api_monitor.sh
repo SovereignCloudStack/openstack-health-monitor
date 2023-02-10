@@ -128,6 +128,7 @@ ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_REGION_NAME}/${SHPRJ#*_}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
 GRAFANANM="${GRAFANANM:-api-monitoring}"
 WAITLB=${WAITLB:-15}
+KPTYPE=${KPTYPE:-rsa}
 
 # Number of VMs and networks
 if test -z "$AZS"; then
@@ -1827,7 +1828,7 @@ createKeypairs_old()
 createKeyPair()
 {
   if test ! -r $DATADIR/$1; then
-    ssh-keygen -q -C $1@$HOSTNAME -t ed25519 -N "" -f $DATADIR/$1
+    ssh-keygen -q -C $1@$HOSTNAME -t $KPTYPE -N "" -f $DATADIR/$1
   fi
   ostackcmd_tm NOVASTATS $NOVATIMEOUT nova keypair-add --pub-key $DATADIR/$1.pub $1 || return 1
   KEYPAIRS+=( "$1" )
