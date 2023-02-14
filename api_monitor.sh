@@ -2314,7 +2314,7 @@ testLBs()
   echo -n "LBaaS2 "
   if test "$TCP_LB" = "1"; then echo -n "(TCP) "; PROTO=TCP; unset SESSPERS; unset URLPATH
   else echo -n "(HTTP) "; PROTO=HTTP; SESSPERS="--session-persistence type=HTTP_COOKIE"; URLPATH="--url-path /hostname"; fi
-  if test "$LB_PROVIDER" = "--provider ovn"; then echo -n "(${LB_PROVIDER##* }) "; LB_ALGO="--lb-algorithm SOURCE_IP_PORT"; SKIPKILLLB=1; fi
+  if test "$LB_PROVIDER" = "--provider ovn"; then echo -n "(${LB_PROVIDER##* }) "; LB_ALGO="--lb-algorithm SOURCE_IP_PORT"; fi
   createResources 1 LBSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol $PROTO $LB_ALGO $SESSPERS --loadbalancer ${LBAASS[0]} # --wait
   handleLBErr $? "PoolCreate"
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
@@ -2349,8 +2349,8 @@ testLBs()
   createResources 1 LBSTATS HEALTHMON POOL NONE "" id $FIPTIMEOUT neutron lbaas-healthmonitor-create --name "${RPRE}HealthMon_0" --delay 3 --timeout 2 --max-retries 1 --max-retries-down 1 --type $PROTO $URLPATH --pool ${POOLS[0]}
   handleLBErr $? "HealthMonCreate"
   #echo "DEBUG: IPS ${IPS[*]} SUBNETS ${SUBNETS[*]}"
-  #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id \${SUBNETS[\$\(\(no%$NONETS\)\)]} --protocol-port 80 ${POOLS[0]}
-  createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id ${JHSUBNETS[0]} --protocol-port 80 ${POOLS[0]}
+  createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id \${SUBNETS[\$\(\(no%$NONETS\)\)]} --protocol-port 80 ${POOLS[0]}
+  #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id ${JHSUBNETS[0]} --protocol-port 80 ${POOLS[0]}
   #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   handleLBErr $? "MemberCreate"
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
