@@ -128,6 +128,7 @@ ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_REGION_NAME}/${SHPRJ#*_}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
 GRAFANANM="${GRAFANANM:-api-monitoring}"
 WAITLB=${WAITLB:-15}
+KPTYPE=${KPTYPE:-rsa}
 
 # Number of VMs and networks
 if test -z "$AZS"; then
@@ -739,7 +740,9 @@ translate()
       ARGS=$(echo "$@" | sed -e 's@set @@' -e 's@\([a-zA-Z_0-9]*=[^ ]*\)@--property \1@g')
       OSTACKCMD=($OPST $DEFCMD set $ARGS)
     elif test "$DEFCMD" == "object" -a "$CMD" == "upload"; then
-      OSTACKCMD=($OPST $DEFCMD create "$@")
+      if test "$1" == "--object-name"; then ON="--name"; else ON="$1"; fi
+      shift
+      OSTACKCMD=($OPST $DEFCMD create "$ON" "$@")
     fi
   else
     C1=${1%-*}
@@ -750,7 +753,11 @@ translate()
     shift
     if test "$CMD" == "show" -o "$CMD" == "list"; then LWAIT=""; else LWAIT="$LBWAIT"; fi
     #OSTACKCMD=($OPST $C1 $CMD $MYTAG "$@")
-    OSTACKCMD=($OPST $C1 $CMD $MYTAG "${@//--property-filter/--property}")
+    ARGS=$(echo "${@//--property-filter/--property}" | sed -e 's/\-\-pub\-key/--public-key/')
+    OSTACKCMD=($OPST $C1 $CMD $MYTAG "$ARGS")
+    #if test "$C1" == "keypair" -a "$CMD" == "create"; then
+    #  OSTACKCMD=(openstack $C1 $CMD $MYTAG "${@//--property-filter/--property}")
+    #fi
     if test "$C1" == "subnet" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed -e 's@\-\-disable-dhcp@--no-dhcp@' -e 's@\-\-name \([^ ]*\) *\([^ ]*\) *\([^ ]*\)@--network \2 --subnet-range \3 \1@')
       OSTACKCMD=($OPST $C1 $CMD $MYTAG ${ARGS})
@@ -1807,7 +1814,7 @@ deleteVols()
   deleteResources VOLSTATS VOLUME "" $CINDERTIMEOUT cinder delete
 }
 
-createKeypairs()
+createKeypairs_old()
 {
   UMASK=$(umask)
   umask 0077
@@ -1818,6 +1825,21 @@ createKeypairs()
   echo "$OSTACKRESP" > $DATADIR/${RPRE}Keypair_VM.pem
   KEYPAIRS+=( "${RPRE}Keypair_VM" )
   umask $UMASK
+}
+
+createKeyPair()
+{
+  if test ! -r $DATADIR/$1; then
+    ssh-keygen -q -C $1@$HOSTNAME -t $KPTYPE -N "" -f $DATADIR/$1
+  fi
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova keypair-add --pub-key $DATADIR/$1.pub $1 || return 1
+  KEYPAIRS+=( "$1" )
+}
+
+createKeypairs()
+{
+  createKeyPair ${RPRE}Keypair_JH || return 1
+  createKeyPair ${RPRE}Keypair_VM
 }
 
 deleteKeypairs()
@@ -2030,7 +2052,7 @@ $RD
 }
 
 # Fill PORTS array by matching part's device_ids with the VM UUIDs
-collectPorts()
+collectPorts_Old()
 {
   local vm vmid
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
@@ -2058,7 +2080,42 @@ collectPorts()
   done
   echo "VM Ports: ${PORTS[*]}"
   if test -n "$SECONDPORTS"; then echo "VM Ports2: ${SECONDPORTS[*]}"; fi
+}
 
+# Fill PORTS array by matching VM's IP address with port
+collectPorts()
+{
+  local vm vmid ipaddr ipaddr2 port port2
+  if test -z "$OPENSTACKCLIENT"; then collectPorts_Old; return; fi
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc -f json -c Name -c ID -c Networks
+  IPRESP="$OSTACKRESP"
+  # FIXME: We could use the new reporting: -c ID -c "Fixed IP Addressess" -c "Device ID"
+  # (but that does not help either to recover the lost device_id fields)
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
+  #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'\n\'$IPRESP\'"
+  #echo "#DEBUG: cP VMs ${VMS[*]}"
+  if test -n "$SECONDNET" -a -z "$SECONDPORTS"; then COLLSECOND=1; else unset COLLSECOND; fi
+  for vm in $(seq 0 $(($NOVMS-1))); do
+    vmid=${VMS[$vm]}
+    if test -z "$vmid"; then sendalarm 1 "nova list" "VM $vm not found" $NOVATIMEOUT; continue; fi
+    # FIXME: In theory, we need to filter for the correct subnet as well
+    # (In practice: An IP address conflict is very unlikely ...)
+    ipaddr=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.250\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+    ipaddr="${ipaddr##*=}"; ipaddr="${ipaddr%\"}"
+    if test -n "$COLLSECOND"; then
+      ipaddr2=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.251\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+      ipaddr2="${ipaddr2##*=}"; ipaddr2="${ipaddr2%\"}"
+    fi
+    port=$(echo "$OSTACKRESP" | jq ".[] | select(.\"Fixed IP Addresses\"[].ip_address == \"$ipaddr\").ID" | tr -d '"')
+    #echo -e "#DEBUG: Search Port for VM $vmid with IP $ipaddr => port $port"
+    PORTS[$vm]=$port
+    if test -n "$COLLSECOND"; then
+      port2=$(echo "$OSTACKRESP" | jq ".[] | select(.\"Fixed IP Addresses\"[].ip_address == \"$ipaddr2\").ID" | tr -d '"')
+      SECONDPORTS[$vm]=$port2
+    fi
+  done
+  echo "#VM Ports: ${PORTS[*]}"
+  if test -n "$SECONDPORTS"; then echo "#VM Ports2: ${SECONDPORTS[*]}"; fi
 }
 
 # When NOT creating ports before JHVM starts, we cannot pass the port fwd information
@@ -2084,8 +2141,8 @@ setPortForward()
 sed -i 's@^FW_FORWARD_MASQ=.*\$@FW_FORWARD_MASQ=\"$FWDMASQ\"@' /etc/sysconfig/SuSEfirewall2
 systemctl restart SuSEfirewall2
 ")
-    echo "$SCRIPT" | ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_sfw2"
-    ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_sfw2"
+    echo "$SCRIPT" | ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_sfw2"
+    ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_sfw2"
   done
 }
 
@@ -2139,9 +2196,9 @@ else
     done
     SCRIPT=$(echo -e "$SCRIPT\nfi")
     # FIXME: Need to report errors here
-    echo "$SCRIPT" | ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_ipt" >/dev/null 2>&1
+    echo "$SCRIPT" | ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_ipt" >/dev/null 2>&1
     # -tt is a workaround for a RHEL/CentOS 7 bug
-    ssh -tt -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_ipt" >/dev/null 2>&1
+    ssh -tt -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_ipt" >/dev/null 2>&1
     RC=$?
     if test "$RC" = "0"; then
       echo -n "OK "
@@ -2229,9 +2286,9 @@ killhttp()
     #echo "DEBUG: $i: ${VMINFO[*]}"
     #testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
     echo -n "$i: ${VMINFO[6]}[${VMINFO[2]}]}:${VMINFO[7]} (${VMINFO[5]}/${VMINFO[8]}) "
-    HOSTN=$(ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3")
+    HOSTN=$(ssh -i $DATADIR/${KEYPAIRS[1]} -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3")
     if test $? == 0; then echo -n "($HOSTN) "; else echo -n "ERROR "; fi
-    #ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3"
+    #ssh -i $DATADIR/${KEYPAIRS[1]} -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3"
     let killed+=1
     if test $killed -ge $HALF; then return; fi
   done
@@ -2567,8 +2624,8 @@ config2ndNIC()
       # Using rttbl2 (cloud-multiroute), calculating GW here is unneeded. We assume eth1 is the second vNIC here
       GW=${IP%.*}; LAST=${GW##*.}; GW=${GW%.*}.$((LAST-LAST%4)).1
       # There probably is an easier way to handle a secondary interface that needs a gateway ...
-      echo "ssh -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=6\" -o \"StrictHostKeyChecking=no\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -p $pno -i $DATADIR/${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} \"ADR=\$(ip addr show eth1 | grep ' inet ' | grep -v \$IP/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"\$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null" >> $LOGFILE
-      ssh -o "PasswordAuthentication=no" -o "ConnectTimeout=6" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -p $pno -i $DATADIR/${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "ADR=$(ip addr show eth1 2>/dev/null | grep ' inet ' | grep -v $IP\/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null"
+      echo "ssh -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=6\" -o \"StrictHostKeyChecking=no\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -p $pno -i $DATADIR/${KEYPAIRS[1]} $DEFLTUSER@${FLOATS[$JHNO]} \"ADR=\$(ip addr show eth1 | grep ' inet ' | grep -v \$IP/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"\$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null" >> $LOGFILE
+      ssh -o "PasswordAuthentication=no" -o "ConnectTimeout=6" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -p $pno -i $DATADIR/${KEYPAIRS[1]} $DEFLTUSER@${FLOATS[$JHNO]} "ADR=$(ip addr show eth1 2>/dev/null | grep ' inet ' | grep -v $IP\/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null"
       # ip route add default via $GW"
       RC=$?
       echo -n "+"
@@ -2722,45 +2779,45 @@ testlsandping()
   fi
   if test -z "$pport"; then
     if test -n "$LOGFILE"; then
-      echo "ssh -i $DATADIR/$1.pem $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ls" >> $LOGFILE
+      echo "ssh -i $DATADIR/$1 $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ls" >> $LOGFILE
     fi
     # no user_data on JumpHosts
-    ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 8;
-    ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n "........"; sleep 16;
-    ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=20" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1; }; } || {
+    ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 8;
+    ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n "........"; sleep 16;
+    ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=20" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1; }; } || {
 	if test -n "$LOGFILE"; then echo "ERROR ssh ls on $2" >> $LOGFILE; fi
 	return 2; }
   else
     if test -n "$LOGFILE"; then
-      echo "ssh -i $DATADIR/$1.pem $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}[$4]" >> $LOGFILE
+      echo "ssh -i $DATADIR/$1 $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}[$4]" >> $LOGFILE
     fi
     # Test whether user_data file injection worked
     if test -n "$BOOTALLATONCE"; then
       # no indiv user data per VM when mass booting ...
-      ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "o"; sleep 4;
-      ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || {
+      ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "o"; sleep 4;
+      ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || {
 	if test -n "$LOGFILE"; then echo "ERROR ssh grep on $2:$3" >> $LOGFILE; fi
 	return 2; }
     else
-      ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "O"; sleep 4;
-      ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || {
+      ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "O"; sleep 4;
+      ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || {
 	if test -n "$LOGFILE"; then echo "ERROR ssh grep on $2:$3" >> $LOGFILE; fi
 	return 2; }
     fi
   fi
   # PING
   if test -n "$LOGFILE"; then
-    echo "timeout 24 ssh -i $DATADIR/$1.pem $pport -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
+    echo "timeout 24 ssh -i $DATADIR/$1 $pport -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
   fi
   #nslookup $PINGTARGET >/dev/null 2>&1
-  PING=$(timeout 24 ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
+  PING=$(timeout 24 ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
   if test $RC = 0; then echo $PING; return 0; fi
   #nslookup $PINGTARGET2 >/dev/null 2>&1
   echo -n "x"
   if test -n "$LOGFILE"; then echo "ERROR ssh ping on $pport $2: $RC" >> $LOGFILE; fi
   sleep 2
-  PING=$(timeout 24 ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
+  PING=$(timeout 24 ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
   if test $RC == 0; then return 0; fi
   echo -n "x "
@@ -2768,7 +2825,7 @@ testlsandping()
   ERR=$PING
   if test -n "$LOGFILE"; then echo "ERROR ssh ping on $pport $2: $RC" >> $LOGFILE; fi
   #sleep 1
-  #PING=$(ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 9.9.9.9 >/dev/null 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
+  #PING=$(ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 9.9.9.9 >/dev/null 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   if test $RC != 0; then return 1; else return 0; fi
 }
 
@@ -2838,9 +2895,9 @@ EOT
     echo -n "Benchmark (4k digits pi):"
     if test -n "$LOGFILE"; then echo -n "Benchmark (4k digits pi):" >> $LOGFILE; fi
     for JHNO in $(seq 0 $(($NOAZS-1))); do
-      scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "StrictHostKeyChecking=no" -o "PasswordAuthentication=no" -i $DATADIR/${KEYPAIRS[0]}.pem -p ${RPRE}wait ${USER}@${FLOATS[$JHNO]}: >/dev/null
-      if test -n "$LOGFILE"; then echo "ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@${FLOATS[$JHNO]} time echo 'scale=4000; 4*a(1)'" >> $LOGFILE; fi
-      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait bc; sync; { TIMEFORMAT=%2U; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
+      scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "StrictHostKeyChecking=no" -o "PasswordAuthentication=no" -i $DATADIR/${KEYPAIRS[0]} -p ${RPRE}wait ${USER}@${FLOATS[$JHNO]}: >/dev/null
+      if test -n "$LOGFILE"; then echo "ssh -i $DATADIR/${KEYPAIRS[0]} -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@${FLOATS[$JHNO]} time echo 'scale=4000; 4*a(1)'" >> $LOGFILE; fi
+      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait bc; sync; { TIMEFORMAT=%2U; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
       # Handle GNU time output format
       if echo "$BENCH" | grep user >/dev/null 2>&1; then
         BENCH=$(echo "$BENCH" | grep user)
@@ -2997,10 +3054,10 @@ EOT
     for red in ${REDIRS[$JHNO]}; do
       pno=${red#*tcp,}
       pno=${pno%%,*}
-      scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
-      #echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}"
-      if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}" >> $LOGFILE; fi
-      PINGRES="$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]})"
+      scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]} -P $pno -p ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
+      #echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -i $DATADIR/${KEYPAIRS[1]} -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}"
+      if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]} -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}" >> $LOGFILE; fi
+      PINGRES="$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]} -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]})"
       R=$?
       if test $R -gt $RC; then RC=$R; fi
       echo "$PINGRES"
@@ -3050,14 +3107,14 @@ EOT
     SRC=${IPS[$(($VM+$NOVMS-$NONETS))]}
     FLT=${FLOATS[$(($VM%$NOAZS))]}
     #echo -n "Test ($SRC,$(($VM+$NOVMS-$NONETS)),$FLT/$pno)->$TGT: "
-    scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
-    if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
-    IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "./${RPRE}wait iperf3; iperf3 -t5 -J -c $TGT")
+    scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]} -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
+    if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]} -p $pno ${DEFLTUSER}@$FLT iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
+    IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]} -p $pno ${DEFLTUSER}@$FLT "./${RPRE}wait iperf3; iperf3 -t5 -J -c $TGT")
     if test $? != 0; then
       # Clients may need more startup time
       echo -n " retry "
       sleep 16
-      IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "iperf3 -t5 -J -c $TGT")
+      IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]} -p $pno ${DEFLTUSER}@$FLT "iperf3 -t5 -J -c $TGT")
       if test $? != 0; then
 	log_grafana "iperf3" "s$VM" "0" "1"
         continue
@@ -3507,12 +3564,14 @@ compress_and_upload()
     $COMP "$1"
   fi
   if test -n "$SWIFTCONTAINER"; then
+    echo "# Swift upload logfile ${1##*/}$EXT to $SWIFTCONTAINER"
     LOGFILE="${LOGFILE%/*}/.${LOGFILE##*/}.swift"
-    RESP=$(ostackcmd_id etag $CINDERTIMEOUT swift upload "$SWIFTCONTAINER" "$1$EXT")
+    RESP=$(ostackcmd_id etag $CINDERTIMEOUT swift upload --object-name ${1##*/}$EXT "$SWIFTCONTAINER" "$1$EXT")
     if test $? = 0; then rm "$1$EXT"; fi
     LOGFILE="$OLDLF"
   elif test -n "$S3BUCKET"; then
     MTYPE=$(file -i "$1$EXT")
+    echo "# S3 upload logfile ${1##*/}$EXT to $S3CONTAINER"
     if test -n "$MTYPE"; then MTYPE="contentType=$MTYPE"; fi
     s3 put "$S3CONTAINER/$1$EXT" fileName="$1$EXT" $MTYPE
     if test $? = 0; then rm "$1$EXT"; fi
@@ -4113,11 +4172,11 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   unset STATSENT
   #LASTDATE="$CDATE"
   STARTDATE=$(date +%s)
-  rm -f $DATADIR/${RPRE}Keypair_JH.pem $DATADIR/${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
-  if test "$LOGFILE" == "${RPRE%_}.log"; then
+  rm -f $DATADIR/${RPRE}Keypair_JH $DATADIR/${RPRE}Keypair_VM $DATADIR/${RPRE}Keypair_JH.pub $DATADIR/${RPRE}Keypair_VM.pub ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
+  if test "$LOGFILE" == "$DATADIR/${RPRE%_}.log"; then
     RPRE="APIMonitor_${STARTDATE}_"
     compress_and_upload "$LOGFILE"
-    LOGFILE="${RPRE%_}.log"
+    LOGFILE="$DATADIR/${RPRE%_}.log"
   else
     RPRE="APIMonitor_${STARTDATE}_"
   fi
@@ -4135,7 +4194,7 @@ done
 #if test -n "$LOGFILE"; then
 #  compress_and_upload "$LOGFILE"
 #fi
-rm -f $DATADIR/${RPRE}Keypair_JH.pem $DATADIR/${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
+rm -f $DATADIR/${RPRE}Keypair_JH $DATADIR/${RPRE}Keypair_VM $DATADIR/${RPRE}Keypair_JH.pub $DATADIR/${RPRE}Keypair_VM.pub ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
 if test "$REFRESHPRJ" != 0; then cleanprj; fi
 
 exit $TOTERR
