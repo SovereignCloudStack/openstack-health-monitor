@@ -2080,6 +2080,7 @@ collectPorts_Old()
   done
   echo "VM Ports: ${PORTS[*]}"
   if test -n "$SECONDPORTS"; then echo "VM Ports2: ${SECONDPORTS[*]}"; fi
+}
 
 # Fill PORTS array by matching VM's IP address with port
 collectPorts()
