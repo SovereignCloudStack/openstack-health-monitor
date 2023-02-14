@@ -740,7 +740,9 @@ translate()
       ARGS=$(echo "$@" | sed -e 's@set @@' -e 's@\([a-zA-Z_0-9]*=[^ ]*\)@--property \1@g')
       OSTACKCMD=($OPST $DEFCMD set $ARGS)
     elif test "$DEFCMD" == "object" -a "$CMD" == "upload"; then
-      OSTACKCMD=($OPST $DEFCMD create "$@")
+      if test "$1" == "--object-name"; then ON="--name"; else ON="$1"; fi
+      shift
+      OSTACKCMD=($OPST $DEFCMD create "$ON" "$@")
     fi
   else
     C1=${1%-*}
@@ -2050,7 +2052,7 @@ $RD
 }
 
 # Fill PORTS array by matching part's device_ids with the VM UUIDs
-collectPorts()
+collectPorts_Old()
 {
   local vm vmid
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
@@ -2078,7 +2080,42 @@ collectPorts()
   done
   echo "VM Ports: ${PORTS[*]}"
   if test -n "$SECONDPORTS"; then echo "VM Ports2: ${SECONDPORTS[*]}"; fi
+}
 
+# Fill PORTS array by matching VM's IP address with port
+collectPorts()
+{
+  local vm vmid ipaddr ipaddr2 port port2
+  if test -z "$OPENSTACKCLIENT"; then collectPorts_Old; return; fi
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc -f json -c Name -c ID -c Networks
+  IPRESP="$OSTACKRESP"
+  # FIXME: We could use the new reporting: -c ID -c "Fixed IP Addressess" -c "Device ID"
+  # (but that does not help either to recover the lost device_id fields)
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
+  #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'\n\'$IPRESP\'"
+  #echo "#DEBUG: cP VMs ${VMS[*]}"
+  if test -n "$SECONDNET" -a -z "$SECONDPORTS"; then COLLSECOND=1; else unset COLLSECOND; fi
+  for vm in $(seq 0 $(($NOVMS-1))); do
+    vmid=${VMS[$vm]}
+    if test -z "$vmid"; then sendalarm 1 "nova list" "VM $vm not found" $NOVATIMEOUT; continue; fi
+    # FIXME: In theory, we need to filter for the correct subnet as well
+    # (In practice: An IP address conflict is very unlikely ...)
+    ipaddr=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.250\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+    ipaddr="${ipaddr##*=}"; ipaddr="${ipaddr%\"}"
+    if test -n "$COLLSECOND"; then
+      ipaddr2=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.251\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+      ipaddr2="${ipaddr2##*=}"; ipaddr2="${ipaddr2%\"}"
+    fi
+    port=$(echo "$OSTACKRESP" | jq ".[] | select(.\"Fixed IP Addresses\"[].ip_address == \"$ipaddr\").ID" | tr -d '"')
+    #echo -e "#DEBUG: Search Port for VM $vmid with IP $ipaddr => port $port"
+    PORTS[$vm]=$port
+    if test -n "$COLLSECOND"; then
+      port2=$(echo "$OSTACKRESP" | jq ".[] | select(.\"Fixed IP Addresses\"[].ip_address == \"$ipaddr2\").ID" | tr -d '"')
+      SECONDPORTS[$vm]=$port2
+    fi
+  done
+  echo "#VM Ports: ${PORTS[*]}"
+  if test -n "$SECONDPORTS"; then echo "#VM Ports2: ${SECONDPORTS[*]}"; fi
 }
 
 # When NOT creating ports before JHVM starts, we cannot pass the port fwd information
@@ -3527,12 +3564,14 @@ compress_and_upload()
     $COMP "$1"
   fi
   if test -n "$SWIFTCONTAINER"; then
+    echo "# Swift upload logfile ${1##*/}$EXT to $SWIFTCONTAINER"
     LOGFILE="${LOGFILE%/*}/.${LOGFILE##*/}.swift"
-    RESP=$(ostackcmd_id etag $CINDERTIMEOUT swift upload "$SWIFTCONTAINER" "$1$EXT")
+    RESP=$(ostackcmd_id etag $CINDERTIMEOUT swift upload --object-name ${1##*/}$EXT "$SWIFTCONTAINER" "$1$EXT")
     if test $? = 0; then rm "$1$EXT"; fi
     LOGFILE="$OLDLF"
   elif test -n "$S3BUCKET"; then
     MTYPE=$(file -i "$1$EXT")
+    echo "# S3 upload logfile ${1##*/}$EXT to $S3CONTAINER"
     if test -n "$MTYPE"; then MTYPE="contentType=$MTYPE"; fi
     s3 put "$S3CONTAINER/$1$EXT" fileName="$1$EXT" $MTYPE
     if test $? = 0; then rm "$1$EXT"; fi
@@ -4134,10 +4173,10 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   #LASTDATE="$CDATE"
   STARTDATE=$(date +%s)
   rm -f $DATADIR/${RPRE}Keypair_JH $DATADIR/${RPRE}Keypair_VM $DATADIR/${RPRE}Keypair_JH.pub $DATADIR/${RPRE}Keypair_VM.pub ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
-  if test "$LOGFILE" == "${RPRE%_}.log"; then
+  if test "$LOGFILE" == "$DATADIR/${RPRE%_}.log"; then
     RPRE="APIMonitor_${STARTDATE}_"
     compress_and_upload "$LOGFILE"
-    LOGFILE="${RPRE%_}.log"
+    LOGFILE="$DATADIR/${RPRE%_}.log"
   else
     RPRE="APIMonitor_${STARTDATE}_"
   fi
