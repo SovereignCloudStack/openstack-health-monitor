@@ -1,10 +1,10 @@
 #!/bin/bash
 # api_monitor.sh
-# 
+#
 # Test script testing the reliability and performance of OpenStack API
 # It works by doing a real scenario test: Setting up a real environment
 # With routers, nets, jumphosts, disks, VMs, ...
-# 
+#
 # We collect statistics on API call performance as well as on resource
 # creation times.
 # Failures are noted and alarms are generated.
@@ -1296,7 +1296,7 @@ waitResources()
 # $3 => name of array to collect completion timing stats
 # $4 => name of array with start times
 # $5 => value to wait for (special XDELX)
-# $6 => alternative value to wait for 
+# $6 => alternative value to wait for
 #       (special: 2ndary XDELX results in waiting also for ERRORED res.)
 # $7 => number of column (0 based)
 # $8 => timeout
@@ -1702,7 +1702,7 @@ createSGroups()
     updAPIerr $?
     read TM ID STATE <<<"$RESP"
     NETSTATS+=( $TM )
-  fi  
+  fi
   if test -n "$IPERF"; then
     RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 5201 --port-range-max 5201 --remote-ip-prefix $JHSUBNETIP $SG1)
     updAPIerr $?
@@ -2512,7 +2512,7 @@ createVMsAll()
   fi
   echo -n "Create VMs in batches: "
   # Can not pass port IDs during boot in batch creation
-  if test -n "$SECONDNET" -a -z "$DELAYEDATTACH"; then DELAYEDATTACH=1; fi 
+  if test -n "$SECONDNET" -a -z "$DELAYEDATTACH"; then DELAYEDATTACH=1; fi
   for netno in $(seq 0 $(($NONETS-1))); do
     AZ=${AZS[$(($netno%$NOAZS))]}
     THISNOVM=$((($NOVMS+$NONETS-$netno-1)/$NONETS))
@@ -3446,7 +3446,7 @@ cleanup()
 # Network cleanups can fail if VM deletion failed, so cleanup again
 # and wait until networks have disappeared
 waitnetgone()
-{	
+{
   local DVMS DFIPS DJHVMS DKPS VOLS DJHVOLS
   # Cleanup: These really should not exist
   VMS=( $(findres ${RPRE}VM_VM nova list) ); DVMS=(${VMS[*]})
@@ -4021,7 +4021,7 @@ else # test "$1" = "DEPLOY"; then
                 # TODO: Attach additional net interfaces to JHs ... and test IP addr
                 WAITTIME+=($(($MSTOP-$WSTART)))
                 # Test load balancer
-                if test -n "$LOADBALANCER" -a $LBERRORS = 0; then 
+                if test -n "$LOADBALANCER" -a $LBERRORS = 0; then
 		 LBACTIVE=1
 		 testLBs
                 else
@@ -4221,7 +4221,7 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
     RPRE="APIMonitor_${STARTDATE}_"
   fi
   if test "$TAG" == "1"; then TAGARG="--tag ${RPRE%_}"; fi
-  if test $(($loop+1)) != $MAXITER -a -z "$INTERRUPTED"; then 
+  if test $(($loop+1)) != $MAXITER -a -z "$INTERRUPTED"; then
     echo "Using new $RPRE prefix for resrcs on $TRIPLE (${AZS[*]})"
     #loop=-1
   fi
