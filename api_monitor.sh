@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.86
+VERSION=1.87
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -285,6 +285,7 @@ usage()
   echo " -I     dIsassociate floating IPs before deleting them"
   echo " -L     create HTTP Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it"
+  echo " -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)"
   echo " -b     run a simple compute benchmark"
   echo " -B     run iperf3"
   echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
@@ -343,6 +344,8 @@ while test -n "$1"; do
     "-r") ROUTERITER=$2; shift;;
     "-L") LOADBALANCER=1;;
     "-LL") LOADBALANCER=1; TCP_LB=1;;
+    "-LP") LOADBALANCER=1; TCP_LB=1; LB_PROVIDER="--provider $2"; shift;;
+    "-LO") LOADBALANCER=1; TCP_LB=1; LB_PROVIDER="--provider ovn";;
     "-b") BCBENCH=1;;
     "-B") IPERF=1;;
     "-t") let TIMEOUTFACT+=1;;
@@ -826,10 +829,22 @@ translate()
       if test -n "$OLD_OCTAVIA"; then
         ARGS=$(echo "$@" | sed -e 's/\-\-protocol\-port/--protocol_port/g' -e 's/\-\-subnet\-id/--subnet_id/g')
       else
-	ARGS=$(echo "$@" | sed -e 's/\-\-subnet\-id [^ ]*/ /g')
+	if test -z "$LB_PROVIDER"; then
+	  # amphorae don't need subnet-id
+	  ARGS=$(echo "$@" | sed -e 's/\-\-subnet\-id [^ ]*/ /g')
+	else
+	  ARGS=$(echo "$@")
+	fi
       fi
-      OSTACKCMD=($OPST loadbalancer member $CMD $LWAIT $ARGS)
-      #OSTACKCMD=(openstack loadbalancer member $CMD $LWAIT $ARGS)
+      if [[ "$ARGS" == *"--subnet-id"* ]]; then
+	# If we talk directly to octavia, the --subnet-id option won't work
+	# We could try to use the proxy via neutron or just do the std dance
+	#EP="$NEUTRON_EP"
+        #OSTACKCMD=($OPST loadbalancer member $CMD $LWAIT $ARGS)
+        OSTACKCMD=(openstack loadbalancer member $CMD $LWAIT $ARGS)
+      else
+        OSTACKCMD=($OPST loadbalancer member $CMD $LWAIT $ARGS)
+      fi
     elif test "$C1" == "lbaas healthmonitor"; then
       EP="$OCTAVIA_EP"
       if test -n "$OLD_OCTAVIA"; then
@@ -1678,7 +1693,12 @@ createSGroups()
   read TM ID STATE <<<"$RESP"
   NETSTATS+=( $TM )
   if test -n "$LOADBALANCER"; then
-    RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 80 --port-range-max 80 --remote-ip-prefix $JHSUBNETIP $SG1)
+    if test "$LB_PROVIDER" = "--provider ovn"; then
+      # With OVN, the client IP is real (not the VIP), so we need to allow all
+      RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 80 --port-range-max 80 --remote-ip-prefix 0.0.0.0/0 $SG1)
+    else
+      RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 80 --port-range-max 80 --remote-ip-prefix $JHSUBNETIP $SG1)
+    fi
     updAPIerr $?
     read TM ID STATE <<<"$RESP"
     NETSTATS+=( $TM )
@@ -2190,8 +2210,8 @@ else
 createLBs()
 {
   if test -n "$LOADBALANCER"; then
-    #createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0"
-    createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-subnet-id ${JHSUBNETS[0]} --name "${RPRE}LB_0"
+    #createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0" $LB_PROVIDER $LB_FLAVOR
+    createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-subnet-id ${JHSUBNETS[0]} --name "${RPRE}LB_0" $LB_PROVIDER $LB_FLAVOR
   fi
 }
 
@@ -2283,16 +2303,19 @@ handleLBErr()
   if test $RC = 0; then return; fi
   ERRREASON="$ERRREASON$* "
   let LBERR+=$RC
+  let LBERRORS+=1
 }
 
 testLBs()
 {
   LBERR=0
   ERRREASON=""
+  if test -z "$LB_ALGO"; then LB_ALGO="--lb-algorithm=ROUND_ROBIN"; fi
   echo -n "LBaaS2 "
   if test "$TCP_LB" = "1"; then echo -n "(TCP) "; PROTO=TCP; unset SESSPERS; unset URLPATH
   else echo -n "(HTTP) "; PROTO=HTTP; SESSPERS="--session-persistence type=HTTP_COOKIE"; URLPATH="--url-path /hostname"; fi
-  createResources 1 LBSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol $PROTO --lb-algorithm=ROUND_ROBIN $SESSPERS --loadbalancer ${LBAASS[0]} # --wait
+  if test "$LB_PROVIDER" = "--provider ovn"; then echo -n "(${LB_PROVIDER##* }) "; LB_ALGO="--lb-algorithm SOURCE_IP_PORT"; fi
+  createResources 1 LBSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol $PROTO $LB_ALGO $SESSPERS --loadbalancer ${LBAASS[0]} # --wait
   handleLBErr $? "PoolCreate"
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test -z "$LBWAIT"; then
@@ -2327,6 +2350,7 @@ testLBs()
   handleLBErr $? "HealthMonCreate"
   #echo "DEBUG: IPS ${IPS[*]} SUBNETS ${SUBNETS[*]}"
   createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id \${SUBNETS[\$\(\(no%$NONETS\)\)]} --protocol-port 80 ${POOLS[0]}
+  #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id ${JHSUBNETS[0]} --protocol-port 80 ${POOLS[0]}
   #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   handleLBErr $? "MemberCreate"
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
@@ -2351,6 +2375,7 @@ testLBs()
   echo " $OSTACKRESP"
   test "$OSTACKRESP" != "ONLINE" && handleLBErr 1 "OpStatusNotOnline"
   # Kill some backends
+  if test -z "$SKIPKILLLB"; then
   echo -n "Kill backends: "
   killhttp
   sleep $((1+WAITLB))
@@ -2374,12 +2399,15 @@ testLBs()
   LBDUR=$(echo "10*($ENTM-$STTM)" | bc -l)
   LBDUR=$(printf %.2f $LBDUR)
   log_grafana LBconn $NOVMS $LBDUR $LBCERR
+  else
+    echo -e "${YELLOW}Warning:${NORM} Skipped LB backend kill checks (health mon)"
+  fi
   echo
   if test $LBERR != 0; then
     sendalarm 2 "Errors connecting to LB $LBIP port 80: $ERRREASON" "$LBERR" 4
     if test -n "$EXITERR"; then exit 3; fi
   fi
-  LBERRORS+=$LBERR
+  #LBERRORS+=$LBERR
   return $LBERR
 }
 
@@ -4064,6 +4092,7 @@ else # test "$1" = "DEPLOY"; then
  if test -n "$FULLCONN"; then let MAXCYC+=$(($NOVMS*$NOVMS/10)); fi
  if test -n "$IPERF"; then let MAXCYC+=$((6*$NONETS)); fi
  if test -n "$LOADBALANCER"; then let MAXCYC+=$((36+4*$NOVMS+$WAITLB)); fi
+ if test -n "$SKIPKILLLB"; then let MAXCYC-=$((20+2*$NOVMS)); fi
  # FIXME: We could check THISRUNSUCCESS instead?
  SLOW=0
  if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $MAXCYC; then
