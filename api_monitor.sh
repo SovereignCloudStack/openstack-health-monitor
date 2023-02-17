@@ -1579,7 +1579,9 @@ waitlistResources()
     local WAITVAL
     #echo "waitlistResources \"${RLIST[*]}\" \"${SLIST[*]}\"" 1>&2
     if test "$COMP1" == "XDELX"; then WAITVAL="del"; else WAITVAL="$COMP1"; fi
-    for no in $(seq 1 $COL); do PARSE="$PARSE[^|]*|"; done
+    for no in $(seq 1 $COL); do
+        PARSE="$PARSE[^|]*|"
+    done
     PARSE="$PARSE *\([^|]*\)|.*\$"
     #echo "$PARSE"
     declare -i ctr=0
@@ -2281,8 +2283,16 @@ vmInfo()
     VMINFO=(${VMS[$1]} ${PORTS[$1]} $AZNO $NETNO $NETIDX $NAME $FIP $PORT $INTIP)
 }
 
-if [[ "$JHIMG" = "openSUSE"* ]] || [[ "$JHIMG" = "SLES"* ]]; then JHIPERF3=iperf; else JHIPERF3=iperf3; fi
-if [[ "$IMG" = "openSUSE"* ]] || [[ "$IMG" = "SLES"* ]]; then IPERF3=iperf; else IPERF3=iperf3; fi
+if [[ "$JHIMG" = "openSUSE"* ]] || [[ "$JHIMG" = "SLES"* ]]; then
+    JHIPERF3=iperf
+else
+    JHIPERF3=iperf3
+fi
+if [[ "$IMG" = "openSUSE"* ]] || [[ "$IMG" = "SLES"* ]]; then
+    IPERF3=iperf
+else
+    IPERF3=iperf3
+fi
 
 # JumpHosts creation with SNAT and port forwarding
 createJHVMs()
@@ -2904,7 +2914,9 @@ deleteVMs()
             sleep 2
             ostackcmd_tm NOVABSTATS $(($NOVMS * $DEFTIMEOUT / 2 + $NOVABOOTTIMEOUT)) nova delete ${VMS[*]}
         fi
-        for vm in $(seq 0 $((${#VMS[*]} - 1))); do VMSTIME[$vm]=$DT; done
+        for vm in $(seq 0 $((${#VMS[*]} - 1))); do
+            VMSTIME[$vm]=$DT
+        done
     else
         local ORIGVMS=(${VMS[*]})
         deleteResources NOVABSTATS VM VMSTIME $NOVABOOTTIMEOUT nova delete
