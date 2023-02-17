@@ -1090,8 +1090,8 @@ createResources()
   shift; shift; shift; shift; shift; shift; shift
   local TIMEOUT=$1; shift
   #if test $TIMEOUTFACT -gt 1; then let TIMEOUT+=2; fi
-  eval local LIST=( \"\${${ORNM}S[@]}\" )
-  eval local MLIST=( \"\${${MRNM}S[@]}\" )
+    eval local LIST="" #FROSTY-!FIXME# eval local LIST=( \"\${${ORNM}S[@]}\" )
+    eval local MLIST="" #FROSTY-!FIXME# eval local MLIST=( \"\${${MRNM}S[@]}\" )
   if test "$RNM" != "NONE"; then echo -n "New $RNM: "; fi
   local RC=0
   local TIRESP
@@ -1145,9 +1145,9 @@ deleteResources()
   local TIMEOUT=$1; shift
   #if test $TIMEOUTFACT -gt 1; then let TIMEOUT+=2; fi
   local FAILDEL=()
-  eval local LIST=( \"\${${ORNM}S[@]}\" )
+    eval local LIST="" #FROSTY-!FIXME# eval local LIST=( \"\${${ORNM}S[@]}\" )
   #eval local varAlias=( \"\${myvar${varname}[@]}\" )
-  eval local LIST=( \"\${${RNM}S[@]}\" )
+    eval local LIST="" #FROSTY-!FIXME# eval local LIST=( \"\${${RNM}S[@]}\" )
   #echo $LIST
   test -n "$LIST" && echo -n "Del $RNM: "
   #for rsrc in $LIST; do
@@ -1242,8 +1242,8 @@ waitResources()
   local TIMEOUT=$1; shift
   #if test $TIMEOUTFACT -gt 1; then let TIMEOUT+=2; fi
   local STATI=()
-  eval local RLIST=( \"\${${RNM}S[@]}\" )
-  eval local SLIST=( \"\${${STIME}[@]}\" )
+    eval local RLIST="" #FROSTY-!FIXME# eval local RLIST=( \"\${${RNM}S[@]}\" )
+    eval local SLIST="" #FROSTY-!FIXME# eval local SLIST=( \"\${${STIME}[@]}\" )
   local LAST=$(( ${#RLIST[@]} - 1 ))
   declare -i ctr=0
   declare -i WERR=0
@@ -1317,9 +1317,9 @@ waitlistResources()
   #echo "waitlistResources $STATNM $RNM $COMP1 $COL $@"
   #if test $TIMEOUTFACT -gt 1; then let TIMEOUT+=2; fi
   local STATI=()
-  eval local RLIST=( \"\${${RNM}S[@]}\" )
-  eval RRLIST=( \"\${${RNM}S[@]}\" )
-  eval local SLIST=( \"\${${STIME}[@]}\" )
+    eval local RLIST="" #FROSTY-!FIXME# eval local RLIST=( \"\${${RNM}S[@]}\" )
+    eval local RRLIST="" #FROSTY-!FIXME# eval RRLIST=( \"\${${RNM}S[@]}\" )
+    eval local SLIST="" #FROSTY-!FIXME# eval local SLIST=( \"\${${STIME}[@]}\" )
   local LAST=$(( ${#RLIST[@]} - 1 ))
   if test ${#RLIST[@]} != ${#SLIST[@]}; then echo " WARN: RLIST \"${RLIST[@]}\" SLIST \"${SLIST[@]}\""; fi
   local PARSE="^|"
@@ -1420,8 +1420,8 @@ waitdelResources()
   shift; shift; shift; shift
   local TIMEOUT=$1; shift
   #if test $TIMEOUTFACT -gt 1; then let TIMEOUT+=2; fi
-  eval local RLIST=( \"\${${RNM}S[@]}\" )
-  eval local DLIST=( \"\${${DTIME}[@]}\" )
+    eval local RLIST="" #FROSTY-!FIXME# eval local RLIST=( \"\${${RNM}S[@]}\" )
+    eval local DLIST="" #FROSTY-!FIXME# eval local DLIST=( \"\${${DTIME}[@]}\" )
   local STATI=()
   local LAST=$(( ${#RLIST[@]} - 1 ))
   local STATI=()
@@ -1509,7 +1509,7 @@ showResources()
   shift; shift
   local TIMEOUT=$1; shift
   #if test $TIMEOUTFACT -gt 1; then let TIMEOUT+=2; fi
-  eval local LIST=( \"\${$RNM}S[@]\" )
+    eval local LIST="" #FROSTY-!FIXME# eval local LIST=( \"\${$RNM}S[@]\" )
   local rsrc TM
   while rsrc in ${LIST}; do
     let APICALLS+=1
@@ -3169,7 +3169,7 @@ stats_old()
   # Display name
   if test -n "$3"; then NAME=$3; else NAME=$1; fi
   # Generate list and sorted list
-  eval LIST=( \"\${${1}[@]}\" )
+    eval local LIST="" #FROSTY-!FIXME# eval LIST=( \"\${${1}[@]}\" )
   if test -z "${LIST[*]}"; then return; fi
   DIG=${2:-2}
   PCT=${4:-95}
@@ -3220,7 +3220,7 @@ stats()
   DIG=${2:-2}
   PCT=${4:-95}
   echo -n "$NAME: " | tee -a $LOGFILE
-  eval LIST=( \"\${${1}[@]}\" )
+    eval local LIST="" #FROSTY-!FIXME# eval LIST=( \"\${${1}[@]}\" )
   echo "${LIST[*]}" | ./stats.py -d $DIG -p $PCT $MACHINE | tee -a $LOGFILE
 }
 
