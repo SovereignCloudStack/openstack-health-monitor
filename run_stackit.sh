@@ -48,31 +48,31 @@ export EMAIL_PARAM=${EMAIL_PARAM:-"scs@garloff.de"}
 #export ALARM_EMAIL_ADDRESSES NOTE_EMAIL_ADDRESSES
 
 # Terminate early on auth error
-openstack server list >/dev/null
+openstack server list > /dev/null
 
 # Find Floating IPs
 FIPLIST=""
 FIPS=$(openstack floating ip list -f value -c ID)
 for fip in $FIPS; do
-	FIP=$(openstack floating ip show $fip | grep -o "APIMonitor_[0-9]*")
-	if test -n "$FIP"; then FIPLIST="${FIPLIST}${FIP}_
+    FIP=$(openstack floating ip show $fip | grep -o "APIMonitor_[0-9]*")
+    if test -n "$FIP"; then FIPLIST="${FIPLIST}${FIP}_
 "; fi
 done
 FIPLIST=$(echo "$FIPLIST" | grep -v '^$' | sort -u)
 # Cleanup previous interrupted runs
-SERVERS=$(openstack server  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
-VOLUMES=$(openstack volume  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+SERVERS=$(openstack server list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+VOLUMES=$(openstack volume list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 NETWORK=$(openstack network list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 LOADBAL=$(openstack loadbalancer list | grep -o "APIMonitor_[0-9]*_" | sort -u)
-ROUTERS=$(openstack router  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+ROUTERS=$(openstack router list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 SECGRPS=$(openstack security group list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 echo CLEANUP: FIPs $FIPLIST Servers $SERVERS Volumes $VOLUMES Networks $NETWORK LoadBalancers $LOADBAL Routers $ROUTERS SecGrps $SECGRPS
 for ENV in $FIPLIST; do
-  echo "******************************"
-  echo "CLEAN $ENV"
-  bash ./api_monitor.sh -o -T -q -c CLEANUP $ENV
-  #bash ./api_monitor.sh -o -q -c CLEANUP $ENV
-  echo "******************************"
+    echo "******************************"
+    echo "CLEAN $ENV"
+    bash ./api_monitor.sh -o -T -q -c CLEANUP $ENV
+    #bash ./api_monitor.sh -o -q -c CLEANUP $ENV
+    echo "******************************"
 done
 TOCLEAN=$(echo "$SERVERS
 $VOLUMES
@@ -82,10 +82,10 @@ $ROUTERS
 $SECGRPS
 " | grep -v '^$' | sort -u)
 for ENV in $TOCLEAN; do
-  echo "******************************"
-  echo "CLEAN $ENV"
-  bash ./api_monitor.sh -o -q -c CLEANUP $ENV
-  echo "******************************"
+    echo "******************************"
+    echo "CLEAN $ENV"
+    bash ./api_monitor.sh -o -q -c CLEANUP $ENV
+    echo "******************************"
 done
 
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
@@ -93,4 +93,3 @@ done
 #exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -a 2 -T -R "$@"
 exec ./api_monitor.sh -O -C -D -n 8 -s -b -B -a 2 -z 5 -T -R -S stackit "$@"
 #exec ./api_monitor.sh -o -C -D -N 2 -n 8 -s -L -b -B -a 2 -T -R "$@"
-

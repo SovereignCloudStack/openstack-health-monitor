@@ -35,13 +35,13 @@ export IMG="openSUSE 15.2"
 export EMAIL_PARAM=${EMAIL_PARAM:-"sender@domain.org"}
 
 # Terminate early on auth error
-openstack server list >/dev/null
+openstack server list > /dev/null
 
 # Cleanup previous interrupted runs
-SERVERS=$(openstack server  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
-VOLUMES=$(openstack volume  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+SERVERS=$(openstack server list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+VOLUMES=$(openstack volume list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 NETWORK=$(openstack network list | grep -o "APIMonitor_[0-9]*_" | sort -u)
-ROUTERS=$(openstack router  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+ROUTERS=$(openstack router list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 SECGRPS=$(openstack security group list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 TOCLEAN=$(echo "$SERVERS
 $VOLUMES
@@ -50,13 +50,12 @@ $ROUTERS
 $SECGRPS
 " | sort -u)
 for ENV in $TOCLEAN; do
-  echo "******************************"
-  echo "CLEAN $ENV"
-  bash ./api_monitor.sh -q -o -c CLEANUP $ENV
-  echo "******************************"
+    echo "******************************"
+    echo "CLEAN $ENV"
+    bash ./api_monitor.sh -q -o -c CLEANUP $ENV
+    echo "******************************"
 done
 
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
 #exec api_monitor.sh -o -C -D -N 2 -n 8 -s -e sender@domain.org "$@"
 exec api_monitor.sh -O -C -D -N 2 -n 8 -s -e sender@domain.org "$@"
-
