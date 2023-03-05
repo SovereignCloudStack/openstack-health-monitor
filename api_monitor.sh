@@ -216,8 +216,8 @@ else
 fi
 # SCS flavor names as defaults
 #JHFLAVOR=${JHFLAVOR:-computev1-1}
-JHFLAVOR=${JHFLAVOR:-SCS-1V:2:5}
-FLAVOR=${FLAVOR:-SCS-1V:2:5}
+JHFLAVOR=${JHFLAVOR:-SCS-1V-2-5}
+FLAVOR=${FLAVOR:-SCS-1L-1-5}
 
 # Optionally increase JH and VM volume sizes beyond image size
 # (slows things down due to preventing quick_start and growpart)
