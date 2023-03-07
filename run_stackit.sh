@@ -34,7 +34,7 @@ export FROM=kurt@garloff.de
 export SWIFTCONTAINER=OS-HM-Logfiles
 # NAMESERVER
 export NAMESERVER=8.8.8.8
-# External network
+# External network selection pattern (grep RE)
 export EXTSEARCH=floating.net
 
 # Assume OS_ parameters have already been sourced from some .openrc file
