@@ -2209,20 +2209,29 @@ else
 # Loadbalancers
 createLBs()
 {
+  local RC=0
   if test -n "$LOADBALANCER"; then
     #createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0" $LB_PROVIDER $LB_FLAVOR
     createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-subnet-id ${JHSUBNETS[0]} --name "${RPRE}LB_0" $LB_PROVIDER $LB_FLAVOR
+    RC=$?
+    if test $RC != 0; then let LBERRORS+=1; LBAASS=(); fi
   fi
+  return $RC
 }
 
 deleteLBs()
 {
   DELLBAASS=(${LBAASS[*]})
+  if test -n "$LOADBALANCER" -a "$LBERRORS" != "0" -a -z "$LBAASS"; then
+    echo -n "  Detecting LoadBalancers for extra cleanup: "
+    LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
+    echo "${LBAASS[*]}"
+  fi
   if test -n "$LBAASS"; then
     if test -n "$OLD_OCTAVIA"; then
-      deleteResources LBSTATS LBAAS LBDTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete
+      deleteResources LBSTATS LBAAS LBDTIME $((FIPTIMEOUT+10)) neutron lbaas-loadbalancer-delete
     else
-      deleteResources LBSTATS LBAAS LBDTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete --cascade
+      deleteResources LBSTATS LBAAS LBDTIME $((FIPTIMEOUT+12)) neutron lbaas-loadbalancer-delete --cascade
     fi
   fi
 }
@@ -3221,6 +3230,7 @@ stats()
   PCT=${4:-95}
   echo -n "$NAME: " | tee -a $LOGFILE
   eval LIST=( \"\${${1}[@]}\" )
+  if test ${#LIST[*]} -lt 2; then return; fi
   echo "${LIST[*]}" | ./stats.py -d $DIG -p $PCT $MACHINE | tee -a $LOGFILE
 }
 
@@ -3229,13 +3239,13 @@ allstats()
 {
  stats $1 NETSTATS   2 "Neutron CLI Stats "
  stats $1 FIPSTATS   2 "Neutron FIP Stats "
- if test -n "$LOADBALANCER"; then
+ if test -n "$LOADBALANCER" -a -n "$LBSTATS"; then
    stats $1 LBSTATS    2 "LB CLI Stats      "
  fi
  stats $1 NOVASTATS  2 "Nova CLI Stats    "
  stats $1 NOVABSTATS 2 "Nova Boot Stats   "
  stats $1 VMCSTATS   0 "VM Creation Stats "
- if test -n "$LOADBALANCER"; then
+ if test -n "$LOADBALANCER" -a -n "$LBCSTATS"; then
    stats $1 LBCSTATS   0 "LB Creation Stats "
  fi
  if test -n "$BCBENCH"; then
@@ -3950,7 +3960,8 @@ else # test "$1" = "DEPLOY"; then
               else
                # loadbalancer
                waitLBs
-               LBERRORS=$?
+               LBWAITERR=$?
+               if test -n "$LBAASS"; then LBERRORS=$LBWAITERR; fi
                # No error handling here (but alarms are generated)
                waitVMs
                # Errors will be counted later again
