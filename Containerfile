@@ -1,7 +1,8 @@
 ARG PYTHON_VERSION=3.8
 FROM python:${PYTHON_VERSION}-alpine
 
-ARG VERSION=victoria
+ARG VERSION=latest
+ARG OPENSTACK_VERSION=zed
 
 ARG USER_ID=45000
 ARG GROUP_ID=45000
@@ -23,7 +24,8 @@ RUN apk add --no-cache \
       libffi-dev \
       openssl-dev \
       python3-dev \
-    && wget -P / -O requirements.tar.gz https://tarballs.opendev.org/openstack/requirements/requirements-master.tar.gz \
+    && if [ $VERSION = "latest" ]; then wget -P / -O requirements.tar.gz https://tarballs.opendev.org/openstack/requirements/requirements-master.tar.gz; fi \
+    && if [ $VERSION != "latest" ]; then wget -P / -O requirements.tar.gz https://tarballs.opendev.org/openstack/requirements/requirements-stable-${OPENSTACK_VERSION}.tar.gz; fi \
     && mkdir /requirements \
     && tar xzf /requirements.tar.gz -C /requirements --strip-components=1 \
     && rm -rf /requirements.tar.gz \
@@ -48,5 +50,5 @@ USER dragon
 WORKDIR /configuration
 VOLUME ["/configuration", "/data"]
 
-CMD ["/api_monitor.sh"]
+CMD ["/api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -a 2 -t -T -R -s -i 5"]
 ENTRYPOINT ["/api_monitor.sh"]
