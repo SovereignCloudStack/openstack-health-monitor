@@ -47,7 +47,7 @@ telegraf, influxdb and grafana: `sudo zypper install telegraf influxdb grafana`.
 ![](oshm-grafana-gxscs-20220923-1.png)
 ![](oshm-grafana-gxscs-20220923-2.png)
 
-These screenshots show two days in the gx-scs development cloud from PlusServer,
+These screenshots show two days in the gx-scs development cloud from plusserver,
 nothing filtered out (all OpenStack services, all commands, all resource types,
 all benchmarks).
 
