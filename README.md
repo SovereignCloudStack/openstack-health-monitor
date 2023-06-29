@@ -78,7 +78,8 @@ Destroying all of these resources again
 ## Alarming and reporting
 
 We do some statistics on the duration of the steps (min, avg, median, 95% quantile, max).
-We of course also note any errors and timeouts and report these, optionally sending email of SMN alarms.
+We of course also note any errors and timeouts and report these, optionally sending email
+or SMN (OTC notifications via SMS and other media) alarms.
 
 ## Runtime
 
@@ -91,13 +92,19 @@ Completed (use option `-O` (not used for volume create)).
 ## Prerequisites
 
 - Working python-XXXclient tools (openstack, glance, neutron, nova, cinder)
-- `OS_` environment variables set to run openstack CLI commands (or `OS_CLOUD` with `clouds.yaml`/`secure.yaml`)
+- `OS_` environment variables set to run openstack CLI commands or `OS_CLOUD` with `clouds.yaml`/`secure.yaml`
 - `otc.sh` from otc-tools (only if using optional SMN `-m` and project creation `-p`)
 - `sendmail` (only if email notification is requested)
 - `jq` (for JSON processing)
-- `bc` and python2 or 3 for math used to calc statistics
+- `bc` and python3 (or python2) for math used to calc statistics
 - Any image for the VMs that allows login as user DEFLTUSER (linux) with injected key
   (If we use `-2`/`-3`/`-4`, we also need a SUSE image to have the `cloud-multiroute` pkg in there.)
+
+I typically set this up on openSUSE-15.x images that come with all these tools (except sendmail)
+preinstalled -- get them at <https://kfg.images.obs-website.eu-de.otc.t-systems.com/>.
+I tiny flavor is enough to run this (1GiB RAM, 5GB disk) -- watch the logfiles though to
+avoid them filling up your disk. If you set up the dashboard with telegraf, influxdb, grafana,
+I would recommend a larger flavor (4GiB RAM, 20GB disk).
 
 ## Usage
 

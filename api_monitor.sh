@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.85
+VERSION=1.89
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -217,8 +217,8 @@ else
 fi
 # SCS flavor names as defaults
 #JHFLAVOR=${JHFLAVOR:-computev1-1}
-JHFLAVOR=${JHFLAVOR:-SCS-1V:2:5}
-FLAVOR=${FLAVOR:-SCS-1V:2:5}
+JHFLAVOR=${JHFLAVOR:-SCS-1V-2-5}
+FLAVOR=${FLAVOR:-SCS-1L-1-5}
 
 # Optionally increase JH and VM volume sizes beyond image size
 # (slows things down due to preventing quick_start and growpart)
@@ -286,6 +286,7 @@ usage()
   echo " -I     dIsassociate floating IPs before deleting them"
   echo " -L     create HTTP Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it"
+  echo " -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)"
   echo " -b     run a simple compute benchmark"
   echo " -B     run iperf3"
   echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
@@ -302,7 +303,7 @@ usage()
   echo "You can override defaults by exporting the environment variables AZS, VAZS, RPRE,"
   echo " PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,"
   echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES,"
-  echo " NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER, FIPWAITPORTDEVOWNER."
+  echo " NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER, FIPWAITPORTDEVOWNER, EXTSEARCH, OS_EXTRA_PARAMS."
   echo "Typically, you should configure [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER."
   exit 0
 }
@@ -344,6 +345,8 @@ while test -n "$1"; do
     "-r") ROUTERITER=$2; shift;;
     "-L") LOADBALANCER=1;;
     "-LL") LOADBALANCER=1; TCP_LB=1;;
+    "-LP") LOADBALANCER=1; TCP_LB=1; LB_PROVIDER="--provider $2"; shift;;
+    "-LO") LOADBALANCER=1; TCP_LB=1; LB_PROVIDER="--provider ovn";;
     "-b") BCBENCH=1;;
     "-B") IPERF=1;;
     "-t") let TIMEOUTFACT+=1;;
@@ -831,10 +834,22 @@ translate()
       if test -n "$OLD_OCTAVIA"; then
         ARGS=$(echo "$@" | sed -e 's/\-\-protocol\-port/--protocol_port/g' -e 's/\-\-subnet\-id/--subnet_id/g')
       else
-	ARGS=$(echo "$@" | sed -e 's/\-\-subnet\-id [^ ]*/ /g')
+	if test -z "$LB_PROVIDER"; then
+	  # amphorae don't need subnet-id
+	  ARGS=$(echo "$@" | sed -e 's/\-\-subnet\-id [^ ]*/ /g')
+	else
+	  ARGS=$(echo "$@")
+	fi
       fi
-      OSTACKCMD=($OPST loadbalancer member $CMD $LWAIT $ARGS)
-      #OSTACKCMD=(openstack loadbalancer member $CMD $LWAIT $ARGS)
+      if [[ "$ARGS" == *"--subnet-id"* ]]; then
+	# If we talk directly to octavia, the --subnet-id option won't work
+	# We could try to use the proxy via neutron or just do the std dance
+	#EP="$NEUTRON_EP"
+        #OSTACKCMD=($OPST loadbalancer member $CMD $LWAIT $ARGS)
+        OSTACKCMD=(openstack loadbalancer member $CMD $LWAIT $ARGS)
+      else
+        OSTACKCMD=($OPST loadbalancer member $CMD $LWAIT $ARGS)
+      fi
     elif test "$C1" == "lbaas healthmonitor"; then
       EP="$OCTAVIA_EP"
       if test -n "$OLD_OCTAVIA"; then
@@ -880,12 +895,14 @@ log_grafana()
 # Allows to inject OS_TOKEN and OS_URL to enforce token_endpoint auth
 myopenstack()
 {
+  #FIXME: $OS_EXTRA_PARAMS is *only* used here when we talk to the endpoint directly.
+  # It is not used when we use the normal mechanism where we get a token from keystone first.
   #TODO: Check whether old openstack client version accept the syntax (maybe they need --os-auth-type admin_token?)
   #echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-url $EP $@" >> $LOGFILE
-  echo "openstack --os-token {SHA1}$(echo $TOKEN| sha1sum | sed 's/ .*$//') --os-endpoint $EP --os-auth-type admin_token --os-project-name=\"\" $@" >> $LOGFILE
+  echo "openstack --os-token {SHA1}$(echo $TOKEN| sha1sum | sed 's/ .*$//') --os-endpoint $EP --os-auth-type admin_token --os-project-name=\"\" $OS_EXTRA_PARAMS $@" >> $LOGFILE
   #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-project-name "" --os-token $TOKEN --os-url $EP "$@"
   #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP "$@"
-  OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP --os-auth-type admin_token --os-project-name="" "$@"
+  OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP --os-auth-type admin_token --os-project-name="" $OS_EXTRA_PARAMS "$@"
   #OS_PASSWORD="" OS_USERNAME="" OS_PROJECT_DOMAIN_NAME="" OS_PROJECT_NAME="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME=""
 }
 
@@ -1520,7 +1537,10 @@ createRouters()
     ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list
     if test $? != 0; then deleteRouters; return 1; fi
     #EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\2/')
-    EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | head -n1 | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\1/')
+    EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | grep "$EXTSEARCH" | head -n1 | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\1/')
+    if test -z "$EXTNET"; then
+      EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | head -n1 | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\1/')
+    fi
     # Not needed on OTC, but for most other OpenStack clouds:
     # Connect Router to external network gateway
     ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET || true
@@ -1683,7 +1703,12 @@ createSGroups()
   read TM ID STATE <<<"$RESP"
   NETSTATS+=( $TM )
   if test -n "$LOADBALANCER"; then
-    RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 80 --port-range-max 80 --remote-ip-prefix $JHSUBNETIP $SG1)
+    if test "$LB_PROVIDER" = "--provider ovn"; then
+      # With OVN, the client IP is real (not the VIP), so we need to allow all
+      RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 80 --port-range-max 80 --remote-ip-prefix 0.0.0.0/0 $SG1)
+    else
+      RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 80 --port-range-max 80 --remote-ip-prefix $JHSUBNETIP $SG1)
+    fi
     updAPIerr $?
     read TM ID STATE <<<"$RESP"
     NETSTATS+=( $TM )
@@ -1951,7 +1976,7 @@ calcRedirs()
   #  secondary port reshuffling and (b) PORTS needs to match VMS ordering
   # This is why we use orderVMs
   # Optimization: Do neutron port-list once and parse multiple times ...
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
   if test ${#PORTS[*]} -gt 0; then
     declare -i ptn=222
     declare -i pi=0
@@ -2012,7 +2037,7 @@ createJHVMs()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   calcRedirs
-  #echo "#DEBUG: $VIP ${REDIRS[*]}"
+  #echo "#DEBUG: cJHVM VIP $VIP REDIR ${REDIRS[*]}"
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
     if test -z "${REDIRS[$JHNUM]}"; then
       # No fwdmasq config possible yet
@@ -2054,7 +2079,7 @@ $RD
 # Fill PORTS array by matching part's device_ids with the VM UUIDs
 collectPorts_Old()
 {
-  local vm vmid
+  local vm vmid ports port
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
   #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'"
   #echo "#DEBUG: cP VMs ${VMS[*]}"
@@ -2064,13 +2089,7 @@ collectPorts_Old()
     if test -z "$vmid"; then sendalarm 1 "nova list" "VM $vm not found" $NOVATIMEOUT; continue; fi
     #port=$(echo "$OSTACKRESP" | jq -r '.[]' | grep -C4 "$vmid")
     #echo -e "#DEBUG: $port"
-    if test -z "$OPENSTACKCLIENT"; then
-      ports=$(echo "$OSTACKRESP" | jq -r ".[] | select(.device_id == \"$vmid\") | .id+\" \"+.fixed_ips[].ip_address" | tr -d '"')
-    else
-      ports=$(echo "$OSTACKRESP" | jq -r "def str(s): s|tostring; .[] | select(.device_id == \"$vmid\") | .ID+\" \"+str(.[\"Fixed IP Addresses\"])" | tr -d '"')
-      #if echo "$ports" | grep ip_address >/dev/null 2>&1; then ports=$(echo "$ports" | jq '.[].ip_address'); fi
-      ports=$(echo -e "$ports" | tr -d '"' | sed "$PORTFIXED2")
-    fi
+    ports=$(echo "$OSTACKRESP" | jq -r ".[] | select(.device_id == \"$vmid\") | .id+\" \"+.fixed_ips[].ip_address" | tr -d '"')
     port=$(echo -e "$ports" | grep 10.250 | sed 's/^\([^ ]*\) .*$/\1/')
     PORTS[$vm]=$port
     if test -n "$COLLSECOND"; then
@@ -2078,8 +2097,8 @@ collectPorts_Old()
       SECONDPORTS[$vm]=$port2
     fi
   done
-  echo "VM Ports: ${PORTS[*]}"
-  if test -n "$SECONDPORTS"; then echo "VM Ports2: ${SECONDPORTS[*]}"; fi
+  echo "#VM Ports: ${PORTS[*]}"
+  if test -n "$SECONDPORTS"; then echo "#VM Ports2: ${SECONDPORTS[*]}"; fi
 }
 
 # Fill PORTS array by matching VM's IP address with port
@@ -2128,7 +2147,7 @@ setPortForward()
   # If we need to collect port info, do so now
   if test -z "${PORTS[*]}"; then collectPorts; fi
   calcRedirs
-  #echo "#DEBUG: sPF VIP REDIR $VIP ${REDIRS[*]}"
+  #echo "#DEBUG: sPF VIP $VIP REDIR ${REDIRS[*]} PORTS \"${PORTS[*]}\""
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
     if test -z "${REDIRS[$JHNUM]}"; then
       echo -e "${YELLOW}ERROR: No redirections?$NORM" 1>&2
@@ -2154,7 +2173,7 @@ setPortForwardGen()
   # If we need to collect port info, do so now
   if test -z "${PORTS[*]}"; then collectPorts; fi
   calcRedirs
-  #echo "#DEBUG: sPF VIP REDIR $VIP ${REDIRS[*]}"
+  #echo "#DEBUG: sPFG VIP $VIP REDIR ${REDIRS[*]} PORTS \"${PORTS[*]}\""
   echo -n "Enable port forwarding on "
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
     echo -n "JHVM$JHNUM: "
@@ -2215,20 +2234,29 @@ else
 # Loadbalancers
 createLBs()
 {
+  local RC=0
   if test -n "$LOADBALANCER"; then
-    #createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0"
-    createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-subnet-id ${JHSUBNETS[0]} --name "${RPRE}LB_0"
+    #createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0" $LB_PROVIDER $LB_FLAVOR
+    createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-subnet-id ${JHSUBNETS[0]} --name "${RPRE}LB_0" $LB_PROVIDER $LB_FLAVOR
+    RC=$?
+    if test $RC != 0; then let LBERRORS+=1; LBAASS=(); fi
   fi
+  return $RC
 }
 
 deleteLBs()
 {
   DELLBAASS=(${LBAASS[*]})
+  if test -n "$LOADBALANCER" -a "$LBERRORS" != "0" -a -z "$LBAASS"; then
+    echo -n "  Detecting LoadBalancers for extra cleanup: "
+    LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
+    echo "${LBAASS[*]}"
+  fi
   if test -n "$LBAASS"; then
     if test -n "$OLD_OCTAVIA"; then
-      deleteResources LBSTATS LBAAS LBDTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete
+      deleteResources LBSTATS LBAAS LBDTIME $((FIPTIMEOUT+10)) neutron lbaas-loadbalancer-delete
     else
-      deleteResources LBSTATS LBAAS LBDTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete --cascade
+      deleteResources LBSTATS LBAAS LBDTIME $((FIPTIMEOUT+12)) neutron lbaas-loadbalancer-delete --cascade
     fi
   fi
 }
@@ -2309,16 +2337,19 @@ handleLBErr()
   if test $RC = 0; then return; fi
   ERRREASON="$ERRREASON$* "
   let LBERR+=$RC
+  let LBERRORS+=1
 }
 
 testLBs()
 {
   LBERR=0
   ERRREASON=""
+  if test -z "$LB_ALGO"; then LB_ALGO="--lb-algorithm=ROUND_ROBIN"; fi
   echo -n "LBaaS2 "
   if test "$TCP_LB" = "1"; then echo -n "(TCP) "; PROTO=TCP; unset SESSPERS; unset URLPATH
   else echo -n "(HTTP) "; PROTO=HTTP; SESSPERS="--session-persistence type=HTTP_COOKIE"; URLPATH="--url-path /hostname"; fi
-  createResources 1 LBSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol $PROTO --lb-algorithm=ROUND_ROBIN $SESSPERS --loadbalancer ${LBAASS[0]} # --wait
+  if test "$LB_PROVIDER" = "--provider ovn"; then echo -n "(${LB_PROVIDER##* }) "; LB_ALGO="--lb-algorithm SOURCE_IP_PORT"; fi
+  createResources 1 LBSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol $PROTO $LB_ALGO $SESSPERS --loadbalancer ${LBAASS[0]} # --wait
   handleLBErr $? "PoolCreate"
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test -z "$LBWAIT"; then
@@ -2353,23 +2384,32 @@ testLBs()
   handleLBErr $? "HealthMonCreate"
   #echo "DEBUG: IPS ${IPS[*]} SUBNETS ${SUBNETS[*]}"
   createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id \${SUBNETS[\$\(\(no%$NONETS\)\)]} --protocol-port 80 ${POOLS[0]}
+  #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id ${JHSUBNETS[0]} --protocol-port 80 ${POOLS[0]}
   #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   handleLBErr $? "MemberCreate"
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
   echo -n "Test LB at $LBIP:"
+  LBCERR=0
+  STTM=$(date +%s.%N)
   # Access LB NOVMS times (RR -> each server gets one request)
   for i in $(seq 0 $NOVMS); do
     ANS=$(curl -m4 http://$LBIP/hostname 2>/dev/null)
     handleLBErr $? "Connect $LBIP"
     echo -n " $ANS"
     if test $RC != 0; then errwait $ERRWAIT; fi
+    let LBCERR+=$RC
   done
+  ENTM=$(date +%s.%N)
+  LBDUR=$(echo "10*($ENTM-$STTM)" | bc -l)
+  LBDUR=$(printf %.2f $LBDUR)
+  log_grafana LBconn $NOVMS $LBDUR $LBCERR
   ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
   handleLBErr $? "PoolShow"
   echo " $OSTACKRESP"
   test "$OSTACKRESP" != "ONLINE" && handleLBErr 1 "OpStatusNotOnline"
   # Kill some backends
+  if test -z "$SKIPKILLLB"; then
   echo -n "Kill backends: "
   killhttp
   sleep $((1+WAITLB))
@@ -2379,19 +2419,29 @@ testLBs()
   echo $OSTACKRESP
   test "$OSTACKRESP" != "DEGRADED" && handleLBErr 1 "OpStatusNotDegraded"
   echo -n "Retest LB at $LBIP (after $((1+WAITLB)) s):"
+  LBCERR=0
+  STTM=$(date +%s.%N)
   # Access LB NOVMS times (RR -> each server gets one request)
   for i in $(seq 0 $NOVMS); do
     ANS=$(curl -m4 http://$LBIP/hostname 2>/dev/null)
     handleLBErr $? "Connect $LBIP"
     echo -n " $ANS"
     if test $RC != 0; then errwait $ERRWAIT; fi
+    let LBCERR+=$RC
   done
+  ENTM=$(date +%s.%N)
+  LBDUR=$(echo "10*($ENTM-$STTM)" | bc -l)
+  LBDUR=$(printf %.2f $LBDUR)
+  log_grafana LBconn $NOVMS $LBDUR $LBCERR
+  else
+    echo -e "${YELLOW}Warning:${NORM} Skipped LB backend kill checks (health mon)"
+  fi
   echo
   if test $LBERR != 0; then
     sendalarm 2 "Errors connecting to LB $LBIP port 80: $ERRREASON" "$LBERR" 4
     if test -n "$EXITERR"; then exit 3; fi
   fi
-  LBERRORS+=$LBERR
+  #LBERRORS+=$LBERR
   return $LBERR
 }
 
@@ -3139,7 +3189,7 @@ EOT
 
 # [-m] STATLIST [DIGITS [NAME [PCTILE]]]
 # m for machine readable
-stats()
+stats_old()
 {
   local NM NO VAL LIST DIG OLDIFS SLIST MIN MAX MID MED NFQ NFQL NFQR NFQF NFP AVGC AVG
   if test "$1" = "-m"; then MACHINE=1; shift; else unset MACHINE; fi
@@ -3195,18 +3245,32 @@ stats()
   fi
 }
 
+# [-m] STATLIST [DIGITS [NAME [PCTILE]]]
+# m for machine readable
+stats()
+{
+  if test "$1" = "-m"; then MACHINE="-m"; shift; else unset MACHINE; fi
+  if test -n "$3" -a -z "$MACHINE"; then NAME=$3; else NAME=$1; fi
+  DIG=${2:-2}
+  PCT=${4:-95}
+  echo -n "$NAME: " | tee -a $LOGFILE
+  eval LIST=( \"\${${1}[@]}\" )
+  if test ${#LIST[*]} -lt 2; then return; fi
+  echo "${LIST[*]}" | ./stats.py -d $DIG -p $PCT $MACHINE | tee -a $LOGFILE
+}
+
 # [-m] for machine readable
 allstats()
 {
  stats $1 NETSTATS   2 "Neutron CLI Stats "
  stats $1 FIPSTATS   2 "Neutron FIP Stats "
- if test -n "$LOADBALANCER"; then
+ if test -n "$LOADBALANCER" -a -n "$LBSTATS"; then
    stats $1 LBSTATS    2 "LB CLI Stats      "
  fi
  stats $1 NOVASTATS  2 "Nova CLI Stats    "
  stats $1 NOVABSTATS 2 "Nova Boot Stats   "
  stats $1 VMCSTATS   0 "VM Creation Stats "
- if test -n "$LOADBALANCER"; then
+ if test -n "$LOADBALANCER" -a -n "$LBCSTATS"; then
    stats $1 LBCSTATS   0 "LB Creation Stats "
  fi
  if test -n "$BCBENCH"; then
@@ -3332,8 +3396,9 @@ cleanup_new()
   deleteKeypairs
   delete2ndPorts; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
   NOFITLERTAG=1
-  deleteSGroups
   waitdelLBs
+  # TODO: Delete remaining LB ports
+  deleteSGroups
   deleteRIfaces
   deleteSubNets; deleteJHSubNets
   deleteNets; deleteJHNets
@@ -3389,10 +3454,20 @@ cleanup()
   JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
   delete2ndPorts; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
   NOFILTERTAG=1
-  SGROUPS=( $(findres "" neutron security-group-list) )
-  deleteSGroups
   waitdelLBs
   SUBNETS=( $(findres "" neutron subnet-list) )
+  # FIXME: We occasionally leaks ports from octavia
+  #if test -n "$LOADBALANCER"; then
+    for sub in ${SUBNETS[*]}; do
+      if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then echo "#DEBUG: Skip port clean subnet $sub"; continue; fi
+      PORTS=( $(findres "octavia-lb" neutron port-list --fixed-ip subnet=$sub) )
+      echo "Cleaning octavia ports ${PORTS[*]} in subnet $sub ..."
+      deletePorts
+    done
+  #fi
+  SGROUPS=( $(findres "" neutron security-group-list) )
+  deleteSGroups
+  #SUBNETS=( $(findres "" neutron subnet-list) )
   JHSUBNETS=()
   deleteRIfaces
   deleteSubNets
@@ -3446,20 +3521,19 @@ waitnetgone()
   PORTS=( $(findres "" neutron port-list) )
   IGNORE_ERRORS=1
   deletePorts
+  SUBNETS=( $(findres "" neutron subnet-list) )
+  NETS=( $(findres "" neutron net-list) )
   # FIXME: We occasionally leaks ports from octavia
   if test -n "$LOADBALANCER"; then
-    SUBNETS=( $(findres "" neutron subnet-list) )
     for sub in ${SUBNETS[*]}; do
-      if ! echo "$sub" | grep '[0-9a-f\-]+' >/dev/null; then continue; fi
-      PORTS=( $(findres "octavia-lb-vrrp" neutron port-list --fixed-ip subnet=$sub) )
-      echo "Cleaning ports ${PORTS[*]} in subnet $sub ..."
+      if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then echo "#DEBUG: Skip port cleanup in subnet $sub"; continue; fi
+      PORTS=( $(findres "octavia-lb" neutron port-list --fixed-ip subnet=$sub) )
+      echo "Cleaning octavia ports ${PORTS[*]} in subnet $sub ..."
       deletePorts
     done
   fi
   unset IGNORE_ERRORS
   echo -n "Wait for subnets/nets to disappear: "
-  SUBNETS=( $(findres "" neutron subnet-list) )
-  NETS=( $(findres "" neutron net-list) )
   deleteSubNets
   deleteNets
   while test $to -lt 40; do
@@ -3815,7 +3889,7 @@ elif test "$1" = "CONNTEST"; then
      # Error counting done by fullconntest already
      errwait $ERRWAIT
    elif test $FPRETRY != 0; then
-     echo "Warning: Needed $FPRETRY ping retries"
+     echo -e "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
    fi
    if test -n "$RESHUFFLE"; then
      reShuffle
@@ -3911,7 +3985,8 @@ else # test "$1" = "DEPLOY"; then
               else
                # loadbalancer
                waitLBs
-               LBERRORS=$?
+               LBWAITERR=$?
+               if test -n "$LBAASS"; then LBERRORS=$LBWAITERR; fi
                # No error handling here (but alarms are generated)
                waitVMs
                # Errors will be counted later again
@@ -3964,7 +4039,7 @@ else # test "$1" = "DEPLOY"; then
                     sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
                     errwait $ERRWAIT
                   elif test $FPRETRY != 0; then
-                   echo "Warning: Needed $FPRETRY ping retries"
+                   echo -e "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
                   fi
                   if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
                     reShuffle
@@ -4053,6 +4128,7 @@ else # test "$1" = "DEPLOY"; then
  if test -n "$FULLCONN"; then let MAXCYC+=$(($NOVMS*$NOVMS/10)); fi
  if test -n "$IPERF"; then let MAXCYC+=$((6*$NONETS)); fi
  if test -n "$LOADBALANCER"; then let MAXCYC+=$((36+4*$NOVMS+$WAITLB)); fi
+ if test -n "$SKIPKILLLB"; then let MAXCYC-=$((20+2*$NOVMS)); fi
  # FIXME: We could check THISRUNSUCCESS instead?
  SLOW=0
  if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $MAXCYC; then
