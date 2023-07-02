@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.89
+VERSION=1.90
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -463,7 +463,7 @@ patch_openstackclient()
     sudo sed -i '/disk_group = parser.add_mutually_excl/n
 s@required=True@required=False@' $srvfile
     echo "INFO: openstackclient $srvfile patched $?"
-  else
+  #else
     #echo "INFO: openstackclient should work"
   fi
 }
@@ -3981,7 +3981,7 @@ else # test "$1" = "DEPLOY"; then
  else
   VMFLVDISK=$(echo "$OSTACKRESP" | jq '.disk')
   if test $VMFLVDISK -lt $VOLSIZE -a -n "$BOOTFROMIMAGE"; then
-    patch_openstack
+    patch_openstackclient
     NEED_BLKDEV=1
   else
     unset NEED_BLKDEV
