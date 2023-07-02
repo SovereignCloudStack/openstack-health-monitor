@@ -451,6 +451,24 @@ if test $((NOVMS/NONETS)) -gt 1018; then
   exit 1
 fi
 
+# Patch openstackclient to support booting with --block-device
+patch_openstackclient()
+{
+  ostclient=`type -p openstack`
+  srvfile=`dirname $ostclient`
+  srvfile=`ls ${srvfile%/*}/lib/python3.*/site-packages/openstackclient/compute/v2/server.py`
+  if ! test -r $srvfile; then echo "INFO: Can not patch openstackclient $srvfile" 2>&1; return; fi
+  if grep -A1 'disk_group = parser.add_mutually_excl' $srvfile 2>/dev/null | grep 'required=True' 2>/dev/null >/dev/null; then
+    sudo cp -p $srvfile $srvfile.orig
+    sudo sed -i '/disk_group = parser.add_mutually_excl/n
+s@required=True@required=False@' $srvfile
+    echo "INFO: openstackclient $srvfile patched $?"
+  else
+    #echo "INFO: openstackclient should work"
+  fi
+}
+
+
 # Alarm notification
 # $1 => return code
 # $2 => invoked command
