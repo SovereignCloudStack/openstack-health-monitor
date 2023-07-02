@@ -745,14 +745,14 @@ translate()
     elif test "$DEFCMD" == "volume" -a "$CMD" == "list"; then OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
     elif test "$DEFCMD" == "server" -a "$CMD" == "boot"; then
-      # FIXME: openstack server create does not seem to support vol from image with delete_on_termination=true
-      case "$*" in
-	      *"--block-device "*)
-	OSTACKCMD=(nova boot "$@")
-        return
-      esac
+      ## FIXME: openstack server create does not seem to support vol from image with delete_on_termination=true
+      # case "$*" in
+	#      *"--block-device "*)
+	# OSTACKCMD=(nova boot "$@")
+        # return
+      # esac
       # Only handles one SG
-      ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@')
+      ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@' -e 's@shutdown=remove@delete_on_termination=true@')
       #OSTACKCMD=($OPST $DEFCMD create $ARGS)
       # No token_endpoint auth for server creation (need to talk to neutron/cinder/glance as well)
       OSTACKCMD=(openstack $DEFCMD create $ARGS)
@@ -2557,7 +2557,7 @@ createVMsAll()
     fi
   fi
   declare -a STMS
-  if test -n "$VMVOLSIZE"; then
+  if test -n "$VMVOLSIZE" -o -n "$NEED_BLKDEV"; then
     IMAGE="--block-device id=$IMGID,source=image,dest=volume,size=$VMVOLSIZE,shutdown=remove,bootindex=0"
   else
     IMAGE="--image $IMGID"
@@ -2591,7 +2591,7 @@ createVMs()
     echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}$no\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP.$no
   done
   if test -n "$BOOTFROMIMAGE"; then
-    if test -n "$VMVOLSIZE"; then
+    if test -n "$VMVOLSIZE" -o -n "$NEED_BLKDEV"; then
       IMAGE="--block-device id=$IMGID,source=image,dest=volume,size=$VMVOLSIZE,shutdown=remove,bootindex=0"
     else
       IMAGE="--image $IMGID"
@@ -3974,6 +3974,19 @@ else # test "$1" = "DEPLOY"; then
   if test -n "$USER" -a "$USER" != "null"; then DEFLTUSER="$USER"; fi
  fi
  #let APICALLS+=2
+ # Check VM flavor
+ ostackcmd_tm NOVASTATS $NOVATIMEOUT nova flavor-show -f json $FLAVOR
+ if test $? != 0; then
+  let APIERRORS+=1; sendalarm 1 "nova flavor-show $FLAVOR failed" "" $NOVATIMEOUT; exit 1
+ else
+  VMFLVDISK=$(echo "$OSTACKRESP" | jq '.disk')
+  if test $VMFLVDISK -lt $VOLSIZE -a -n "$BOOTFROMIMAGE"; then
+    patch_openstack
+    NEED_BLKDEV=1
+  else
+    unset NEED_BLKDEV
+  fi
+ fi
  echo "Using images JH $JHDEFLTUSER@$JHIMG ($JHVOLSIZE GB), VM $DEFLTUSER@$IMG ($VOLSIZE GB)"
  if createRouters; then
   if createNets; then
