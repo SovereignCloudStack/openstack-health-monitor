@@ -752,7 +752,7 @@ translate()
         # return
       # esac
       # Only handles one SG
-      ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@' -e 's@shutdown=remove@delete_on_termination=true@' -e 's@id=@uuid=@' -e 's@source=@source_type=@' -e 's@dest=@destination_type=@' -e 's@bootindex=@boot_index=@')
+      ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@' -e 's@shutdown=remove@delete_on_termination=true@' -e 's@\-\-block\-device id=@ --block-device uuid=@' -e 's@,source=@,source_type=@' -e 's@,dest=@,destination_type=@' -e 's@,bootindex=@,boot_index=@' -e 's@,size=@,volume_size=@')
       #OSTACKCMD=($OPST $DEFCMD create $ARGS)
       # No token_endpoint auth for server creation (need to talk to neutron/cinder/glance as well)
       OSTACKCMD=(openstack $DEFCMD create $ARGS)
