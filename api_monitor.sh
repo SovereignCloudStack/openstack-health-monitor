@@ -752,7 +752,7 @@ translate()
         # return
       # esac
       # Only handles one SG
-      ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@' -e 's@shutdown=remove@delete_on_termination=true@')
+      ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@' -e 's@shutdown=remove@delete_on_termination=true@' -e 's@id=@uuid=@' -e 's@source=@source_type=@' -e 's@dest=@destination_type=@' -e 's@bootindex=@boot_index=@')
       #OSTACKCMD=($OPST $DEFCMD create $ARGS)
       # No token_endpoint auth for server creation (need to talk to neutron/cinder/glance as well)
       OSTACKCMD=(openstack $DEFCMD create $ARGS)
@@ -2557,7 +2557,7 @@ createVMsAll()
     fi
   fi
   declare -a STMS
-  if test -n "$VMVOLSIZE" -o -n "$NEED_BLKDEV"; then
+  if test -n "$VMVOLSIZE"; then
     IMAGE="--block-device id=$IMGID,source=image,dest=volume,size=$VMVOLSIZE,shutdown=remove,bootindex=0"
   else
     IMAGE="--image $IMGID"
@@ -2591,7 +2591,7 @@ createVMs()
     echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}$no\n   path: /tmp/testfile\n   permissions: '0644'" > $UDTMP.$no
   done
   if test -n "$BOOTFROMIMAGE"; then
-    if test -n "$VMVOLSIZE" -o -n "$NEED_BLKDEV"; then
+    if test -n "$VMVOLSIZE"; then
       IMAGE="--block-device id=$IMGID,source=image,dest=volume,size=$VMVOLSIZE,shutdown=remove,bootindex=0"
     else
       IMAGE="--image $IMGID"
@@ -3983,8 +3983,10 @@ else # test "$1" = "DEPLOY"; then
   if test $VMFLVDISK -lt $VOLSIZE -a -n "$BOOTFROMIMAGE"; then
     patch_openstackclient
     NEED_BLKDEV=1
+    VMVOLSIZE=${VMVOLSIZE:-$VOLSIZE}
   else
     unset NEED_BLKDEV
+    #unset VMVOLSIZE
   fi
  fi
  echo "Using images JH $JHDEFLTUSER@$JHIMG ($JHVOLSIZE GB), VM $DEFLTUSER@$IMG ($VOLSIZE GB)"
