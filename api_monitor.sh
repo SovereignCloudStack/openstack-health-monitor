@@ -379,6 +379,10 @@ if test $? != 0; then
   echo "Need openstack client installed"
   exit 1
 fi
+OSTACKVERSION=$(openstack --version | sed 's/^[^0-9]*\([0-9\.]*\).*$/\1/')
+OSTACKVERMAJ=${OSTACKVERSION%%.*}
+OSTACKVERREST=${OSTACKVERSION#*.}
+OSTACKVERSION=$((10000*$OSTACKVERMAJ+100*${OSTACKVERREST%.*}+${OSTACKVERREST#*.}))
 
 type -p jq >/dev/null 2>&1
 if test $? != 0; then
@@ -745,12 +749,15 @@ translate()
     elif test "$DEFCMD" == "volume" -a "$CMD" == "list"; then OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
     elif test "$DEFCMD" == "server" -a "$CMD" == "boot"; then
-      ## FIXME: openstack server create does not seem to support vol from image with delete_on_termination=true
-      # case "$*" in
-	#      *"--block-device "*)
-	# OSTACKCMD=(nova boot "$@")
-        # return
-      # esac
+      if test $OSTACKVERSION -lt 50500; then
+        ## FIXME: openstack server create does not seem to support vol from image with delete_on_termination=true
+        case "$*" in
+	       *"--block-device "*)
+	  OSTACKCMD=(nova boot "$@")
+          echo -e "${YELLOW}#WARNING: Outdated openstackclient, trying to boot with nova (needs OS_USERNAME/PASSWORD)${NORM}" 1>&2
+          return
+        esac
+      fi
       # Only handles one SG
       ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@' -e 's@shutdown=remove@delete_on_termination=true@' -e 's@\-\-block\-device id=@ --block-device uuid=@' -e 's@,source=@,source_type=@' -e 's@,dest=@,destination_type=@' -e 's@,bootindex=@,boot_index=@' -e 's@,size=@,volume_size=@')
       #OSTACKCMD=($OPST $DEFCMD create $ARGS)
