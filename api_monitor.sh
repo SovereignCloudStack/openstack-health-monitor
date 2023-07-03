@@ -464,13 +464,14 @@ patch_openstackclient()
   srvfile=`ls ${srvfile%/*}/lib/python3.*/site-packages/openstackclient/compute/v2/server.py`
   if ! test -r $srvfile; then echo "INFO: Can not patch openstackclient $srvfile" 2>&1; return; fi
   if grep -A1 'disk_group = parser.add_mutually_excl' $srvfile 2>/dev/null | grep 'required=True' 2>/dev/null >/dev/null; then
+    echo "INFO: patching openstackclient $srvfile ..."
     sudo cp -p $srvfile $srvfile.orig
     sudo sed -i '/disk_group = parser\.add_mutually_excl/{n
 s@required=True@required=False@
 b exit
 }
 :exit' $srvfile
-    echo "INFO: openstackclient $srvfile patched $?"
+    echo "INFO: openstackclient patched $?"
   #else
     #echo "INFO: openstackclient should work"
   fi
