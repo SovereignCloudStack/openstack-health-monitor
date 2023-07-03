@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.89
+VERSION=1.90
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -198,11 +198,12 @@ fi
 # Images, flavors, disk sizes defaults -- these can be overriden
 # Ideally have SUSE image with SuSEfirewall2-snat for JumpHosts, will be detected
 # otherwise raw iptables commands will set up SNAT.
-JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
+#JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
+JHIMG="${JHIMG:-Ubuntu 22.04}"
 # Pass " " to filter if you don't need the optimization of image filtering
 #JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
 # For 2nd interface (-2/3/4), use also SUSE image with cloud-multiroute
-IMG="${IMG:-Standard_CentOS_7_latest}"
+IMG="${IMG:-Ubuntu 22.04}"
 #IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
 # ssh login names with injected key
 if test "${IMG:0:6}" = "Ubuntu"; then
@@ -217,8 +218,8 @@ else
 fi
 # SCS flavor names as defaults
 #JHFLAVOR=${JHFLAVOR:-computev1-1}
-JHFLAVOR=${JHFLAVOR:-SCS-1V-2-5}
-FLAVOR=${FLAVOR:-SCS-1L-1-5}
+JHFLAVOR=${JHFLAVOR:-SCS-1V-2}
+FLAVOR=${FLAVOR:-SCS-1L-1}
 
 # Optionally increase JH and VM volume sizes beyond image size
 # (slows things down due to preventing quick_start and growpart)
@@ -379,6 +380,10 @@ if test $? != 0; then
   echo "Need openstack client installed"
   exit 1
 fi
+OSTACKVERSION=$(openstack --version | sed 's/^[^0-9]*\([0-9\.]*\).*$/\1/')
+OSTACKVERMAJ=${OSTACKVERSION%%.*}
+OSTACKVERREST=${OSTACKVERSION#*.}
+OSTACKVERSION=$((10000*$OSTACKVERMAJ+100*${OSTACKVERREST%.*}+${OSTACKVERREST#*.}))
 
 type -p jq >/dev/null 2>&1
 if test $? != 0; then
@@ -450,6 +455,28 @@ if test $((NOVMS/NONETS)) -gt 1018; then
   echo " Please decrease -n or increase -N"
   exit 1
 fi
+
+# Patch openstackclient to support booting with --block-device
+patch_openstackclient()
+{
+  ostclient=`type -p openstack`
+  srvfile=`dirname $ostclient`
+  srvfile=`ls ${srvfile%/*}/lib/python3.*/site-packages/openstackclient/compute/v2/server.py`
+  if ! test -r $srvfile; then echo "INFO: Can not patch openstackclient $srvfile" 2>&1; return; fi
+  if grep -A1 'disk_group = parser.add_mutually_excl' $srvfile 2>/dev/null | grep 'required=True' 2>/dev/null >/dev/null; then
+    echo "INFO: patching openstackclient $srvfile ..."
+    sudo cp -p $srvfile $srvfile.orig
+    sudo sed -i '/disk_group = parser\.add_mutually_excl/{n
+s@required=True@required=False@
+b exit
+}
+:exit' $srvfile
+    echo "INFO: openstackclient patched $?"
+  #else
+    #echo "INFO: openstackclient should work"
+  fi
+}
+
 
 # Alarm notification
 # $1 => return code
@@ -727,14 +754,17 @@ translate()
     elif test "$DEFCMD" == "volume" -a "$CMD" == "list"; then OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
     elif test "$DEFCMD" == "server" -a "$CMD" == "boot"; then
-      # FIXME: openstack server create does not seem to support vol from image with delete_on_termination=true
-      case "$*" in
-	      *"--block-device "*)
-	OSTACKCMD=(nova boot "$@")
-        return
-      esac
+      if test $OSTACKVERSION -lt 50500; then
+        ## FIXME: openstack server create does not seem to support vol from image with delete_on_termination=true
+        case "$*" in
+	       *"--block-device "*)
+	  OSTACKCMD=(nova boot "$@")
+          echo -e "${YELLOW}#WARNING: Outdated openstackclient, trying to boot with nova (needs OS_USERNAME/PASSWORD)${NORM}" 1>&2
+          return
+        esac
+      fi
       # Only handles one SG
-      ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@')
+      ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@' -e 's@shutdown=remove@delete_on_termination=true@' -e 's@\-\-block\-device id=@ --block-device uuid=@' -e 's@,source=@,source_type=@' -e 's@,dest=@,destination_type=@' -e 's@,bootindex=@,boot_index=@' -e 's@,size=@,volume_size=@')
       #OSTACKCMD=($OPST $DEFCMD create $ARGS)
       # No token_endpoint auth for server creation (need to talk to neutron/cinder/glance as well)
       OSTACKCMD=(openstack $DEFCMD create $ARGS)
@@ -3956,6 +3986,21 @@ else # test "$1" = "DEPLOY"; then
   if test -n "$USER" -a "$USER" != "null"; then DEFLTUSER="$USER"; fi
  fi
  #let APICALLS+=2
+ # Check VM flavor
+ ostackcmd_tm NOVASTATS $NOVATIMEOUT nova flavor-show -f json $FLAVOR
+ if test $? != 0; then
+  let APIERRORS+=1; sendalarm 1 "nova flavor-show $FLAVOR failed" "" $NOVATIMEOUT; exit 1
+ else
+  VMFLVDISK=$(echo "$OSTACKRESP" | jq '.disk')
+  if test $VMFLVDISK -lt $VOLSIZE -a -n "$BOOTFROMIMAGE"; then
+    patch_openstackclient
+    NEED_BLKDEV=1
+    VMVOLSIZE=${VMVOLSIZE:-$VOLSIZE}
+  else
+    unset NEED_BLKDEV
+    #unset VMVOLSIZE
+  fi
+ fi
  echo "Using images JH $JHDEFLTUSER@$JHIMG ($JHVOLSIZE GB), VM $DEFLTUSER@$IMG ($VOLSIZE GB)"
  if createRouters; then
   if createNets; then
