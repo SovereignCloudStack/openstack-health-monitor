@@ -198,11 +198,12 @@ fi
 # Images, flavors, disk sizes defaults -- these can be overriden
 # Ideally have SUSE image with SuSEfirewall2-snat for JumpHosts, will be detected
 # otherwise raw iptables commands will set up SNAT.
-JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
+#JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
+JHIMG="${JHIMG:-Ubuntu 22.04}"
 # Pass " " to filter if you don't need the optimization of image filtering
 #JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
 # For 2nd interface (-2/3/4), use also SUSE image with cloud-multiroute
-IMG="${IMG:-Standard_CentOS_7_latest}"
+IMG="${IMG:-Ubuntu 22.04}"
 #IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
 # ssh login names with injected key
 if test "${IMG:0:6}" = "Ubuntu"; then
@@ -217,8 +218,8 @@ else
 fi
 # SCS flavor names as defaults
 #JHFLAVOR=${JHFLAVOR:-computev1-1}
-JHFLAVOR=${JHFLAVOR:-SCS-1V-2-5}
-FLAVOR=${FLAVOR:-SCS-1L-1-5}
+JHFLAVOR=${JHFLAVOR:-SCS-1V-2}
+FLAVOR=${FLAVOR:-SCS-1L-1}
 
 # Optionally increase JH and VM volume sizes beyond image size
 # (slows things down due to preventing quick_start and growpart)
