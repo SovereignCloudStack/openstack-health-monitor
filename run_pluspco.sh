@@ -19,9 +19,9 @@ export IMG="openSUSE 15.4"
 #export IMGFILT="--property-filter os_version=openSUSE-15.0"
 # ECP flavors
 #if test $OS_REGION_NAME == Kna1; then
-export JHFLAVOR=SCS-1L:1:5
+export JHFLAVOR=SCS-1L:1
 #export JHFLAVOR=SCS-1V:1:10
-export FLAVOR=SCS-1L:1:5
+export FLAVOR=SCS-1L:1
 #else
 #export JHFLAVOR=1C-1GB-10GB
 #export FLAVOR=1C-1GB-10GB
