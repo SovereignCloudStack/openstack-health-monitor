@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.90
+VERSION=1.91
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -456,6 +456,12 @@ if test $((NOVMS/NONETS)) -gt 1018; then
   exit 1
 fi
 
+# Test from availability of timeout binary
+if ! type -p timeout >/dev/null 2>&1; then
+  echo "Need to install the timeout tool (coreutils)" 1>&2
+  exit 1
+fi
+
 # Patch openstackclient to support booting with --block-device
 patch_openstackclient()
 {
@@ -676,21 +682,6 @@ arrline()
   done < <(echo "$1")
 }
 
-
-# Timeout killer
-# $1 => PID to kill
-# $2 => timeout
-# waits $2, sends QUIT, 1s, HUP, 1s, KILL
-killin()
-{
-  sleep $2
-  test -d /proc/$1 || return 0
-  kill -SIGQUIT $1
-  sleep 1
-  kill -SIGHUP $1
-  sleep 1
-  kill -SIGKILL $1
-}
 
 NOVA_EP="${NOVA_EP:-novaURL}"
 CINDER_EP="${CINDER_EP:-cinderURL}"
@@ -952,7 +943,7 @@ ostackcmd_search()
   if test "$TIMEOUT" = "0"; then
     RESP=$(${OSTACKCMD[@]} 2>&1)
   else
-    RESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
+    RESP=$(timeout -k 2 $TIMEOUT ${OSTACKCMD[@]} 2>&1)
   fi
   local RC=$?
   local LEND=$(date +%s.%3N)
@@ -989,7 +980,7 @@ ostackcmd_id()
   if test "$TIMEOUT" = "0"; then
     RESP=$(${OSTACKCMD[@]} 2>&1)
   else
-    RESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
+    RESP=$(timeout -k 2 $TIMEOUT ${OSTACKCMD[@]} 2>&1)
   fi
   local RC=$?
   local LEND=$(date +%s.%3N)
@@ -1011,7 +1002,7 @@ ostackcmd_id()
     if test "$TIMEOUT" = "0"; then
       RESP=$(${OSTACKCMD[@]} 2>&1)
     else
-      RESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
+      RESP=$(timeout -k 2 $TIMEOUT ${OSTACKCMD[@]} 2>&1)
     fi
     local RC=$?
     local LEND=$(date +%s.%3N)
@@ -1059,7 +1050,7 @@ ostackcmd_tm()
   if test "$TIMEOUT" = "0"; then
     OSTACKRESP=$(${OSTACKCMD[@]} 2>&1)
   else
-    OSTACKRESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
+    OSTACKRESP=$(timeout -k 2 $TIMEOUT ${OSTACKCMD[@]} 2>&1)
   fi
   local RC=$?
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
