@@ -500,7 +500,7 @@ reallysendalarm()
     KIND="Note"
     RES=""
     echo -e "$BOLD$PRE on $ALARMPRE/$SRPREL on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
-  elif test $1 -gt 128; then
+  elif test $1 -gt 123; then
     KIND="TIMEOUT $4"
     RES=" => $1"
     echo -e "$RED$PRE on $ALARMPRE/$SRPREL on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
@@ -613,13 +613,13 @@ rc2bin()
 # $1 => input (RC), returns global var GRC
 rc2grafana()
 {
-  if test $1 == 0; then GRC=0; elif test $1 -ge 128; then GRC=2; else GRC=1; fi
+  if test $1 == 0; then GRC=0; elif test $1 -ge 124; then GRC=2; else GRC=1; fi
 }
 
 updAPIerr()
 {
   let APIERRORS+=$(rc2bin $1);
-  if test $1 -ge 129; then let APITIMEOUTS+=1; fi
+  if test $1 -ge 124; then let APITIMEOUTS+=1; fi
 }
 
 declare -i EXITED=0
