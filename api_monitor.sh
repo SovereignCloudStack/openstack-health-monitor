@@ -1103,6 +1103,7 @@ state2col()
 }
 
 STATE=""
+FAILEDNO=0
 # Create a number of resources and keep track of them
 # $1 => quantity of resources
 # $2 => name of timing statistics array
@@ -1133,6 +1134,7 @@ createResources()
   if test "$RNM" != "NONE"; then echo -n "New $RNM: "; fi
   local RC=0
   local TIRESP
+  FAILEDNO=-1
   for no in `seq 0 $(($QUANT-1))`; do
     local AZN=$(($no%$NOAZS))
     local VAZN=$(($no%$NOVAZS))
@@ -1155,7 +1157,7 @@ createResources()
     state2col "$STATE"
     # Workaround for teuto.net
     if test "$1" = "cinder" && [[ $OS_AUTH_URL == *teutostack* ]]; then echo -en " ${RED}+5s${NORM} " 1>&2; sleep 5; fi
-    if test $RC != 0; then echo -e "${YELLOW}ERROR: $RNM creation failed$NORM" 1>&2; return 1; fi
+    if test $RC != 0; then echo -e "${YELLOW}ERROR: $RNM creation failed$NORM" 1>&2; FAILEDNO=$no; return 1; fi
     if test -n "$ID" -a "$RNM" != "NONE"; then echo -en "$ID $SCOL$STATE$NORM "; fi
     eval ${RNM}S+="($ID)"
     # Workaround for loadbalancer member create
@@ -2371,6 +2373,14 @@ handleLBErr()
   let LBERRORS+=1
 }
 
+# $1 => failed VM number
+reportVM()
+{
+  if test $1 -lt 0 -o $1 -ge $NOVMS; then return; fi
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${VMS[$1]}
+}
+
+
 testLBs()
 {
   LBERR=0
@@ -2418,7 +2428,7 @@ testLBs()
   #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id ${JHSUBNETS[0]} --protocol-port 80 ${POOLS[0]}
   #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   handleLBErr $? "MemberCreate"
-  if test $RC != 0; then let LBERRORS+=1; return $RC; fi
+  if test $RC != 0; then let LBERRORS+=1; reportVM $FAILEDNO; return $RC; fi
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
   echo -n "Test LB at $LBIP:"
   LBCERR=0
