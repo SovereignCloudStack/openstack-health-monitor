@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.90
+VERSION=1.91
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -456,6 +456,12 @@ if test $((NOVMS/NONETS)) -gt 1018; then
   exit 1
 fi
 
+# Test from availability of timeout binary
+if ! type -p timeout >/dev/null 2>&1; then
+  echo "Need to install the timeout tool (coreutils)" 1>&2
+  exit 1
+fi
+
 # Patch openstackclient to support booting with --block-device
 patch_openstackclient()
 {
@@ -494,7 +500,7 @@ reallysendalarm()
     KIND="Note"
     RES=""
     echo -e "$BOLD$PRE on $ALARMPRE/$SRPREL on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
-  elif test $1 -gt 128; then
+  elif test $1 -gt 123; then
     KIND="TIMEOUT $4"
     RES=" => $1"
     echo -e "$RED$PRE on $ALARMPRE/$SRPREL on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
@@ -607,13 +613,13 @@ rc2bin()
 # $1 => input (RC), returns global var GRC
 rc2grafana()
 {
-  if test $1 == 0; then GRC=0; elif test $1 -ge 128; then GRC=2; else GRC=1; fi
+  if test $1 == 0; then GRC=0; elif test $1 -ge 124; then GRC=2; else GRC=1; fi
 }
 
 updAPIerr()
 {
   let APIERRORS+=$(rc2bin $1);
-  if test $1 -ge 129; then let APITIMEOUTS+=1; fi
+  if test $1 -ge 124; then let APITIMEOUTS+=1; fi
 }
 
 declare -i EXITED=0
@@ -676,21 +682,6 @@ arrline()
   done < <(echo "$1")
 }
 
-
-# Timeout killer
-# $1 => PID to kill
-# $2 => timeout
-# waits $2, sends QUIT, 1s, HUP, 1s, KILL
-killin()
-{
-  sleep $2
-  test -d /proc/$1 || return 0
-  kill -SIGQUIT $1
-  sleep 1
-  kill -SIGHUP $1
-  sleep 1
-  kill -SIGKILL $1
-}
 
 NOVA_EP="${NOVA_EP:-novaURL}"
 CINDER_EP="${CINDER_EP:-cinderURL}"
@@ -921,18 +912,44 @@ log_grafana()
   curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$3,return_code=$GRC" >/dev/null
 }
 
+# Wrapper around timeout
+# $1 TIMEOUT
+# $2-: COMMAND
+mytimeout()
+{
+  TIMEOUT=$1
+  shift
+  if test $TIMEOUT == 0; then
+    eval "$@"
+  else
+    if test "$1" == "myopenstack"; then
+      shift
+      myopenstack -t$TIMEOUT "$@"
+    else
+      timeout -k 2 $TIMEOUT "$@"
+    fi
+  fi
+}
+
 # Wrapper for calling openstack
 # Allows to inject OS_TOKEN and OS_URL to enforce token_endpoint auth
+# Optional: -tN: timeout
 myopenstack()
 {
   #FIXME: $OS_EXTRA_PARAMS is *only* used here when we talk to the endpoint directly.
   # It is not used when we use the normal mechanism where we get a token from keystone first.
   #TODO: Check whether old openstack client version accept the syntax (maybe they need --os-auth-type admin_token?)
   #echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-url $EP $@" >> $LOGFILE
+  local TOUT
+  if test "${1:0:2}" = "-t"; then TOUT=${1:2}; shift; fi
   echo "openstack --os-token {SHA1}$(echo $TOKEN| sha1sum | sed 's/ .*$//') --os-endpoint $EP --os-auth-type admin_token --os-project-name=\"\" $OS_EXTRA_PARAMS $@" >> $LOGFILE
   #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-project-name "" --os-token $TOKEN --os-url $EP "$@"
   #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP "$@"
-  OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP --os-auth-type admin_token --os-project-name="" $OS_EXTRA_PARAMS "$@"
+  if test -n "$TOUT"; then
+    OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec timeout -k 2 $TOUT openstack --os-token $TOKEN --os-endpoint $EP --os-auth-type admin_token --os-project-name="" $OS_EXTRA_PARAMS "$@"
+  else
+    OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP --os-auth-type admin_token --os-project-name="" $OS_EXTRA_PARAMS "$@"
+  fi
   #OS_PASSWORD="" OS_USERNAME="" OS_PROJECT_DOMAIN_NAME="" OS_PROJECT_NAME="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME=""
 }
 
@@ -949,11 +966,7 @@ ostackcmd_search()
   if test $TIMEOUTFACT -gt 1; then let TIMEOUT*=$TIMEOUTFACT; fi
   local LSTART=$(date +%s.%3N)
   translate "$@"
-  if test "$TIMEOUT" = "0"; then
-    RESP=$(${OSTACKCMD[@]} 2>&1)
-  else
-    RESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
-  fi
+  RESP=$(mytimeout $TIMEOUT ${OSTACKCMD[@]} 2>&1)
   local RC=$?
   local LEND=$(date +%s.%3N)
   ID=$(echo "$RESP" | grep "$SEARCH" | head -n1 | sed -e 's/^| *\([^ ]*\) *|.*$/\1/')
@@ -986,11 +999,7 @@ ostackcmd_id()
   if test $TIMEOUTFACT -gt 1; then let TIMEOUT*=$TIMEOUTFACT; fi
   local LSTART=$(date +%s.%3N)
   translate "$@"
-  if test "$TIMEOUT" = "0"; then
-    RESP=$(${OSTACKCMD[@]} 2>&1)
-  else
-    RESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
-  fi
+  RESP=$(mytimeout $TIMEOUT ${OSTACKCMD[@]} 2>&1)
   local RC=$?
   local LEND=$(date +%s.%3N)
   local TIM=$(math "%.2f" "$LEND-$LSTART")
@@ -1008,11 +1017,7 @@ ostackcmd_id()
   if test $RC = 1 -a -z "$NORETRY" && echo "$RESP" | grep '(HTTP 409)' >/dev/null 2>&1; then
     sleep 5
     LSTART=$(date +%s.%3N)
-    if test "$TIMEOUT" = "0"; then
-      RESP=$(${OSTACKCMD[@]} 2>&1)
-    else
-      RESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
-    fi
+    RESP=$(mytimeout $TIMEOUT ${OSTACKCMD[@]} 2>&1)
     local RC=$?
     local LEND=$(date +%s.%3N)
     local TIM=$(math "%.2f" "$LEND-$LSTART")
@@ -1056,11 +1061,7 @@ ostackcmd_tm()
   # We can count here, as we are not in a subprocess
   let APICALLS+=1
   translate "$@"
-  if test "$TIMEOUT" = "0"; then
-    OSTACKRESP=$(${OSTACKCMD[@]} 2>&1)
-  else
-    OSTACKRESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
-  fi
+  OSTACKRESP=$(mytimeout $TIMEOUT ${OSTACKCMD[@]} 2>&1)
   local RC=$?
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
     # We can count here, as we are not in a subprocess
