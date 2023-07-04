@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.83
+VERSION=1.91
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -128,6 +128,7 @@ ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_REGION_NAME}/${SHPRJ#*_}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
 GRAFANANM="${GRAFANANM:-api-monitoring}"
 WAITLB=${WAITLB:-15}
+KPTYPE=${KPTYPE:-rsa}
 
 # Number of VMs and networks
 if test -z "$AZS"; then
@@ -197,11 +198,12 @@ fi
 # Images, flavors, disk sizes defaults -- these can be overriden
 # Ideally have SUSE image with SuSEfirewall2-snat for JumpHosts, will be detected
 # otherwise raw iptables commands will set up SNAT.
-JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
+#JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
+JHIMG="${JHIMG:-Ubuntu 22.04}"
 # Pass " " to filter if you don't need the optimization of image filtering
 #JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
 # For 2nd interface (-2/3/4), use also SUSE image with cloud-multiroute
-IMG="${IMG:-Standard_CentOS_7_latest}"
+IMG="${IMG:-Ubuntu 22.04}"
 #IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
 # ssh login names with injected key
 if test "${IMG:0:6}" = "Ubuntu"; then
@@ -216,8 +218,8 @@ else
 fi
 # SCS flavor names as defaults
 #JHFLAVOR=${JHFLAVOR:-computev1-1}
-JHFLAVOR=${JHFLAVOR:-SCS-1V:2:5}
-FLAVOR=${FLAVOR:-SCS-1V:2:5}
+JHFLAVOR=${JHFLAVOR:-SCS-1V-2}
+FLAVOR=${FLAVOR:-SCS-1L-1}
 
 # Optionally increase JH and VM volume sizes beyond image size
 # (slows things down due to preventing quick_start and growpart)
@@ -285,6 +287,7 @@ usage()
   echo " -I     dIsassociate floating IPs before deleting them"
   echo " -L     create HTTP Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it"
+  echo " -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)"
   echo " -b     run a simple compute benchmark"
   echo " -B     run iperf3"
   echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
@@ -301,7 +304,7 @@ usage()
   echo "You can override defaults by exporting the environment variables AZS, VAZS, RPRE,"
   echo " PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,"
   echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES,"
-  echo " NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER."
+  echo " NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER, FIPWAITPORTDEVOWNER, EXTSEARCH, OS_EXTRA_PARAMS."
   echo "Typically, you should configure [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER."
   exit 0
 }
@@ -343,6 +346,8 @@ while test -n "$1"; do
     "-r") ROUTERITER=$2; shift;;
     "-L") LOADBALANCER=1;;
     "-LL") LOADBALANCER=1; TCP_LB=1;;
+    "-LP") LOADBALANCER=1; TCP_LB=1; LB_PROVIDER="--provider $2"; shift;;
+    "-LO") LOADBALANCER=1; TCP_LB=1; LB_PROVIDER="--provider ovn";;
     "-b") BCBENCH=1;;
     "-B") IPERF=1;;
     "-t") let TIMEOUTFACT+=1;;
@@ -375,6 +380,10 @@ if test $? != 0; then
   echo "Need openstack client installed"
   exit 1
 fi
+OSTACKVERSION=$(openstack --version | sed 's/^[^0-9]*\([0-9\.]*\).*$/\1/')
+OSTACKVERMAJ=${OSTACKVERSION%%.*}
+OSTACKVERREST=${OSTACKVERSION#*.}
+OSTACKVERSION=$((10000*$OSTACKVERMAJ+100*${OSTACKVERREST%.*}+${OSTACKVERREST#*.}))
 
 type -p jq >/dev/null 2>&1
 if test $? != 0; then
@@ -447,6 +456,34 @@ if test $((NOVMS/NONETS)) -gt 1018; then
   exit 1
 fi
 
+# Test from availability of timeout binary
+if ! type -p timeout >/dev/null 2>&1; then
+  echo "Need to install the timeout tool (coreutils)" 1>&2
+  exit 1
+fi
+
+# Patch openstackclient to support booting with --block-device
+patch_openstackclient()
+{
+  ostclient=`type -p openstack`
+  srvfile=`dirname $ostclient`
+  srvfile=`ls ${srvfile%/*}/lib/python3.*/site-packages/openstackclient/compute/v2/server.py`
+  if ! test -r $srvfile; then echo "INFO: Can not patch openstackclient $srvfile" 2>&1; return; fi
+  if grep -A1 'disk_group = parser.add_mutually_excl' $srvfile 2>/dev/null | grep 'required=True' 2>/dev/null >/dev/null; then
+    echo "INFO: patching openstackclient $srvfile ..."
+    sudo cp -p $srvfile $srvfile.orig
+    sudo sed -i '/disk_group = parser\.add_mutually_excl/{n
+s@required=True@required=False@
+b exit
+}
+:exit' $srvfile
+    echo "INFO: openstackclient patched $?"
+  #else
+    #echo "INFO: openstackclient should work"
+  fi
+}
+
+
 # Alarm notification
 # $1 => return code
 # $2 => invoked command
@@ -463,7 +500,7 @@ reallysendalarm()
     KIND="Note"
     RES=""
     echo -e "$BOLD$PRE on $ALARMPRE/$SRPREL on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
-  elif test $1 -gt 128; then
+  elif test $1 -gt 123; then
     KIND="TIMEOUT $4"
     RES=" => $1"
     echo -e "$RED$PRE on $ALARMPRE/$SRPREL on $HOSTNAME: $2\n$DATE\n$3$NORM" 1>&2
@@ -576,13 +613,13 @@ rc2bin()
 # $1 => input (RC), returns global var GRC
 rc2grafana()
 {
-  if test $1 == 0; then GRC=0; elif test $1 -ge 128; then GRC=2; else GRC=1; fi
+  if test $1 == 0; then GRC=0; elif test $1 -ge 124; then GRC=2; else GRC=1; fi
 }
 
 updAPIerr()
 {
   let APIERRORS+=$(rc2bin $1);
-  if test $1 -ge 129; then let APITIMEOUTS+=1; fi
+  if test $1 -ge 124; then let APITIMEOUTS+=1; fi
 }
 
 declare -i EXITED=0
@@ -646,21 +683,6 @@ arrline()
 }
 
 
-# Timeout killer
-# $1 => PID to kill
-# $2 => timeout
-# waits $2, sends QUIT, 1s, HUP, 1s, KILL
-killin()
-{
-  sleep $2
-  test -d /proc/$1 || return 0
-  kill -SIGQUIT $1
-  sleep 1
-  kill -SIGHUP $1
-  sleep 1
-  kill -SIGKILL $1
-}
-
 NOVA_EP="${NOVA_EP:-novaURL}"
 CINDER_EP="${CINDER_EP:-cinderURL}"
 #OCTAVIA_EP="${NEUTRON_EP:-octaviaURL}"
@@ -723,14 +745,17 @@ translate()
     elif test "$DEFCMD" == "volume" -a "$CMD" == "list"; then OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
     #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
     elif test "$DEFCMD" == "server" -a "$CMD" == "boot"; then
-      # FIXME: openstack server create does not seem to support vol from image with delete_on_termination=true
-      case "$*" in
-	      *"--block-device "*)
-	OSTACKCMD=(nova boot "$@")
-        return
-      esac
+      if test $OSTACKVERSION -lt 50500; then
+        ## FIXME: openstack server create does not seem to support vol from image with delete_on_termination=true
+        case "$*" in
+	       *"--block-device "*)
+	  OSTACKCMD=(nova boot "$@")
+          echo -e "${YELLOW}#WARNING: Outdated openstackclient, trying to boot with nova (needs OS_USERNAME/PASSWORD)${NORM}" 1>&2
+          return
+        esac
+      fi
       # Only handles one SG
-      ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@')
+      ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@' -e 's@shutdown=remove@delete_on_termination=true@' -e 's@\-\-block\-device id=@ --block-device uuid=@' -e 's@,source=@,source_type=@' -e 's@,dest=@,destination_type=@' -e 's@,bootindex=@,boot_index=@' -e 's@,size=@,volume_size=@')
       #OSTACKCMD=($OPST $DEFCMD create $ARGS)
       # No token_endpoint auth for server creation (need to talk to neutron/cinder/glance as well)
       OSTACKCMD=(openstack $DEFCMD create $ARGS)
@@ -739,7 +764,9 @@ translate()
       ARGS=$(echo "$@" | sed -e 's@set @@' -e 's@\([a-zA-Z_0-9]*=[^ ]*\)@--property \1@g')
       OSTACKCMD=($OPST $DEFCMD set $ARGS)
     elif test "$DEFCMD" == "object" -a "$CMD" == "upload"; then
-      OSTACKCMD=($OPST $DEFCMD create "$@")
+      if test "$1" == "--object-name"; then ON="--name"; else ON="$1"; fi
+      shift
+      OSTACKCMD=($OPST $DEFCMD create "$ON" "$@")
     fi
   else
     C1=${1%-*}
@@ -750,7 +777,11 @@ translate()
     shift
     if test "$CMD" == "show" -o "$CMD" == "list"; then LWAIT=""; else LWAIT="$LBWAIT"; fi
     #OSTACKCMD=($OPST $C1 $CMD $MYTAG "$@")
-    OSTACKCMD=($OPST $C1 $CMD $MYTAG "${@//--property-filter/--property}")
+    ARGS=$(echo "${@//--property-filter/--property}" | sed -e 's/\-\-pub\-key/--public-key/')
+    OSTACKCMD=($OPST $C1 $CMD $MYTAG "$ARGS")
+    #if test "$C1" == "keypair" -a "$CMD" == "create"; then
+    #  OSTACKCMD=(openstack $C1 $CMD $MYTAG "${@//--property-filter/--property}")
+    #fi
     if test "$C1" == "subnet" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed -e 's@\-\-disable-dhcp@--no-dhcp@' -e 's@\-\-name \([^ ]*\) *\([^ ]*\) *\([^ ]*\)@--network \2 --subnet-range \3 \1@')
       OSTACKCMD=($OPST $C1 $CMD $MYTAG ${ARGS})
@@ -824,10 +855,22 @@ translate()
       if test -n "$OLD_OCTAVIA"; then
         ARGS=$(echo "$@" | sed -e 's/\-\-protocol\-port/--protocol_port/g' -e 's/\-\-subnet\-id/--subnet_id/g')
       else
-	ARGS=$(echo "$@" | sed -e 's/\-\-subnet\-id [^ ]*/ /g')
+	if test -z "$LB_PROVIDER"; then
+	  # amphorae don't need subnet-id
+	  ARGS=$(echo "$@" | sed -e 's/\-\-subnet\-id [^ ]*/ /g')
+	else
+	  ARGS=$(echo "$@")
+	fi
       fi
-      OSTACKCMD=($OPST loadbalancer member $CMD $LWAIT $ARGS)
-      #OSTACKCMD=(openstack loadbalancer member $CMD $LWAIT $ARGS)
+      if [[ "$ARGS" == *"--subnet-id"* ]]; then
+	# If we talk directly to octavia, the --subnet-id option won't work
+	# We could try to use the proxy via neutron or just do the std dance
+	#EP="$NEUTRON_EP"
+        #OSTACKCMD=($OPST loadbalancer member $CMD $LWAIT $ARGS)
+        OSTACKCMD=(openstack loadbalancer member $CMD $LWAIT $ARGS)
+      else
+        OSTACKCMD=($OPST loadbalancer member $CMD $LWAIT $ARGS)
+      fi
     elif test "$C1" == "lbaas healthmonitor"; then
       EP="$OCTAVIA_EP"
       if test -n "$OLD_OCTAVIA"; then
@@ -869,16 +912,44 @@ log_grafana()
   curl -si -XPOST 'http://localhost:8186/write?db=cicd' --data-binary "$GRAFANANM,cmd=$1,method=$2 duration=$3,return_code=$GRC" >/dev/null
 }
 
+# Wrapper around timeout
+# $1 TIMEOUT
+# $2-: COMMAND
+mytimeout()
+{
+  TIMEOUT=$1
+  shift
+  if test $TIMEOUT == 0; then
+    eval "$@"
+  else
+    if test "$1" == "myopenstack"; then
+      shift
+      myopenstack -t$TIMEOUT "$@"
+    else
+      timeout -k 2 $TIMEOUT "$@"
+    fi
+  fi
+}
+
 # Wrapper for calling openstack
 # Allows to inject OS_TOKEN and OS_URL to enforce token_endpoint auth
+# Optional: -tN: timeout
 myopenstack()
 {
+  #FIXME: $OS_EXTRA_PARAMS is *only* used here when we talk to the endpoint directly.
+  # It is not used when we use the normal mechanism where we get a token from keystone first.
   #TODO: Check whether old openstack client version accept the syntax (maybe they need --os-auth-type admin_token?)
   #echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-url $EP $@" >> $LOGFILE
-  echo "openstack --os-token {SHA1}$(echo $TOKEN| sha1sum | sed 's/ .*$//') --os-endpoint $EP --os-auth-type admin_token --os-project-name=\"\" $@" >> $LOGFILE
+  local TOUT
+  if test "${1:0:2}" = "-t"; then TOUT=${1:2}; shift; fi
+  echo "openstack --os-token {SHA1}$(echo $TOKEN| sha1sum | sed 's/ .*$//') --os-endpoint $EP --os-auth-type admin_token --os-project-name=\"\" $OS_EXTRA_PARAMS $@" >> $LOGFILE
   #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-project-name "" --os-token $TOKEN --os-url $EP "$@"
   #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP "$@"
-  OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP --os-auth-type admin_token --os-project-name="" "$@"
+  if test -n "$TOUT"; then
+    OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec timeout -k 2 $TOUT openstack --os-token $TOKEN --os-endpoint $EP --os-auth-type admin_token --os-project-name="" $OS_EXTRA_PARAMS "$@"
+  else
+    OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP --os-auth-type admin_token --os-project-name="" $OS_EXTRA_PARAMS "$@"
+  fi
   #OS_PASSWORD="" OS_USERNAME="" OS_PROJECT_DOMAIN_NAME="" OS_PROJECT_NAME="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME=""
 }
 
@@ -895,11 +966,7 @@ ostackcmd_search()
   if test $TIMEOUTFACT -gt 1; then let TIMEOUT*=$TIMEOUTFACT; fi
   local LSTART=$(date +%s.%3N)
   translate "$@"
-  if test "$TIMEOUT" = "0"; then
-    RESP=$(${OSTACKCMD[@]} 2>&1)
-  else
-    RESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
-  fi
+  RESP=$(mytimeout $TIMEOUT ${OSTACKCMD[@]} 2>&1)
   local RC=$?
   local LEND=$(date +%s.%3N)
   ID=$(echo "$RESP" | grep "$SEARCH" | head -n1 | sed -e 's/^| *\([^ ]*\) *|.*$/\1/')
@@ -932,11 +999,7 @@ ostackcmd_id()
   if test $TIMEOUTFACT -gt 1; then let TIMEOUT*=$TIMEOUTFACT; fi
   local LSTART=$(date +%s.%3N)
   translate "$@"
-  if test "$TIMEOUT" = "0"; then
-    RESP=$(${OSTACKCMD[@]} 2>&1)
-  else
-    RESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
-  fi
+  RESP=$(mytimeout $TIMEOUT ${OSTACKCMD[@]} 2>&1)
   local RC=$?
   local LEND=$(date +%s.%3N)
   local TIM=$(math "%.2f" "$LEND-$LSTART")
@@ -954,11 +1017,7 @@ ostackcmd_id()
   if test $RC = 1 -a -z "$NORETRY" && echo "$RESP" | grep '(HTTP 409)' >/dev/null 2>&1; then
     sleep 5
     LSTART=$(date +%s.%3N)
-    if test "$TIMEOUT" = "0"; then
-      RESP=$(${OSTACKCMD[@]} 2>&1)
-    else
-      RESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
-    fi
+    RESP=$(mytimeout $TIMEOUT ${OSTACKCMD[@]} 2>&1)
     local RC=$?
     local LEND=$(date +%s.%3N)
     local TIM=$(math "%.2f" "$LEND-$LSTART")
@@ -1002,11 +1061,7 @@ ostackcmd_tm()
   # We can count here, as we are not in a subprocess
   let APICALLS+=1
   translate "$@"
-  if test "$TIMEOUT" = "0"; then
-    OSTACKRESP=$(${OSTACKCMD[@]} 2>&1)
-  else
-    OSTACKRESP=$(${OSTACKCMD[@]} 2>&1 & TPID=$!; killin $TPID $TIMEOUT >/dev/null 2>&1 & KPID=$!; wait $TPID; RC=$?; kill $KPID; exit $RC)
-  fi
+  OSTACKRESP=$(mytimeout $TIMEOUT ${OSTACKCMD[@]} 2>&1)
   local RC=$?
   if test $RC != 0 -a -z "$IGNORE_ERRORS"; then
     # We can count here, as we are not in a subprocess
@@ -1048,6 +1103,7 @@ state2col()
 }
 
 STATE=""
+FAILEDNO=0
 # Create a number of resources and keep track of them
 # $1 => quantity of resources
 # $2 => name of timing statistics array
@@ -1078,6 +1134,7 @@ createResources()
   if test "$RNM" != "NONE"; then echo -n "New $RNM: "; fi
   local RC=0
   local TIRESP
+  FAILEDNO=-1
   for no in `seq 0 $(($QUANT-1))`; do
     local AZN=$(($no%$NOAZS))
     local VAZN=$(($no%$NOVAZS))
@@ -1100,7 +1157,7 @@ createResources()
     state2col "$STATE"
     # Workaround for teuto.net
     if test "$1" = "cinder" && [[ $OS_AUTH_URL == *teutostack* ]]; then echo -en " ${RED}+5s${NORM} " 1>&2; sleep 5; fi
-    if test $RC != 0; then echo -e "${YELLOW}ERROR: $RNM creation failed$NORM" 1>&2; return 1; fi
+    if test $RC != 0; then echo -e "${YELLOW}ERROR: $RNM creation failed$NORM" 1>&2; FAILEDNO=$no; return 1; fi
     if test -n "$ID" -a "$RNM" != "NONE"; then echo -en "$ID $SCOL$STATE$NORM "; fi
     eval ${RNM}S+="($ID)"
     # Workaround for loadbalancer member create
@@ -1508,7 +1565,18 @@ showResources()
 createRouters()
 {
   if test -z "$ROUTERS"; then
-    createResources 1 NETSTATS ROUTER NONE NONE "" id $FIPTIMEOUT neutron router-create ${RPRE}Router
+    createResources 1 NETSTATS ROUTER NONE NONE "" id $FIPTIMEOUT neutron router-create ${RPRE}Router || return
+    # Need to attach external net gateway
+    ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list
+    if test $? != 0; then deleteRouters; return 1; fi
+    #EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\2/')
+    EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | grep "$EXTSEARCH" | head -n1 | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\1/')
+    if test -z "$EXTNET"; then
+      EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | head -n1 | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\1/')
+    fi
+    # Not needed on OTC, but for most other OpenStack clouds:
+    # Connect Router to external network gateway
+    ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET || true
   fi
 }
 
@@ -1668,7 +1736,12 @@ createSGroups()
   read TM ID STATE <<<"$RESP"
   NETSTATS+=( $TM )
   if test -n "$LOADBALANCER"; then
-    RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 80 --port-range-max 80 --remote-ip-prefix $JHSUBNETIP $SG1)
+    if test "$LB_PROVIDER" = "--provider ovn"; then
+      # With OVN, the client IP is real (not the VIP), so we need to allow all
+      RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 80 --port-range-max 80 --remote-ip-prefix 0.0.0.0/0 $SG1)
+    else
+      RESP=$(ostackcmd_id id $NETTIMEOUT neutron security-group-rule-create --direction ingress --ethertype IPv4 --protocol tcp --port-range-min 80 --port-range-max 80 --remote-ip-prefix $JHSUBNETIP $SG1)
+    fi
     updAPIerr $?
     read TM ID STATE <<<"$RESP"
     NETSTATS+=( $TM )
@@ -1799,7 +1872,7 @@ deleteVols()
   deleteResources VOLSTATS VOLUME "" $CINDERTIMEOUT cinder delete
 }
 
-createKeypairs()
+createKeypairs_old()
 {
   UMASK=$(umask)
   umask 0077
@@ -1810,6 +1883,21 @@ createKeypairs()
   echo "$OSTACKRESP" > $DATADIR/${RPRE}Keypair_VM.pem
   KEYPAIRS+=( "${RPRE}Keypair_VM" )
   umask $UMASK
+}
+
+createKeyPair()
+{
+  if test ! -r $DATADIR/$1; then
+    ssh-keygen -q -C $1@$HOSTNAME -t $KPTYPE -N "" -f $DATADIR/$1
+  fi
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova keypair-add --pub-key $DATADIR/$1.pub $1 || return 1
+  KEYPAIRS+=( "$1" )
+}
+
+createKeypairs()
+{
+  createKeyPair ${RPRE}Keypair_JH || return 1
+  createKeyPair ${RPRE}Keypair_VM
 }
 
 deleteKeypairs()
@@ -1831,17 +1919,12 @@ createFIPs()
 {
   local FLOAT RESP
   #createResources $NOAZS NETSTATS JHPORT NONE NONE "" id $NETTIMEOUT neutron port-create --security-group ${SGROUPS[0]} --name "${RPRE}Port_JH\${no}" ${JHNETS[0]} || return
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list || return 1
-  #EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\2/')
-  EXTNET=$(echo "$OSTACKRESP" | grep '^| [0-9a-f-]* |' | sed 's/^| \([0-9a-f-]*\) | \([^ ]*\).*$/\1/')
-  # Not needed on OTC, but for most other OpenStack clouds:
-  # Connect Router to external network gateway
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET
-  # Actually this fails if the port is not assigned to a VM yet
-  #  -- we can not associate a FIP to a port w/o dev owner
-  # So wait for JHPORTS having a device owner
-  #echo "Wait for JHPorts: "
-  waitResources NETSTATS JHPORT JPORTSTAT JVMSTIME "NONNULL" "NONONO" "device_owner" $NETTIMEOUT neutron port-show
+  if test -n "$FIPWAITPORTDEVOWNER"; then
+    # Actually this fails if the port is not assigned to a VM yet
+    #  -- we can not associate a FIP to a port w/o dev owner on some clouds
+    # So wait for JHPORTS having a device owner
+    waitResources NETSTATS JHPORT JPORTSTAT JVMSTIME "NONNULL" "NONONO" "device_owner" $NETTIMEOUT neutron port-show
+  fi
   # Now FIP creation is safe
   createResources $NOAZS FIPSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL --description ${RPRE}JH\$no $EXTNET
   if test $? != 0 -o -n "$INJECTFIPERR"; then return 1; fi
@@ -1926,7 +2009,7 @@ calcRedirs()
   #  secondary port reshuffling and (b) PORTS needs to match VMS ordering
   # This is why we use orderVMs
   # Optimization: Do neutron port-list once and parse multiple times ...
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
   if test ${#PORTS[*]} -gt 0; then
     declare -i ptn=222
     declare -i pi=0
@@ -1987,7 +2070,7 @@ createJHVMs()
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   calcRedirs
-  #echo "#DEBUG: $VIP ${REDIRS[*]}"
+  #echo "#DEBUG: cJHVM VIP $VIP REDIR ${REDIRS[*]}"
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
     if test -z "${REDIRS[$JHNUM]}"; then
       # No fwdmasq config possible yet
@@ -2027,9 +2110,9 @@ $RD
 }
 
 # Fill PORTS array by matching part's device_ids with the VM UUIDs
-collectPorts()
+collectPorts_Old()
 {
-  local vm vmid
+  local vm vmid ports port
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
   #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'"
   #echo "#DEBUG: cP VMs ${VMS[*]}"
@@ -2039,13 +2122,7 @@ collectPorts()
     if test -z "$vmid"; then sendalarm 1 "nova list" "VM $vm not found" $NOVATIMEOUT; continue; fi
     #port=$(echo "$OSTACKRESP" | jq -r '.[]' | grep -C4 "$vmid")
     #echo -e "#DEBUG: $port"
-    if test -z "$OPENSTACKCLIENT"; then
-      ports=$(echo "$OSTACKRESP" | jq -r ".[] | select(.device_id == \"$vmid\") | .id+\" \"+.fixed_ips[].ip_address" | tr -d '"')
-    else
-      ports=$(echo "$OSTACKRESP" | jq -r "def str(s): s|tostring; .[] | select(.device_id == \"$vmid\") | .ID+\" \"+str(.[\"Fixed IP Addresses\"])" | tr -d '"')
-      #if echo "$ports" | grep ip_address >/dev/null 2>&1; then ports=$(echo "$ports" | jq '.[].ip_address'); fi
-      ports=$(echo -e "$ports" | tr -d '"' | sed "$PORTFIXED2")
-    fi
+    ports=$(echo "$OSTACKRESP" | jq -r ".[] | select(.device_id == \"$vmid\") | .id+\" \"+.fixed_ips[].ip_address" | tr -d '"')
     port=$(echo -e "$ports" | grep 10.250 | sed 's/^\([^ ]*\) .*$/\1/')
     PORTS[$vm]=$port
     if test -n "$COLLSECOND"; then
@@ -2053,9 +2130,44 @@ collectPorts()
       SECONDPORTS[$vm]=$port2
     fi
   done
-  echo "VM Ports: ${PORTS[*]}"
-  if test -n "$SECONDPORTS"; then echo "VM Ports2: ${SECONDPORTS[*]}"; fi
+  echo "#VM Ports: ${PORTS[*]}"
+  if test -n "$SECONDPORTS"; then echo "#VM Ports2: ${SECONDPORTS[*]}"; fi
+}
 
+# Fill PORTS array by matching VM's IP address with port
+collectPorts()
+{
+  local vm vmid ipaddr ipaddr2 port port2
+  if test -z "$OPENSTACKCLIENT"; then collectPorts_Old; return; fi
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc -f json -c Name -c ID -c Networks
+  IPRESP="$OSTACKRESP"
+  # FIXME: We could use the new reporting: -c ID -c "Fixed IP Addressess" -c "Device ID"
+  # (but that does not help either to recover the lost device_id fields)
+  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
+  #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'\n\'$IPRESP\'"
+  #echo "#DEBUG: cP VMs ${VMS[*]}"
+  if test -n "$SECONDNET" -a -z "$SECONDPORTS"; then COLLSECOND=1; else unset COLLSECOND; fi
+  for vm in $(seq 0 $(($NOVMS-1))); do
+    vmid=${VMS[$vm]}
+    if test -z "$vmid"; then sendalarm 1 "nova list" "VM $vm not found" $NOVATIMEOUT; continue; fi
+    # FIXME: In theory, we need to filter for the correct subnet as well
+    # (In practice: An IP address conflict is very unlikely ...)
+    ipaddr=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.250\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+    ipaddr="${ipaddr##*=}"; ipaddr="${ipaddr%\"}"
+    if test -n "$COLLSECOND"; then
+      ipaddr2=$(echo "$IPRESP" | jq ".[] | select(.ID == \"$vmid\") | .Networks" | grep '10\.251\.' | head -n1 | sed 's/^[^"]*"\([0-9\.]*\)".*$/\1/')
+      ipaddr2="${ipaddr2##*=}"; ipaddr2="${ipaddr2%\"}"
+    fi
+    port=$(echo "$OSTACKRESP" | jq ".[] | select(.\"Fixed IP Addresses\"[].ip_address == \"$ipaddr\").ID" | tr -d '"')
+    #echo -e "#DEBUG: Search Port for VM $vmid with IP $ipaddr => port $port"
+    PORTS[$vm]=$port
+    if test -n "$COLLSECOND"; then
+      port2=$(echo "$OSTACKRESP" | jq ".[] | select(.\"Fixed IP Addresses\"[].ip_address == \"$ipaddr2\").ID" | tr -d '"')
+      SECONDPORTS[$vm]=$port2
+    fi
+  done
+  echo "#VM Ports: ${PORTS[*]}"
+  if test -n "$SECONDPORTS"; then echo "#VM Ports2: ${SECONDPORTS[*]}"; fi
 }
 
 # When NOT creating ports before JHVM starts, we cannot pass the port fwd information
@@ -2068,7 +2180,7 @@ setPortForward()
   # If we need to collect port info, do so now
   if test -z "${PORTS[*]}"; then collectPorts; fi
   calcRedirs
-  #echo "#DEBUG: sPF VIP REDIR $VIP ${REDIRS[*]}"
+  #echo "#DEBUG: sPF VIP $VIP REDIR ${REDIRS[*]} PORTS \"${PORTS[*]}\""
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
     if test -z "${REDIRS[$JHNUM]}"; then
       echo -e "${YELLOW}ERROR: No redirections?$NORM" 1>&2
@@ -2081,8 +2193,8 @@ setPortForward()
 sed -i 's@^FW_FORWARD_MASQ=.*\$@FW_FORWARD_MASQ=\"$FWDMASQ\"@' /etc/sysconfig/SuSEfirewall2
 systemctl restart SuSEfirewall2
 ")
-    echo "$SCRIPT" | ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_sfw2"
-    ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_sfw2"
+    echo "$SCRIPT" | ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_sfw2"
+    ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_sfw2"
   done
 }
 
@@ -2094,7 +2206,7 @@ setPortForwardGen()
   # If we need to collect port info, do so now
   if test -z "${PORTS[*]}"; then collectPorts; fi
   calcRedirs
-  #echo "#DEBUG: sPF VIP REDIR $VIP ${REDIRS[*]}"
+  #echo "#DEBUG: sPFG VIP $VIP REDIR ${REDIRS[*]} PORTS \"${PORTS[*]}\""
   echo -n "Enable port forwarding on "
   for JHNUM in $(seq 0 $(($NOAZS-1))); do
     echo -n "JHVM$JHNUM: "
@@ -2136,9 +2248,9 @@ else
     done
     SCRIPT=$(echo -e "$SCRIPT\nfi")
     # FIXME: Need to report errors here
-    echo "$SCRIPT" | ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_ipt" >/dev/null 2>&1
+    echo "$SCRIPT" | ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} "cat - >upd_ipt" >/dev/null 2>&1
     # -tt is a workaround for a RHEL/CentOS 7 bug
-    ssh -tt -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_ipt" >/dev/null 2>&1
+    ssh -tt -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${JHDEFLTUSER}@${FLOATS[$JHNUM]} sudo "/bin/bash ./upd_ipt" >/dev/null 2>&1
     RC=$?
     if test "$RC" = "0"; then
       echo -n "OK "
@@ -2155,20 +2267,29 @@ else
 # Loadbalancers
 createLBs()
 {
+  local RC=0
   if test -n "$LOADBALANCER"; then
-    #createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0"
-    createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-subnet-id ${JHSUBNETS[0]} --name "${RPRE}LB_0"
+    #createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-network-id ${JHNETS[0]} --name "${RPRE}LB_0" $LB_PROVIDER $LB_FLAVOR
+    createResources 1 LBSTATS LBAAS JHNET NONE LBSTIME id $FIPTIMEOUT neutron lbaas-loadbalancer-create --vip-subnet-id ${JHSUBNETS[0]} --name "${RPRE}LB_0" $LB_PROVIDER $LB_FLAVOR
+    RC=$?
+    if test $RC != 0; then let LBERRORS+=1; LBAASS=(); fi
   fi
+  return $RC
 }
 
 deleteLBs()
 {
   DELLBAASS=(${LBAASS[*]})
+  if test -n "$LOADBALANCER" -a "$LBERRORS" != "0" -a -z "$LBAASS"; then
+    echo -n "  Detecting LoadBalancers for extra cleanup: "
+    LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
+    echo "${LBAASS[*]}"
+  fi
   if test -n "$LBAASS"; then
     if test -n "$OLD_OCTAVIA"; then
-      deleteResources LBSTATS LBAAS LBDTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete
+      deleteResources LBSTATS LBAAS LBDTIME $((FIPTIMEOUT+10)) neutron lbaas-loadbalancer-delete
     else
-      deleteResources LBSTATS LBAAS LBDTIME $((FIPTIMEOUT)) neutron lbaas-loadbalancer-delete --cascade
+      deleteResources LBSTATS LBAAS LBDTIME $((FIPTIMEOUT+12)) neutron lbaas-loadbalancer-delete --cascade
     fi
   fi
 }
@@ -2226,9 +2347,9 @@ killhttp()
     #echo "DEBUG: $i: ${VMINFO[*]}"
     #testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
     echo -n "$i: ${VMINFO[6]}[${VMINFO[2]}]}:${VMINFO[7]} (${VMINFO[5]}/${VMINFO[8]}) "
-    HOSTN=$(ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3")
-    if test $? == 0; then echo -n "($HOSTN) "; else -n "ERROR "; fi
-    #ssh -i $DATADIR/${KEYPAIRS[1]}.pem -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3"
+    HOSTN=$(ssh -i $DATADIR/${KEYPAIRS[1]} -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3")
+    if test $? == 0; then echo -n "($HOSTN) "; else echo -n "ERROR "; fi
+    #ssh -i $DATADIR/${KEYPAIRS[1]} -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3"
     let killed+=1
     if test $killed -ge $HALF; then return; fi
   done
@@ -2249,16 +2370,27 @@ handleLBErr()
   if test $RC = 0; then return; fi
   ERRREASON="$ERRREASON$* "
   let LBERR+=$RC
+  let LBERRORS+=1
 }
+
+# $1 => failed VM number
+reportVM()
+{
+  if test $1 -lt 0 -o $1 -ge $NOVMS; then return; fi
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${VMS[$1]}
+}
+
 
 testLBs()
 {
   LBERR=0
   ERRREASON=""
+  if test -z "$LB_ALGO"; then LB_ALGO="--lb-algorithm=ROUND_ROBIN"; fi
   echo -n "LBaaS2 "
   if test "$TCP_LB" = "1"; then echo -n "(TCP) "; PROTO=TCP; unset SESSPERS; unset URLPATH
   else echo -n "(HTTP) "; PROTO=HTTP; SESSPERS="--session-persistence type=HTTP_COOKIE"; URLPATH="--url-path /hostname"; fi
-  createResources 1 LBSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol $PROTO --lb-algorithm=ROUND_ROBIN $SESSPERS --loadbalancer ${LBAASS[0]} # --wait
+  if test "$LB_PROVIDER" = "--provider ovn"; then echo -n "(${LB_PROVIDER##* }) "; LB_ALGO="--lb-algorithm SOURCE_IP_PORT"; fi
+  createResources 1 LBSTATS POOL LBAAS NONE "" id $FIPTIMEOUT neutron lbaas-pool-create --name "${RPRE}Pool_0" --protocol $PROTO $LB_ALGO $SESSPERS --loadbalancer ${LBAASS[0]} # --wait
   handleLBErr $? "PoolCreate"
   if test $RC != 0; then let LBERRORS+=1; return $RC; fi
   if test -z "$LBWAIT"; then
@@ -2293,23 +2425,32 @@ testLBs()
   handleLBErr $? "HealthMonCreate"
   #echo "DEBUG: IPS ${IPS[*]} SUBNETS ${SUBNETS[*]}"
   createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id \${SUBNETS[\$\(\(no%$NONETS\)\)]} --protocol-port 80 ${POOLS[0]}
+  #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id ${JHSUBNETS[0]} --protocol-port 80 ${POOLS[0]}
   #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --protocol-port 80 ${POOLS[0]}
   handleLBErr $? "MemberCreate"
-  if test $RC != 0; then let LBERRORS+=1; return $RC; fi
+  if test $RC != 0; then let LBERRORS+=1; reportVM $FAILEDNO; return $RC; fi
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
   echo -n "Test LB at $LBIP:"
+  LBCERR=0
+  STTM=$(date +%s.%N)
   # Access LB NOVMS times (RR -> each server gets one request)
   for i in $(seq 0 $NOVMS); do
     ANS=$(curl -m4 http://$LBIP/hostname 2>/dev/null)
     handleLBErr $? "Connect $LBIP"
     echo -n " $ANS"
     if test $RC != 0; then errwait $ERRWAIT; fi
+    let LBCERR+=$RC
   done
+  ENTM=$(date +%s.%N)
+  LBDUR=$(echo "10*($ENTM-$STTM)" | bc -l)
+  LBDUR=$(printf %.2f $LBDUR)
+  log_grafana LBconn $NOVMS $LBDUR $LBCERR
   ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
   handleLBErr $? "PoolShow"
   echo " $OSTACKRESP"
   test "$OSTACKRESP" != "ONLINE" && handleLBErr 1 "OpStatusNotOnline"
   # Kill some backends
+  if test -z "$SKIPKILLLB"; then
   echo -n "Kill backends: "
   killhttp
   sleep $((1+WAITLB))
@@ -2319,19 +2460,29 @@ testLBs()
   echo $OSTACKRESP
   test "$OSTACKRESP" != "DEGRADED" && handleLBErr 1 "OpStatusNotDegraded"
   echo -n "Retest LB at $LBIP (after $((1+WAITLB)) s):"
+  LBCERR=0
+  STTM=$(date +%s.%N)
   # Access LB NOVMS times (RR -> each server gets one request)
   for i in $(seq 0 $NOVMS); do
     ANS=$(curl -m4 http://$LBIP/hostname 2>/dev/null)
     handleLBErr $? "Connect $LBIP"
     echo -n " $ANS"
     if test $RC != 0; then errwait $ERRWAIT; fi
+    let LBCERR+=$RC
   done
+  ENTM=$(date +%s.%N)
+  LBDUR=$(echo "10*($ENTM-$STTM)" | bc -l)
+  LBDUR=$(printf %.2f $LBDUR)
+  log_grafana LBconn $NOVMS $LBDUR $LBCERR
+  else
+    echo -e "${YELLOW}Warning:${NORM} Skipped LB backend kill checks (health mon)"
+  fi
   echo
   if test $LBERR != 0; then
     sendalarm 2 "Errors connecting to LB $LBIP port 80: $ERRREASON" "$LBERR" 4
     if test -n "$EXITERR"; then exit 3; fi
   fi
-  LBERRORS+=$LBERR
+  #LBERRORS+=$LBERR
   return $LBERR
 }
 
@@ -2564,8 +2715,8 @@ config2ndNIC()
       # Using rttbl2 (cloud-multiroute), calculating GW here is unneeded. We assume eth1 is the second vNIC here
       GW=${IP%.*}; LAST=${GW##*.}; GW=${GW%.*}.$((LAST-LAST%4)).1
       # There probably is an easier way to handle a secondary interface that needs a gateway ...
-      echo "ssh -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=6\" -o \"StrictHostKeyChecking=no\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -p $pno -i $DATADIR/${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} \"ADR=\$(ip addr show eth1 | grep ' inet ' | grep -v \$IP/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"\$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null" >> $LOGFILE
-      ssh -o "PasswordAuthentication=no" -o "ConnectTimeout=6" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -p $pno -i $DATADIR/${KEYPAIRS[1]}.pem $DEFLTUSER@${FLOATS[$JHNO]} "ADR=$(ip addr show eth1 2>/dev/null | grep ' inet ' | grep -v $IP\/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null"
+      echo "ssh -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=6\" -o \"StrictHostKeyChecking=no\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -p $pno -i $DATADIR/${KEYPAIRS[1]} $DEFLTUSER@${FLOATS[$JHNO]} \"ADR=\$(ip addr show eth1 | grep ' inet ' | grep -v \$IP/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"\$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null" >> $LOGFILE
+      ssh -o "PasswordAuthentication=no" -o "ConnectTimeout=6" -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -p $pno -i $DATADIR/${KEYPAIRS[1]} $DEFLTUSER@${FLOATS[$JHNO]} "ADR=$(ip addr show eth1 2>/dev/null | grep ' inet ' | grep -v $IP\/22 | sed 's@^.* inet \([0-9\./]*\).*$@\1@'); test -n \"$ADR\" && sudo ip addr del $ADR dev eth1; sudo ip addr add $IP/22 dev eth1 2>/dev/null; sudo ip rule del pref 32674 2>/dev/null; sudo ip rule del pref 32765 2>/dev/null; sudo ip route flush table eth1tbl 2>/dev/null; sudo /usr/sbin/rttbl2.sh -g >/dev/null"
       # ip route add default via $GW"
       RC=$?
       echo -n "+"
@@ -2719,45 +2870,45 @@ testlsandping()
   fi
   if test -z "$pport"; then
     if test -n "$LOGFILE"; then
-      echo "ssh -i $DATADIR/$1.pem $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ls" >> $LOGFILE
+      echo "ssh -i $DATADIR/$1 $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ls" >> $LOGFILE
     fi
     # no user_data on JumpHosts
-    ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 8;
-    ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n "........"; sleep 16;
-    ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=20" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1; }; } || {
+    ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 8;
+    ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n "........"; sleep 16;
+    ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=20" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1; }; } || {
 	if test -n "$LOGFILE"; then echo "ERROR ssh ls on $2" >> $LOGFILE; fi
 	return 2; }
   else
     if test -n "$LOGFILE"; then
-      echo "ssh -i $DATADIR/$1.pem $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}[$4]" >> $LOGFILE
+      echo "ssh -i $DATADIR/$1 $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}[$4]" >> $LOGFILE
     fi
     # Test whether user_data file injection worked
     if test -n "$BOOTALLATONCE"; then
       # no indiv user data per VM when mass booting ...
-      ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "o"; sleep 4;
-      ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || {
+      ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "o"; sleep 4;
+      ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || {
 	if test -n "$LOGFILE"; then echo "ERROR ssh grep on $2:$3" >> $LOGFILE; fi
 	return 2; }
     else
-      ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "O"; sleep 4;
-      ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || {
+      ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "O"; sleep 4;
+      ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || {
 	if test -n "$LOGFILE"; then echo "ERROR ssh grep on $2:$3" >> $LOGFILE; fi
 	return 2; }
     fi
   fi
   # PING
   if test -n "$LOGFILE"; then
-    echo "timeout 24 ssh -i $DATADIR/$1.pem $pport -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
+    echo "timeout 24 ssh -i $DATADIR/$1 $pport -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
   fi
   #nslookup $PINGTARGET >/dev/null 2>&1
-  PING=$(timeout 24 ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
+  PING=$(timeout 24 ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
   if test $RC = 0; then echo $PING; return 0; fi
   #nslookup $PINGTARGET2 >/dev/null 2>&1
   echo -n "x"
   if test -n "$LOGFILE"; then echo "ERROR ssh ping on $pport $2: $RC" >> $LOGFILE; fi
   sleep 2
-  PING=$(timeout 24 ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
+  PING=$(timeout 24 ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET2 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
   if test $RC == 0; then return 0; fi
   echo -n "x "
@@ -2765,7 +2916,7 @@ testlsandping()
   ERR=$PING
   if test -n "$LOGFILE"; then echo "ERROR ssh ping on $pport $2: $RC" >> $LOGFILE; fi
   #sleep 1
-  #PING=$(ssh -i $DATADIR/$1.pem $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 9.9.9.9 >/dev/null 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
+  #PING=$(ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 9.9.9.9 >/dev/null 2>&1 | tail -n2; exit ${PIPESTATUS[0]})
   if test $RC != 0; then return 1; else return 0; fi
 }
 
@@ -2835,9 +2986,9 @@ EOT
     echo -n "Benchmark (4k digits pi):"
     if test -n "$LOGFILE"; then echo -n "Benchmark (4k digits pi):" >> $LOGFILE; fi
     for JHNO in $(seq 0 $(($NOAZS-1))); do
-      scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "StrictHostKeyChecking=no" -o "PasswordAuthentication=no" -i $DATADIR/${KEYPAIRS[0]}.pem -p ${RPRE}wait ${USER}@${FLOATS[$JHNO]}: >/dev/null
-      if test -n "$LOGFILE"; then echo "ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@${FLOATS[$JHNO]} time echo 'scale=4000; 4*a(1)'" >> $LOGFILE; fi
-      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]}.pem -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait bc; sync; { TIMEFORMAT=%2U; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
+      scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "StrictHostKeyChecking=no" -o "PasswordAuthentication=no" -i $DATADIR/${KEYPAIRS[0]} -p ${RPRE}wait ${USER}@${FLOATS[$JHNO]}: >/dev/null
+      if test -n "$LOGFILE"; then echo "ssh -i $DATADIR/${KEYPAIRS[0]} -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@${FLOATS[$JHNO]} time echo 'scale=4000; 4*a(1)'" >> $LOGFILE; fi
+      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait bc; sync; { TIMEFORMAT=%2U; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
       # Handle GNU time output format
       if echo "$BENCH" | grep user >/dev/null 2>&1; then
         BENCH=$(echo "$BENCH" | grep user)
@@ -2994,10 +3145,10 @@ EOT
     for red in ${REDIRS[$JHNO]}; do
       pno=${red#*tcp,}
       pno=${pno%%,*}
-      scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
-      #echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}"
-      if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}" >> $LOGFILE; fi
-      PINGRES="$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]})"
+      scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]} -P $pno -p ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
+      #echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -i $DATADIR/${KEYPAIRS[1]} -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}"
+      if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]} -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}" >> $LOGFILE; fi
+      PINGRES="$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]} -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]})"
       R=$?
       if test $R -gt $RC; then RC=$R; fi
       echo "$PINGRES"
@@ -3047,14 +3198,14 @@ EOT
     SRC=${IPS[$(($VM+$NOVMS-$NONETS))]}
     FLT=${FLOATS[$(($VM%$NOAZS))]}
     #echo -n "Test ($SRC,$(($VM+$NOVMS-$NONETS)),$FLT/$pno)->$TGT: "
-    scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
-    if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
-    IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "./${RPRE}wait iperf3; iperf3 -t5 -J -c $TGT")
+    scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]} -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
+    if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i $DATADIR/${KEYPAIRS[1]} -p $pno ${DEFLTUSER}@$FLT iperf3 -t5 -J -c $TGT" >> $LOGFILE; fi
+    IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]} -p $pno ${DEFLTUSER}@$FLT "./${RPRE}wait iperf3; iperf3 -t5 -J -c $TGT")
     if test $? != 0; then
       # Clients may need more startup time
       echo -n " retry "
       sleep 16
-      IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]}.pem -p $pno ${DEFLTUSER}@$FLT "iperf3 -t5 -J -c $TGT")
+      IPJSON=$(ssh -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]} -p $pno ${DEFLTUSER}@$FLT "iperf3 -t5 -J -c $TGT")
       if test $? != 0; then
 	log_grafana "iperf3" "s$VM" "0" "1"
         continue
@@ -3079,7 +3230,7 @@ EOT
 
 # [-m] STATLIST [DIGITS [NAME [PCTILE]]]
 # m for machine readable
-stats()
+stats_old()
 {
   local NM NO VAL LIST DIG OLDIFS SLIST MIN MAX MID MED NFQ NFQL NFQR NFQF NFP AVGC AVG
   if test "$1" = "-m"; then MACHINE=1; shift; else unset MACHINE; fi
@@ -3135,18 +3286,32 @@ stats()
   fi
 }
 
+# [-m] STATLIST [DIGITS [NAME [PCTILE]]]
+# m for machine readable
+stats()
+{
+  if test "$1" = "-m"; then MACHINE="-m"; shift; else unset MACHINE; fi
+  if test -n "$3" -a -z "$MACHINE"; then NAME=$3; else NAME=$1; fi
+  DIG=${2:-2}
+  PCT=${4:-95}
+  echo -n "$NAME: " | tee -a $LOGFILE
+  eval LIST=( \"\${${1}[@]}\" )
+  if test ${#LIST[*]} -lt 2; then return; fi
+  echo "${LIST[*]}" | ./stats.py -d $DIG -p $PCT $MACHINE | tee -a $LOGFILE
+}
+
 # [-m] for machine readable
 allstats()
 {
  stats $1 NETSTATS   2 "Neutron CLI Stats "
  stats $1 FIPSTATS   2 "Neutron FIP Stats "
- if test -n "$LOADBALANCER"; then
+ if test -n "$LOADBALANCER" -a -n "$LBSTATS"; then
    stats $1 LBSTATS    2 "LB CLI Stats      "
  fi
  stats $1 NOVASTATS  2 "Nova CLI Stats    "
  stats $1 NOVABSTATS 2 "Nova Boot Stats   "
  stats $1 VMCSTATS   0 "VM Creation Stats "
- if test -n "$LOADBALANCER"; then
+ if test -n "$LOADBALANCER" -a -n "$LBCSTATS"; then
    stats $1 LBCSTATS   0 "LB Creation Stats "
  fi
  if test -n "$BCBENCH"; then
@@ -3272,8 +3437,9 @@ cleanup_new()
   deleteKeypairs
   delete2ndPorts; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
   NOFITLERTAG=1
-  deleteSGroups
   waitdelLBs
+  # TODO: Delete remaining LB ports
+  deleteSGroups
   deleteRIfaces
   deleteSubNets; deleteJHSubNets
   deleteNets; deleteJHNets
@@ -3329,10 +3495,20 @@ cleanup()
   JHPORTS=( $(findres ${RPRE}Port_JH neutron port-list) )
   delete2ndPorts; deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
   NOFILTERTAG=1
-  SGROUPS=( $(findres "" neutron security-group-list) )
-  deleteSGroups
   waitdelLBs
   SUBNETS=( $(findres "" neutron subnet-list) )
+  # FIXME: We occasionally leaks ports from octavia
+  #if test -n "$LOADBALANCER"; then
+    for sub in ${SUBNETS[*]}; do
+      if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then echo "#DEBUG: Skip port clean subnet $sub"; continue; fi
+      PORTS=( $(findres "octavia-lb" neutron port-list --fixed-ip subnet=$sub) )
+      echo "Cleaning octavia ports ${PORTS[*]} in subnet $sub ..."
+      deletePorts
+    done
+  #fi
+  SGROUPS=( $(findres "" neutron security-group-list) )
+  deleteSGroups
+  #SUBNETS=( $(findres "" neutron subnet-list) )
   JHSUBNETS=()
   deleteRIfaces
   deleteSubNets
@@ -3386,20 +3562,19 @@ waitnetgone()
   PORTS=( $(findres "" neutron port-list) )
   IGNORE_ERRORS=1
   deletePorts
+  SUBNETS=( $(findres "" neutron subnet-list) )
+  NETS=( $(findres "" neutron net-list) )
   # FIXME: We occasionally leaks ports from octavia
   if test -n "$LOADBALANCER"; then
-    SUBNETS=( $(findres "" neutron subnet-list) )
     for sub in ${SUBNETS[*]}; do
-      if ! echo "$sub" | grep '[0-9a-f\-]+' >/dev/null; then continue; fi
-      PORTS=( $(findres "octavia-lb-vrrp" neutron port-list --fixed-ip subnet=$sub) )
-      echo "Cleaning ports ${PORTS[*]} in subnet $sub ..."
+      if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then echo "#DEBUG: Skip port cleanup in subnet $sub"; continue; fi
+      PORTS=( $(findres "octavia-lb" neutron port-list --fixed-ip subnet=$sub) )
+      echo "Cleaning octavia ports ${PORTS[*]} in subnet $sub ..."
       deletePorts
     done
   fi
   unset IGNORE_ERRORS
   echo -n "Wait for subnets/nets to disappear: "
-  SUBNETS=( $(findres "" neutron subnet-list) )
-  NETS=( $(findres "" neutron net-list) )
   deleteSubNets
   deleteNets
   while test $to -lt 40; do
@@ -3504,12 +3679,14 @@ compress_and_upload()
     $COMP "$1"
   fi
   if test -n "$SWIFTCONTAINER"; then
+    echo "# Swift upload logfile ${1##*/}$EXT to $SWIFTCONTAINER"
     LOGFILE="${LOGFILE%/*}/.${LOGFILE##*/}.swift"
-    RESP=$(ostackcmd_id etag $CINDERTIMEOUT swift upload "$SWIFTCONTAINER" "$1$EXT")
+    RESP=$(ostackcmd_id etag $CINDERTIMEOUT swift upload --object-name ${1##*/}$EXT "$SWIFTCONTAINER" "$1$EXT")
     if test $? = 0; then rm "$1$EXT"; fi
     LOGFILE="$OLDLF"
   elif test -n "$S3BUCKET"; then
     MTYPE=$(file -i "$1$EXT")
+    echo "# S3 upload logfile ${1##*/}$EXT to $S3CONTAINER"
     if test -n "$MTYPE"; then MTYPE="contentType=$MTYPE"; fi
     s3 put "$S3CONTAINER/$1$EXT" fileName="$1$EXT" $MTYPE
     if test $? = 0; then rm "$1$EXT"; fi
@@ -3753,7 +3930,7 @@ elif test "$1" = "CONNTEST"; then
      # Error counting done by fullconntest already
      errwait $ERRWAIT
    elif test $FPRETRY != 0; then
-     echo "Warning: Needed $FPRETRY ping retries"
+     echo -e "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
    fi
    if test -n "$RESHUFFLE"; then
      reShuffle
@@ -3820,6 +3997,21 @@ else # test "$1" = "DEPLOY"; then
   if test -n "$USER" -a "$USER" != "null"; then DEFLTUSER="$USER"; fi
  fi
  #let APICALLS+=2
+ # Check VM flavor
+ ostackcmd_tm NOVASTATS $NOVATIMEOUT nova flavor-show -f json $FLAVOR
+ if test $? != 0; then
+  let APIERRORS+=1; sendalarm 1 "nova flavor-show $FLAVOR failed" "" $NOVATIMEOUT; exit 1
+ else
+  VMFLVDISK=$(echo "$OSTACKRESP" | jq '.disk')
+  if test $VMFLVDISK -lt $VOLSIZE -a -n "$BOOTFROMIMAGE"; then
+    patch_openstackclient
+    NEED_BLKDEV=1
+    VMVOLSIZE=${VMVOLSIZE:-$VOLSIZE}
+  else
+    unset NEED_BLKDEV
+    #unset VMVOLSIZE
+  fi
+ fi
  echo "Using images JH $JHDEFLTUSER@$JHIMG ($JHVOLSIZE GB), VM $DEFLTUSER@$IMG ($VOLSIZE GB)"
  if createRouters; then
   if createNets; then
@@ -3836,20 +4028,21 @@ else # test "$1" = "DEPLOY"; then
            waitJHVols # TODO: Error handling
            if createJHVMs; then
             let ROUNDVMS=$NOAZS
-            waitVols  # TODO: Error handling
-            if createVMs; then
-             let ROUNDVMS+=$NOVMS
-             waitJHVMs
-             RC=$?
-             if test $RC != 0; then
+            if createFIPs; then
+             waitVols  # TODO: Error handling
+             if createVMs; then
+              let ROUNDVMS+=$NOVMS
+              waitJHVMs
+              RC=$?
+              if test $RC != 0; then
                #sendalarm $RC "Timeout waiting for JHVM ${RRLIST[*]}" "$WAITERRSTR" $((4*$MAXWAIT))
                # FIXME: Shouldn't we count errors and abort here? Without JumpHosts, the rest is hopeless ...
                if test $RC -gt $NOAZS; then let VMERRORS+=$NOAZS; else let VMERRORS+=$RC; fi
-             else
-              # loadbalancer
-              waitLBs
-              LBERRORS=$?
-              if createFIPs; then
+              else
+               # loadbalancer
+               waitLBs
+               LBWAITERR=$?
+               if test -n "$LBAASS"; then LBERRORS=$LBWAITERR; fi
                # No error handling here (but alarms are generated)
                waitVMs
                # Errors will be counted later again
@@ -3902,7 +4095,7 @@ else # test "$1" = "DEPLOY"; then
                     sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
                     errwait $ERRWAIT
                   elif test $FPRETRY != 0; then
-                   echo "Warning: Needed $FPRETRY ping retries"
+                   echo -e "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
                   fi
                   if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
                     reShuffle
@@ -3943,9 +4136,9 @@ else # test "$1" = "DEPLOY"; then
                 if test -n "$LOADBALANCER" -a "$LBACTIVE" = "1"; then cleanLBs; fi
                fi
                # TODO: Detach and delete disks again
-              fi; deleteFIPs
-             fi; #JH wait successful
-            fi; deleteVMs
+              fi; #JH wait successful
+             fi; deleteVMs
+            fi; deleteFIPs
            fi; deleteJHVMs
           fi; deleteKeypairs
          fi; waitdelVMs; deleteVols
@@ -3991,6 +4184,7 @@ else # test "$1" = "DEPLOY"; then
  if test -n "$FULLCONN"; then let MAXCYC+=$(($NOVMS*$NOVMS/10)); fi
  if test -n "$IPERF"; then let MAXCYC+=$((6*$NONETS)); fi
  if test -n "$LOADBALANCER"; then let MAXCYC+=$((36+4*$NOVMS+$WAITLB)); fi
+ if test -n "$SKIPKILLLB"; then let MAXCYC-=$((20+2*$NOVMS)); fi
  # FIXME: We could check THISRUNSUCCESS instead?
  SLOW=0
  if test $VMERRORS = 0 -a $WAITERRORS = 0 -a $THISRUNTIME -gt $MAXCYC; then
@@ -4110,11 +4304,11 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   unset STATSENT
   #LASTDATE="$CDATE"
   STARTDATE=$(date +%s)
-  rm -f $DATADIR/${RPRE}Keypair_JH.pem $DATADIR/${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
-  if test "$LOGFILE" == "${RPRE%_}.log"; then
+  rm -f $DATADIR/${RPRE}Keypair_JH $DATADIR/${RPRE}Keypair_VM $DATADIR/${RPRE}Keypair_JH.pub $DATADIR/${RPRE}Keypair_VM.pub ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
+  if test "$LOGFILE" == "$DATADIR/${RPRE%_}.log"; then
     RPRE="APIMonitor_${STARTDATE}_"
     compress_and_upload "$LOGFILE"
-    LOGFILE="${RPRE%_}.log"
+    LOGFILE="$DATADIR/${RPRE%_}.log"
   else
     RPRE="APIMonitor_${STARTDATE}_"
   fi
@@ -4132,7 +4326,7 @@ done
 #if test -n "$LOGFILE"; then
 #  compress_and_upload "$LOGFILE"
 #fi
-rm -f $DATADIR/${RPRE}Keypair_JH.pem $DATADIR/${RPRE}Keypair_VM.pem ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
+rm -f $DATADIR/${RPRE}Keypair_JH $DATADIR/${RPRE}Keypair_VM $DATADIR/${RPRE}Keypair_JH.pub $DATADIR/${RPRE}Keypair_VM.pub ~/.ssh/known_hosts.$RPRE ~/.ssh/known_hosts.$RPRE.old $DATADIR/${RPRE}user_data_JH.yaml $DATADIR/${RPRE}user_data_VM.yaml
 if test "$REFRESHPRJ" != 0; then cleanprj; fi
 
 exit $TOTERR

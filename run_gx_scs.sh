@@ -4,11 +4,11 @@
 # Options for the images: my openSUSE 15.2 (linux), Ubuntu 20.04 (ubuntu),
 #  openSUSE Leap 15.2 (opensuse), CentOS 8 (centos)
 # You can freely mix ...
-export JHIMG="Ubuntu 20.04"
-#export JHIMG="openSUSE 15.2"
+#export JHIMG="Ubuntu 20.04"
+export JHIMG="openSUSE 15.4"
 #export ADDJHVOLSIZE=2
-export IMG="Ubuntu 20.04"
-#export IMG="openSUSE 15.2"
+#export IMG="Ubuntu 20.04"
+export IMG="openSUSE 15.4"
 #export IMG="CentOS 8"
 # DEFLTUSER from image_original_user property
 #export DEFLTUSER=opensuse
@@ -19,8 +19,8 @@ export IMG="Ubuntu 20.04"
 #export IMGFILT="--property-filter os_version=openSUSE-15.0"
 # ECP flavors
 #if test $OS_REGION_NAME == Kna1; then
-export JHFLAVOR=1C-1GB-20GB
-export FLAVOR=1C-0.5GB-20GB
+export JHFLAVOR=SCS-1V:2
+export FLAVOR=SCS-1L:1
 #else
 #export JHFLAVOR=1C-1GB-10GB
 #export FLAVOR=1C-1GB-10GB
@@ -83,7 +83,7 @@ $SECGRPS
 for ENV in $TOCLEAN; do
   echo "******************************"
   echo "CLEAN $ENV"
-  bash ./api_monitor.sh -o -q -c CLEANUP $ENV
+  bash ./api_monitor.sh -o -q -L -c CLEANUP $ENV
   echo "******************************"
 done
 

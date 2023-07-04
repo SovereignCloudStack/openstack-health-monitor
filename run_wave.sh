@@ -19,8 +19,8 @@ export IMG="openSUSE 15.4"
 #export IMGFILT="--property-filter os_version=openSUSE-15.0"
 # ECP flavors
 #if test $OS_REGION_NAME == Kna1; then
-export JHFLAVOR=SCS-1V:2:5
-export FLAVOR=SCS-1V:2:5
+export JHFLAVOR=SCS-1V-2
+export FLAVOR=SCS-1L-1
 #else
 #export JHFLAVOR=1C-1GB-10GB
 #export FLAVOR=1C-1GB-10GB
@@ -81,8 +81,8 @@ $SECGRPS
 for ENV in $TOCLEAN; do
   echo "******************************"
   echo "CLEAN $ENV"
-  #bash ./api_monitor.sh -o -T -q -c CLEANUP $ENV
-  bash ./api_monitor.sh -o -q -c CLEANUP $ENV
+  #bash ./api_monitor.sh -o -T -q -LL -c CLEANUP $ENV
+  bash ./api_monitor.sh -o -q -LL -c CLEANUP $ENV
   echo "******************************"
 done
 
