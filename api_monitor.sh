@@ -1915,7 +1915,8 @@ createKeyPair()
     ssh-keygen -q -C $1@$HOSTNAME -t $KPTYPE -N "" -f $DATADIR/$1 || return 1
   fi
   ostackcmd_tm NOVASTATS $NOVATIMEOUT nova keypair-add --pub-key $DATADIR/$1.pub $1
-  if test $? != 0; then 
+  RC=$?
+  if test $RC != 0; then
     # The most common error is that the keypair with the name already exists
     ostackcmd_tm NOVASTATS $NOVATIMEOUT nova keypair-delete $1
     return 1
