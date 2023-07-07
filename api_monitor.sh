@@ -1887,12 +1887,12 @@ createKeypairs_old()
 
 createKeyPair()
 {
+  echo -n "$1 "
   if test ! -r $DATADIR/$1; then
-    ssh-keygen -q -C $1@$HOSTNAME -t $KPTYPE -N "" -f $DATADIR/$1
+    ssh-keygen -q -C $1@$HOSTNAME -t $KPTYPE -N "" -f $DATADIR/$1 || return 1
   fi
   ostackcmd_tm NOVASTATS $NOVATIMEOUT nova keypair-add --pub-key $DATADIR/$1.pub $1
-  RC=$?
-  if test $RC != 0; then 
+  if test $? != 0; then 
     # The most common error is that the keypair with the name already exists
     ostackcmd_tm NOVASTATS $NOVATIMEOUT nova keypair-delete $1
     return 1
@@ -1902,8 +1902,10 @@ createKeyPair()
 
 createKeypairs()
 {
-  createKeyPair ${RPRE}Keypair_JH || return 1
+  echo -n "New KEYPAIR: "
+  createKeyPair ${RPRE}Keypair_JH || { echo; return 1; }
   createKeyPair ${RPRE}Keypair_VM
+  echo
 }
 
 deleteKeypairs()
