@@ -1904,7 +1904,9 @@ createFIPs()
   FLOAT=""
   ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 1
   for PORT in ${FIPS[*]}; do
-    FLOAT+=" $(echo "$OSTACKRESP" | grep $PORT | sed "$FLOATEXTR")"
+    #FLOAT+=" $(echo "$OSTACKRESP" | grep $PORT | sed "$FLOATEXTR")"
+    FLT=$(echo "$OSTACKRESP" | jq ".[] | select(.Port=\"$PORT\") | .\"Floating IP Address\"" | tr -d '"')
+    FLOAT+=" $FLT"
   done
   echo "Floating IPs: $FLOAT"
   FLOATS=( $FLOAT )
@@ -3919,7 +3921,9 @@ else # test "$1" = "DEPLOY"; then
   SZ=$(echo "$OSTACKRESP" | jq '.size' | tr -d '"')
   USER=$(echo "$OSTACKRESP" | jq '.properties.image_original_user' | tr -d '"')
   SZ=$((SZ/1024/1024/1024))
-  if test "$SZ" -gt "$MD"; then MD=$SZ; fi
+  echo "#DEBUG: MinDisk: $MD, Size: $SZ"
+  if test -n "$SZ" -a -n "$MD" -a "$SZ" -gt "$MD"; then MD=$SZ; fi
+  if test -n "$SZ" -a -z "$MD"; then MD=$SZ; fi
   JHVOLSIZE=$(($MD+$ADDJHVOLSIZE))
   if test -n "$USER" -a "$USER" != "null"; then JHDEFLTUSER="$USER"; fi
  fi
@@ -3931,7 +3935,9 @@ else # test "$1" = "DEPLOY"; then
   SZ=$(echo "$OSTACKRESP" | jq '.size' | tr -d '"')
   USER=$(echo "$OSTACKRESP" | jq '.properties.image_original_user' | tr -d '"')
   SZ=$((SZ/1024/1024/1024))
-  if test "$SZ" -gt "$MD"; then MD=$SZ; fi
+  echo "#DEBUG: MinDisk: $MD, Size: $SZ"
+  if test -n "$SZ" -a -n "$MD" -a "$SZ" -gt "$MD"; then MD=$SZ; fi
+  if test -n "$SZ" -a -z "$MD"; then MD=$SZ; fi
   VOLSIZE=$(($MD+$ADDVMVOLSIZE))
   if test -n "$USER" -a "$USER" != "null"; then DEFLTUSER="$USER"; fi
  fi
