@@ -179,7 +179,7 @@ TIMEOUTFACT=1
 REFRESHPRJ=0
 SUCCWAIT=${SUCCWAIT:-5}
 
-DOMAIN=$(grep '^search' /etc/resolv.conf | awk '{ print $2; }'; exit ${PIPESTATUS[0]}) || DOMAIN=otc.t-systems.com
+DOMAIN=$(grep '^search' /etc/resolv.conf | awk '{ print $2; }'; exit ${PIPESTATUS[0]}) || DOMAIN=$OS_CLOUD
 HOSTNAME=$(hostname)
 FQDN=$(hostname -f 2>/dev/null) || FQDN=$HOSTNAME.$DOMAIN
 echo "Running api_monitor.sh v$VERSION on host $FQDN"
