@@ -59,12 +59,13 @@ done
 FIPLIST=$(echo "$FIPLIST" | grep -v '^$' | sort -u)
 # Cleanup previous interrupted runs
 SERVERS=$(openstack server  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+KEYPAIR=$(openstack keypair list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 VOLUMES=$(openstack volume  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 NETWORK=$(openstack network list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 LOADBAL=$(openstack loadbalancer list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 ROUTERS=$(openstack router  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 SECGRPS=$(openstack security group list | grep -o "APIMonitor_[0-9]*_" | sort -u)
-echo CLEANUP: FIPs $FIPLIST Servers $SERVERS Volumes $VOLUMES Networks $NETWORK LoadBalancers $LOADBAL Routers $ROUTERS SecGrps $SECGRPS
+echo CLEANUP: FIPs $FIPLIST Servers $SERVERS Keypairs $KEYPAIR Volumes $VOLUMES Networks $NETWORK LoadBalancers $LOADBAL Routers $ROUTERS SecGrps $SECGRPS
 for ENV in $FIPLIST; do
   echo "******************************"
   echo "CLEAN $ENV"
@@ -72,6 +73,7 @@ for ENV in $FIPLIST; do
   echo "******************************"
 done
 TOCLEAN=$(echo "$SERVERS
+$KEYPAIR
 $VOLUMES
 $NETWORK
 $LOADBAL
