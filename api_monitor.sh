@@ -98,7 +98,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.91
+VERSION=1.92
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -146,8 +146,13 @@ if test -z "$VAZS"; then
   VAZS=$(openstack availability zone list --volume -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
 fi
 if test -z "$VAZS"; then VAZS=(${AZS[*]}); else VAZS=($VAZS); fi
-#echo "AZs: ${AZS[*]}, VAZs: ${VAZS[*]}"
 NOVAZS=${#VAZS[*]}
+if test $NOAZS -gt 1 -a -z "$NAZS"; then
+  NAZS=$(openstack availability zone list --network -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
+fi
+if test -n "$NAZS"; then NAZS=($NAZS); fi
+NONAZS=${#NAZS[*]}
+#echo "AZs: ${AZS[*]}, VAZs: ${VAZS[*]}, NAZs: ${NAZS[*]}"
 NOVMS=12
 NONETS=$NOAZS
 MANUALPORTSETUP=1
@@ -301,7 +306,7 @@ usage()
   echo "Or: api_monitor.sh [Options] CONNTEST XXX for full conn test for existing env XXX"
   echo "        Options: [-2/3/4] [-o/O] [-i N] [-e ADR] [-E] [-w/W/V N] [-l LOGFILE]"
   echo "You need to have the OS_ variables set to allow OpenStack CLI tools to work."
-  echo "You can override defaults by exporting the environment variables AZS, VAZS, RPRE,"
+  echo "You can override defaults by exporting the environment variables AZS, VAZS, NAZS, RPRE,"
   echo " PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,"
   echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES,"
   echo " NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER, FIPWAITPORTDEVOWNER, EXTSEARCH, OS_EXTRA_PARAMS."
@@ -1591,8 +1596,12 @@ deleteRouters()
 createNets()
 {
   ERC=0
-  createResources 1 NETSTATS JHNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_JH\$no" || ERC=$?
-  createResources $NONETS NETSTATS NET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_VM_\$no" || ERC=$?
+  createResources 1 NETSTATS JHNET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_JH" || ERC=$?
+  if test $NONAZS -le 1; then
+    createResources $NONETS NETSTATS NET NONE NONE "" id $NETTIMEOUT neutron net-create "${RPRE}NET_VM_\$no" || ERC=$?
+  else
+    createResources $NONETS NETSTATS NET NONE NONE "" id $NETTIMEOUT neutron net-create --availability-zone-hint "\${NAZS[\$((\$no%$NONAZS))]}" "${RPRE}NET_VM_\$no" || ERC=$?
+  fi
   return $ERC
 }
 
@@ -1612,10 +1621,10 @@ createSubNets()
 {
   ERC=0
   if test -n "$NAMESERVER"; then
-    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 5.1.66.255 --dns-nameserver $NAMESERVER --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP" || ERC=$?
+    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 5.1.66.255 --dns-nameserver $NAMESERVER --name "${RPRE}SUBNET_JH" "\$VAL" "$JHSUBNETIP" || ERC=$?
     createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 185.150.99.255 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22" || ERC=$?
   else
-    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH\$no" "\$VAL" "$JHSUBNETIP" || ERC=$?
+    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH" "\$VAL" "$JHSUBNETIP" || ERC=$?
     createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_VM_\$no" "\$VAL" "10.250.\$((no*4)).0/22" || ERC=$?
   fi
   return $ERC
