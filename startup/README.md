@@ -4,7 +4,8 @@
 * Checkout a copy of openstack health monitor
   `git clone https://github.com/SovereignCloudStack/openstack-health-monitor`
 * Install the python3-openstackclient tools
-* Configure your cloud access in ~/.config/openstack/clouds.yaml and secure.yaml
+* Configure your cloud access in `~/.config/openstack/clouds.yaml` and
+  `secure.yaml`
 * Ensure your openstack client tools work:
   ```
   export OS_CLOUD=YOURCLOUD
@@ -23,18 +24,28 @@
 * Create a file `run_in_loop.sh` which runs `run_YOURCLOUD.sh` in a loop:
   ```
   #!/bin/bash
-  while true; do ./run_YOURCLOUD.sh -s -i 200; echo -n "Hit ^C to abort ..."; sleep 15; echo; done
+  rm stop-os-hm 2>/dev/null
+  while true; do
+    ./run_YOURCLOUD.sh -s -i 200
+    if test -e stop-os-hm; then break; fi
+    echo -n "Hit ^C to abort ..."
+    sleep 15; echo
+  done
   ```
-  This will run 200 iterations in `api_monitor` and then restart.
+  This will run 200 iterations in `api_monitor.sh` and then restart.
 
 ## System startup
-* Edit the tmux startup script `run-apimon-in-tmux.sh` to set `OS_CLOUD` correctly
-  for your cloud.
-* Copy `apimon.service` to `~/.config/systemd/user`. (You might need to create that
-  directory first.)
-* Test that you can start the service by calling `systemctl --user start apimon`
-* This should create a tmux session in which the OpenStack Health Momitor is running.
-  Attach to the tmux session `tmux attach -t oshealthmon`.
+* Edit the tmux startup script `run-apimon-in-tmux.sh` to set `OS_CLOUD`
+  correctly for your cloud.
+* If you are not using ~/openstack-health-monitor for the checked out git
+  tree, you need to adjust the scripts and the systemd unit file here
+  accordingly.
+* Copy `apimon.service` to `~/.config/systemd/user`. (You might need to
+  create that directory first.)
+* Test that you can start the service by calling 
+  `systemctl --user start apimon`
+* This should create a tmux session in which the OpenStack Health Momitor
+  is running.  Attach to the tmux session `tmux attach -t oshealthmon`.
 * You can stop the service by hitting ^C (Control-c), possibly several times.
 * Now enable the service: `systemctl --user enable apimon`
 * And tell systemd that it should create a user session on startup:
