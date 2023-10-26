@@ -1,0 +1,16 @@
+[Unit]
+Description=Start the OpenStack Health Monitor
+#After=network.target systemd-user-sessions.service
+
+[Service]
+#User=%i
+ExecStart=%h/openstack-health-monitor/startup/run-apimon-in-tmux.sh
+ExecStop=%h/openstack-health-monitor/startup/kill-apimon-in-tmux.sh
+Type=forking
+#Slice=session.slice
+#Type=oneshot
+#RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target
+Alias=os-health-mon.service
