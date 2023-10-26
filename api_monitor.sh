@@ -3649,6 +3649,7 @@ getToken()
   NEUTRON_EP=$(getPublicEP neutron)
   OCTAVIA_EP=$(getPublicEP octavia)
   SWIFT_EP=$(getPublicEP swift)
+  KEYSTONE_EP=$(getPublicEP keystone)
   if test -z "$OCTAVIA_EP"; then OCTAVIA_EP="$NEUTRON_EP"; fi
   if test -z "$SWIFT_EP"; then SWIFT_EP=$(getPublicEP radosgw-swift); fi
   #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP"
@@ -4030,6 +4031,7 @@ else # test "$1" = "DEPLOY"; then
   fi
  fi
  echo "Using images JH $JHDEFLTUSER@$JHIMG ($JHVOLSIZE GB), VM $DEFLTUSER@$IMG ($VOLSIZE GB)"
+ echo "Deploying on AZs ${AZS[*]} (Volumes: ${VAZS[*]}, Networks: ${NAZS[*]})"
  if createRouters; then
   if createNets; then
    if createSubNets; then
