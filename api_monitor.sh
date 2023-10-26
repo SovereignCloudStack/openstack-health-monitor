@@ -2528,12 +2528,12 @@ cleanLBs()
   deleteResources LBSTATS HEALTHMON "" $FIPTIMEOUT neutron lbaas-healthmonitor-delete
   if test "$STATE" = "PENDING_DELETE"; then sleep 1; fi
   echo -n " "
-  deleteResources LBSTATS LISTENER "" $FIPTIMEOUT neutron lbaas-listener-delete
+  deleteResources LBSTATS LISTENER "" $((FIPTIMEOUT+12)) neutron lbaas-listener-delete
   # Delete FIP first, so no sleep waiting for listener been gone
   echo -n " "
   deleteResources FIPSTATS LBFIP "" $FIPTIMEOUT neutron floatingip-delete
   echo -n " "
-  deleteResources LBSTATS POOL "" $FIPTIMEOUT neutron lbaas-pool-delete
+  deleteResources LBSTATS POOL "" $((FIPTIMEOUT+12)) neutron lbaas-pool-delete
   if test -n "$REMLISTENERS"; then
     deleteResources LBSTATS REMLISTENER "" $FIPTIMEOUT neutron lbaas-listener-delete
   fi

@@ -5,10 +5,10 @@
 #  openSUSE Leap 15.2 (opensuse), CentOS 8 (centos)
 # You can freely mix ...
 #export JHIMG="Ubuntu 20.04"
-export JHIMG="openSUSE 15.4"
+export JHIMG="openSUSE 15.5"
 #export ADDJHVOLSIZE=2
 #export IMG="Ubuntu 20.04"
-export IMG="openSUSE 15.4"
+export IMG="openSUSE 15.5"
 #export IMG="CentOS 8"
 # DEFLTUSER from image_original_user property
 #export DEFLTUSER=opensuse
