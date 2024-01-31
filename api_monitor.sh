@@ -2675,14 +2675,14 @@ tagVols()
   ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder list -c Attached
   OSTACKRESP=$(echo "$OSTACKRESP" | grep -v '^+' | grep -v '| ID' | sed -e 's/|$//' -e 's/ *| */,/g')
   COLL=""
-  declare -i natt=0
-  declare -i no=0
+  local natt no
+  natt=0; no=0
   while read line; do
     id=$(echo "$line" | cut -d "," -f 2)
     nm=$(echo "$line" | cut -d "," -f 3)
     att=$(echo "$line" | cut -d "," -f 6)
-    if test -z "$att"; then let natt+=1; continue; fi
-    if test -n "$nm"; then continue; fi
+    if test -n "$nm"; then let natt+=1; continue; fi
+    if test -z "$att"; then continue; fi
     #NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_VM_\([^ ]*\) .*$/\1_RootVol_\2/')
     NM="${RPRE}VM_$1_$no"
     let no+=1
@@ -2702,12 +2702,14 @@ tagVols()
 waitVMs()
 {
   tagVols 1
-  if test "$?" != $((NOVMS+NOAZS)); then tagVols 2; fi
+  tagged=$?
+  if test "$tagged" != $((NOVMS+NOAZS)) -a $tagged -gt $NOAZS; then sleep 2; tagVols 2; tagged=$?; fi
   #waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" $NOVATIMEOUT nova show
   waitlistResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
   handleWaitErr "VMs" NOVASTATS $NOVATIMEOUT nova show
   RC=$?
-  tagVols 3
+  if test "$tagged" != $((NOVMS+NOAZS)); then tagVols 3; tagged=$?; fi
+  if test "$tagged" != $((NOVMS+NOAZS)); then echo "ERROR: Tagged volume number incorrect: $tagged != $((NOVMS+NOAZS))" 1>&2; fi
   return $RC
 }
 
