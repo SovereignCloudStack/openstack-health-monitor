@@ -754,7 +754,9 @@ translate()
       if [[ "$@" != *Attached* ]]; then
         OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
       else
-	OSTACKCMD=($OPST $DEFCMD $CMD $MYTAG)
+	#OSTACKCMD=($OPST $DEFCMD $CMD $MYTAG)
+	# Use token that allows cinder to query nova for names
+	OSTACKCMD=(openstack $DEFCMD $CMD $MYTAG)
       fi
       #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
     elif test "$DEFCMD" == "server" -a "$CMD" == "boot"; then
@@ -2675,17 +2677,18 @@ tagVols()
   ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder list -c Attached
   OSTACKRESP=$(echo "$OSTACKRESP" | grep -v '^+' | grep -v '| ID' | sed -e 's/|$//' -e 's/ *| */,/g')
   COLL=""
-  local natt no
-  natt=0; no=0
+  local natt
+  natt=0
   while read line; do
     id=$(echo "$line" | cut -d "," -f 2)
     nm=$(echo "$line" | cut -d "," -f 3)
     att=$(echo "$line" | cut -d "," -f 6)
     if test -n "$nm"; then let natt+=1; continue; fi
     if test -z "$att"; then continue; fi
-    #NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_VM_\([^ ]*\) .*$/\1_RootVol_\2/')
-    NM="${RPRE}VM_$1_$no"
-    let no+=1
+    NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_VM_\([^ ]*\) .*$/\1_RootVol_\2/')
+    if [[ "$NM" != APIMonitor* ]]; then
+      NM=$(echo "$att" | sed "s/^Attached to \([0-9a-f\-]*\) .*\$/${RPRE}RootVol_\1/")
+    fi
     COLL="$COLL $id:$NM"
   done < <(echo "$OSTACKRESP")
   COLL="${COLL# }"
