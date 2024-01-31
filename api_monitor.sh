@@ -2674,7 +2674,7 @@ createVMs()
 tagVols()
 {
   if test "$VOLNEEDSTAG" != "1"; then return $((NOVMS+NOAZS)); fi
-  ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder list -c Attached
+  ostackcmd_tm VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder list -c Attached
   OSTACKRESP=$(echo "$OSTACKRESP" | grep -v '^+' | grep -v '| ID' | sed -e 's/|$//' -e 's/ *| */,/g')
   COLL=""
   local natt
