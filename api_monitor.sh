@@ -2689,7 +2689,7 @@ tagVols()
     COLL="$COLL $id:$NM"
   done < <(echo "$OSTACKRESP")
   COLL="${COLL# }"
-  echo "# DEBUG: Attach names to Volumes $COLL"
+  if test -n "$COLL"; then echo "# DEBUG: Attach names to Volumes $1: $COLL" 1>&2; fi
   for att in $COLL; do
     ID=${att%:*}
     NM=${att##*:}
