@@ -52,6 +52,7 @@
 #
 # - Finally, we clean up ev'thing in reverse order
 #   (We have kept track of resources to clean up.
+
 #    We can also identify them by name, which helps if we got interrupted, or
 #    some cleanup action failed.)
 #
@@ -98,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.92
+VERSION=1.93
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -296,7 +297,7 @@ usage()
   echo " -b     run a simple compute benchmark"
   echo " -B     run iperf3"
   echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
-  echo " -T     assign tags to resources; use to clean up floating IPs"
+  echo " -T     assign tags to resources; use to clean up floating IPs and volumes"
   echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test"
   echo " -3     Create 2ndary subnets, attach, test, reshuffle and retest"
   echo " -4     Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest"
@@ -746,9 +747,18 @@ translate()
     elif test "$DEFCMD" == "server" -a "$CMD" == "list"; then
       ARGS=$(echo "$@" | sed -e 's@\-\-sort display_name:asc@--sort-column Name@')
       OSTACKCMD=($OPST $DEFCMD $CMD $ARGS -n)
+    elif test "$DEFCMD" == "volume" -a "$CMD" == "rename"; then
+      OSTACKCMD=($OPST $DEFCMD set --name "$@")
     # Optimization: Avoid Attachment name lookup in volume list when polling
-    elif test "$DEFCMD" == "volume" -a "$CMD" == "list"; then OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
-    #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
+    elif test "$DEFCMD" == "volume" -a "$CMD" == "list"; then
+      if [[ "$@" != *Attached* ]]; then
+        OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
+      else
+	#OSTACKCMD=($OPST $DEFCMD $CMD $MYTAG)
+	# Use token that allows cinder to query nova for names
+	OSTACKCMD=(openstack $DEFCMD $CMD $MYTAG)
+      fi
+      #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
     elif test "$DEFCMD" == "server" -a "$CMD" == "boot"; then
       if test $OSTACKVERSION -lt 50500; then
         ## FIXME: openstack server create does not seem to support vol from image with delete_on_termination=true
@@ -761,6 +771,10 @@ translate()
       fi
       # Only handles one SG
       ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@' -e 's@shutdown=remove@delete_on_termination=true@' -e 's@\-\-block\-device id=@ --block-device uuid=@' -e 's@,source=@,source_type=@' -e 's@,dest=@,destination_type=@' -e 's@,bootindex=@,boot_index=@' -e 's@,size=@,volume_size=@')
+      if test "$DEFCMD" == "server" -a "$CMD" == "boot"; then
+	if [[ $ARGS = *delete_on_termination* ]]; then VOLNEEDSTAG=1; else VOLNEEDSTAG=0; fi
+        #if test "$TAG" == "1"; then ARGS=$(echo "--os-compute-api-version 2.72 $ARGS" | sed "s/delete_on_termination=true/delete_on_termination=true,tag=${RPRE%_}/g"); fi
+      fi
       #OSTACKCMD=($OPST $DEFCMD create $ARGS)
       # No token_endpoint auth for server creation (need to talk to neutron/cinder/glance as well)
       OSTACKCMD=(openstack $DEFCMD create $ARGS)
@@ -2655,12 +2669,51 @@ createVMs()
   return $RC
 }
 
+# tag volumes
+# $1 => run
+tagVols()
+{
+  if test "$VOLNEEDSTAG" != "1"; then return $((NOVMS+NOAZS)); fi
+  ostackcmd_tm VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder list -c Attached
+  OSTACKRESP=$(echo "$OSTACKRESP" | grep -v '^+' | grep -v '| ID' | sed -e 's/|$//' -e 's/ *| */,/g')
+  COLL=""
+  local natt
+  natt=0
+  while read line; do
+    id=$(echo "$line" | cut -d "," -f 2)
+    nm=$(echo "$line" | cut -d "," -f 3)
+    att=$(echo "$line" | cut -d "," -f 6)
+    if test -n "$nm"; then let natt+=1; continue; fi
+    if test -z "$att"; then continue; fi
+    NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_VM_\([^ ]*\) .*$/\1_RootVol_\2/')
+    if [[ "$NM" != APIMonitor* ]]; then
+      NM=$(echo "$att" | sed "s/^Attached to \([0-9a-f\-]*\) .*\$/${RPRE}RootVol_\1/")
+    fi
+    COLL="$COLL $id:$NM"
+  done < <(echo "$OSTACKRESP")
+  COLL="${COLL# }"
+  if test -n "$COLL"; then echo "# DEBUG: Attach names to Volumes $1: $COLL" 1>&2; fi
+  for att in $COLL; do
+    ID=${att%:*}
+    NM=${att##*:}
+    ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder rename $NM $ID && let natt+=1
+  done
+  return $natt
+}
+
 # Wait for VMs to get into active state
 waitVMs()
 {
+  tagVols 1
+  tagged=$?
+  if test "$tagged" != $((NOVMS+NOAZS)) -a $tagged -gt $NOAZS; then sleep 2; tagVols 2; tagged=$?; fi
   #waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" $NOVATIMEOUT nova show
   waitlistResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
   handleWaitErr "VMs" NOVASTATS $NOVATIMEOUT nova show
+  RC=$?
+  if test "$tagged" != $((NOVMS+NOAZS)); then tagVols 3; tagged=$?; fi
+  if test "$tagged" != $((NOVMS+NOAZS)); then echo "ERROR: Tagged volume number incorrect: $tagged != $((NOVMS+NOAZS))" 1>&2; fi
+  return $RC
 }
 
 # Remove VMs (one by one or by batch if we created in batches)
@@ -3649,6 +3702,7 @@ getToken()
   NEUTRON_EP=$(getPublicEP neutron)
   OCTAVIA_EP=$(getPublicEP octavia)
   SWIFT_EP=$(getPublicEP swift)
+  KEYSTONE_EP=$(getPublicEP keystone)
   if test -z "$OCTAVIA_EP"; then OCTAVIA_EP="$NEUTRON_EP"; fi
   if test -z "$SWIFT_EP"; then SWIFT_EP=$(getPublicEP radosgw-swift); fi
   #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP"
@@ -4030,6 +4084,7 @@ else # test "$1" = "DEPLOY"; then
   fi
  fi
  echo "Using images JH $JHDEFLTUSER@$JHIMG ($JHVOLSIZE GB), VM $DEFLTUSER@$IMG ($VOLSIZE GB)"
+ echo "Deploying on AZs ${AZS[*]} (Volumes: ${VAZS[*]}, Networks: ${NAZS[*]})"
  if createRouters; then
   if createNets; then
    if createSubNets; then
@@ -4194,6 +4249,7 @@ else # test "$1" = "DEPLOY"; then
  else
    if test -n "$BOOTALLATONCE"; then CON=416; NFACT=16; FACT=24; else CON=400; NFACT=16; FACT=36; fi
  fi
+ if test "$VOLNEEDSTAG" == "1"; then let FACT+=2; fi
  MAXCYC=$(($CON+($FACT+$NFACT/2)*$NOAZS+$NFACT*$NONETS+$FACT*$NOVMS))
  MINCYC=$(($MAXCYC/6))
  if test -n "$SECONDNET"; then let MAXCYC+=$(($NFACT*$NONETS+$NFACT*$NOVMS)); fi
