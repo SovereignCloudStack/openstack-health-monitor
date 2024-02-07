@@ -25,10 +25,10 @@ telegraf, influxdb and grafana: `sudo zypper install telegraf influxdb grafana`.
   `inputs.influxdb_listener` (on `:8186`) and the `outputs.influxdb` (to `localhost:8086`).
   Put it into `/etc/telegraf/` (root:root 0644).
 * `config.toml` is the default config file for [influxdb](https://www.influxdata.com/time-series-platform/)
-  from openSUSE 15.3 without any edits. This belongs to to `/etc/influxdb/' (root:influxdb 0640).
+  from openSUSE 15.3 without any edits. This belongs to to `/etc/influxdb/` (root:influxdb 0640).
 * `grafana.ini` is the default config file for [grafana](https://grafana.com/)
   from openSUSE 15.3 with the admin password changed to `SCS_Admin` and `allow_signup` set to `false`.
-  It belongs into `/etc/grafana/' (root:grafana 0640).
+  It belongs into `/etc/grafana/` (root:grafana 0640).
   The configuration is prepared to be exposed to the internet -- to do so, change the admin password,
   fill in a hostname that you control (or reach out to SCS for getting a registration on sovereignit.cloud),
   generate SSL certs (e.g. via Let's Encrypt) and put them to `/etc/grafana/health-fullchain.pem`
