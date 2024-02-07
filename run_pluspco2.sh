@@ -20,10 +20,11 @@ export IMG="Ubuntu 22.04"
 # ECP flavors
 #if test $OS_REGION_NAME == Kna1; then
 #export JHFLAVOR=SCS-1L:1:5
-export JHFLAVOR=SCS-1V:1:10
+export JHFLAVOR=SCS-1V:1
 #export JHFLAVOR=SCS-1V:1:10
 #export FLAVOR=SCS-1L:1:5
-export FLAVOR=SCS-1V:1:10
+#export FLAVOR=SCS-1V:1:10
+export FLAVOR=SCS-1L:1
 #else
 #export JHFLAVOR=1C-1GB-10GB
 #export FLAVOR=1C-1GB-10GB
