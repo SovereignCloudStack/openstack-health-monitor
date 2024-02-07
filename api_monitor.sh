@@ -1915,7 +1915,8 @@ createKeyPair()
     ssh-keygen -q -C $1@$HOSTNAME -t $KPTYPE -N "" -f $DATADIR/$1 || return 1
   fi
   ostackcmd_tm NOVASTATS $NOVATIMEOUT nova keypair-add --pub-key $DATADIR/$1.pub $1
-  if test $? != 0; then 
+  RC=$?
+  if test $RC != 0; then
     # The most common error is that the keypair with the name already exists
     ostackcmd_tm NOVASTATS $NOVATIMEOUT nova keypair-delete $1
     return 1
@@ -2528,12 +2529,12 @@ cleanLBs()
   deleteResources LBSTATS HEALTHMON "" $FIPTIMEOUT neutron lbaas-healthmonitor-delete
   if test "$STATE" = "PENDING_DELETE"; then sleep 1; fi
   echo -n " "
-  deleteResources LBSTATS LISTENER "" $FIPTIMEOUT neutron lbaas-listener-delete
+  deleteResources LBSTATS LISTENER "" $((FIPTIMEOUT+12)) neutron lbaas-listener-delete
   # Delete FIP first, so no sleep waiting for listener been gone
   echo -n " "
   deleteResources FIPSTATS LBFIP "" $FIPTIMEOUT neutron floatingip-delete
   echo -n " "
-  deleteResources LBSTATS POOL "" $FIPTIMEOUT neutron lbaas-pool-delete
+  deleteResources LBSTATS POOL "" $((FIPTIMEOUT+12)) neutron lbaas-pool-delete
   if test -n "$REMLISTENERS"; then
     deleteResources LBSTATS REMLISTENER "" $FIPTIMEOUT neutron lbaas-listener-delete
   fi
