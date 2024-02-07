@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.93
+VERSION=1.94
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -751,9 +751,9 @@ translate()
       OSTACKCMD=($OPST $DEFCMD set --name "$@")
     # Optimization: Avoid Attachment name lookup in volume list when polling
     elif test "$DEFCMD" == "volume" -a "$CMD" == "list"; then
-      if [[ "$@" != *Attached* ]]; then
+      if [[ "$@" != *Attached* ]] && [[ "$@" != *-c* ]]; then
         OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
-      else
+      elif [[ "$@" == *Attached* ]]; then
 	#OSTACKCMD=($OPST $DEFCMD $CMD $MYTAG)
 	# Use token that allows cinder to query nova for names
 	OSTACKCMD=(openstack $DEFCMD $CMD $MYTAG)
@@ -2614,8 +2614,12 @@ createVMsAll()
   declare -a STMS
   if test -n "$VMVOLSIZE"; then
     IMAGE="--block-device id=$IMGID,source=image,dest=volume,size=$VMVOLSIZE,shutdown=remove,bootindex=0"
+    ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder list -f value -c ID #-c Name # -c Status -c Size
+    OLDVOLS="$OSTACKRESP"
+    echo "#DEBUG: $(echo $OLDVOLS | wc -w) OLDVOLS"
   else
     IMAGE="--image $IMGID"
+    OLDVOLS=""
   fi
   echo -n "Create VMs in batches: "
   # Can not pass port IDs during boot in batch creation
@@ -2702,6 +2706,46 @@ tagVols()
   return $natt
 }
 
+inList()
+{
+  #while read oid onm; do
+  while read oid; do
+    if test "$oid" = "$1"; then return 0; fi
+  done < <(echo "$2")
+  return 1
+}
+
+dbgout()
+{
+  if test -n "$DEBUG"; then echo "$@"; fi
+}
+
+# Cleanup volumes created by nova but which did not get attached
+delUnattachedVols()
+{
+  ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder list -f value || return 1
+  CAND=()
+  while read id nm stat sz; do
+    if test -z "$sz"; then sz="$stat"; stat="$nm"; nm=""; fi
+    dbgout -n "#DEBUG: \"$id\" \"$nm\" \"$stat\" \"$z\": "
+    # Filter out vols with names or with wrong size
+    if test -n "$nm"; then dbgout named; continue; fi
+    if test "$stat" != "available"; then dbgout "not available"; continue; fi
+    if test "$sz" != "$VMVOLSIZE"; then dbgout "!= $VMVOLSIZE"; continue; fi
+    if inList $id "$OLDVOLS"; then dbgout "preexist"; continue; fi
+    CAND[${#CAND[*]}]=$id
+    dbgout "added"
+  done < <(echo "$OSTACKRESP")
+  echo "#DEBUG: Found ${#CAND[*]} unatt new vols for $RC errors: ${CAND[*]}" 1>&2
+  if test ${#CAND[*]} -eq 0; then return 0; fi
+  # TODO: Do sanity checking and filtering for img metadata and size
+  if test ${#CAND[*]} -gt $RC; then echo "#ERROR: More new unatt. vols than errs, clean up not yet implemented" 1>&2; return 1; fi
+  for idx in $(seq 0 $((${#CAND[*]}-1))); do
+    ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder rename ${RPRE}BootVol_VM_$idx ${CAND[$idx]}
+  done
+  #ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder delete ${CAND[*]}
+}
+
 # Wait for VMs to get into active state
 waitVMs()
 {
@@ -2714,6 +2758,7 @@ waitVMs()
   RC=$?
   if test "$tagged" != $((NOVMS+NOAZS)); then tagVols 3; tagged=$?; fi
   if test "$tagged" != $((NOVMS+NOAZS)); then echo "ERROR: Tagged volume number incorrect: $tagged != $((NOVMS+NOAZS))" 1>&2; fi
+  if test $RC != 0 -a -n "$VMVOLSIZE"; then delUnattachedVols $RC; fi
   return $RC
 }
 
@@ -4004,6 +4049,8 @@ elif test "$1" = "CONNTEST"; then
    elif test $FPRETRY != 0; then
      echo -e "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
    fi
+   log_grafana ping errors 1 $FPERR
+   log_grafana ping retries 1 $FPRETRY
    if test -n "$RESHUFFLE"; then
      reShuffle
      fullconntest
