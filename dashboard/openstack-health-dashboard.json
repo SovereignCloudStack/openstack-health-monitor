@@ -1885,6 +1885,16 @@
           },
           {
             "selected": false,
+            "text": "plus-prod2",
+            "value": "plus-prod2"
+          },
+          {
+            "selected": false,
+            "text": "plus-prod3",
+            "value": "plus-prod3"
+          },
+          {
+            "selected": false,
             "text": "gx-scs",
             "value": "gx-scs"
           },
@@ -1899,7 +1909,7 @@
             "value": "wavestack1"
           }
         ],
-        "query": "plus-pco, gx-scs, stackit, wavestack1",
+        "query": "plus-pco, plus-prod2, plus-prod3, gx-scs, stackit, wavestack1",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"
