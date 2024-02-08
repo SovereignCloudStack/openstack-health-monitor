@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.94
+VERSION=1.95
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -1109,6 +1109,21 @@ ostackcmd_tm()
   return $RC
 }
 
+# ostackcmd_tm with a retry after 2s (idempotent commands only)
+# Parameters: See ostackcmd_tm
+ostackcmd_tm_retry()
+{
+  ostackcmd_tm "$@"
+  RC=$?
+  if test $RC != 0; then
+    sleep 2
+    ostackcmd_tm "$@"
+    RC=$?
+  fi
+  return $RC
+}
+
+
 SCOL=""
 # Set SCOL according to state in $1
 state2col()
@@ -1595,7 +1610,7 @@ createRouters()
     fi
     # Not needed on OTC, but for most other OpenStack clouds:
     # Connect Router to external network gateway
-    ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET || true
+    ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET || true
   fi
 }
 
@@ -1918,7 +1933,7 @@ createKeyPair()
   RC=$?
   if test $RC != 0; then
     # The most common error is that the keypair with the name already exists
-    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova keypair-delete $1
+    ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova keypair-delete $1
     return 1
   fi
   KEYPAIRS+=( "$1" )
@@ -1961,7 +1976,7 @@ createFIPs()
   createResources $NOAZS FIPSTATS FIP JHPORT NONE "" id $FIPTIMEOUT neutron floatingip-create --port-id \$VAL --description ${RPRE}JH\$no $EXTNET
   if test $? != 0 -o -n "$INJECTFIPERR"; then return 1; fi
   # Use API to tell VPC that the VIP is the next hop (route table)
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
+  ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   # Find out whether the router does SNAT ...
   RESP=$(ostackcmd_id external_gateway_info $NETTIMEOUT neutron router-show ${ROUTERS[0]})
@@ -1973,7 +1988,7 @@ createFIPs()
     SNAT=$(echo $STATE | sed 's/^[^,]*, "enable_snat": \([^ }]*\).*$/\1/')
   fi
   if test "$SNAT" = "false"; then
-    ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP
+    ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --routes type=dict list=true destination=0.0.0.0/0,nexthop=$VIP
   else
     echo "SNAT enabled already ($SNAT), no need to use SNAT instance via VIP"
   fi
@@ -1987,7 +2002,7 @@ createFIPs()
     SNATROUTE=1
   fi
   FLOAT=""
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 1
+  ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron floatingip-list || return 1
   for PORT in ${FIPS[*]}; do
     FLOAT+=" $(echo "$OSTACKRESP" | grep $PORT | sed "$FLOATEXTR")"
   done
@@ -1999,11 +2014,11 @@ createFIPs()
 deleteFIPs()
 {
   if test -n "$SNATROUTE" -a -n "${ROUTERS[0]}"; then
-    ostackcmd_tm NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --no-routes
+    ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron router-update ${ROUTERS[0]} --no-routes
     if test $? != 0; then
       echo -e "${YELLOW}ERROR: router --no-routes failed, retry ...${NORM}" 1>&2
       sleep 2
-      ostackcmd_tm NETSTATS $(($NETTIMEOUT+8)) neutron router-update ${ROUTERS[0]} --no-routes
+      ostackcmd_tm_retry NETSTATS $(($NETTIMEOUT+8)) neutron router-update ${ROUTERS[0]} --no-routes
     fi
   fi
   OLDFIPS=(${FIPS[*]})
@@ -2015,7 +2030,7 @@ deleteFIPs()
   deleteResources FIPSTATS FIP "" $FIPTIMEOUT neutron floatingip-delete
   # Extra treatment: Try again to avoid leftover FIPs
   # sleep 1
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 0
+  ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron floatingip-list || return 0
   local FIPSLEFT=""
   for FIP in ${OLDFIPS[*]}; do
     if echo "$OSTACKRESP" | grep "^| $FIP" >/dev/null 2>&1; then FIPSLEFT="$FIPSLEFT$FIP "; fi
@@ -2023,7 +2038,7 @@ deleteFIPs()
   if test -n "$FIPSLEFT"; then
     sendalarm 1 "Cleanup Floating IPs $FIPSLEFT again"
     #echo -e "${RED}Delete FIP again: $FIP${NORM}" 1>&2
-    ostackcmd_tm NETSTATS $FIPTIMEOUT neutron floatingip-delete $FIPSLEFT
+    ostackcmd_tm_retry NETSTATS $FIPTIMEOUT neutron floatingip-delete $FIPSLEFT
   fi
 }
 
@@ -2041,12 +2056,12 @@ calcRedirs()
   #  secondary port reshuffling and (b) PORTS needs to match VMS ordering
   # This is why we use orderVMs
   # Optimization: Do neutron port-list once and parse multiple times ...
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
+  ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
   if test ${#PORTS[*]} -gt 0; then
     declare -i ptn=222
     declare -i pi=0
     for port in ${PORTS[*]}; do
-      #ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show $port
+      #ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-show $port
       #echo -n "##DEBUG: $port: "
       #IP=$(extract_ip "$OSTACKRESP")
       if test -z "$OPENSTACKCLIENT"; then
@@ -2099,7 +2114,7 @@ if [[ "$IMG" = "openSUSE"* ]] || [[ "$IMG" = "SLES"* ]]; then IPERF3=iperf; else
 createJHVMs()
 {
   local IP STR odd ptn RD USERDATA JHNUM port
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
+  ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
   calcRedirs
   #echo "#DEBUG: cJHVM VIP $VIP REDIR ${REDIRS[*]}"
@@ -2145,7 +2160,7 @@ $RD
 collectPorts_Old()
 {
   local vm vmid ports port
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
+  ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
   #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'"
   #echo "#DEBUG: cP VMs ${VMS[*]}"
   if test -n "$SECONDNET" -a -z "$SECONDPORTS"; then COLLSECOND=1; else unset COLLSECOND; fi
@@ -2171,11 +2186,11 @@ collectPorts()
 {
   local vm vmid ipaddr ipaddr2 port port2
   if test -z "$OPENSTACKCLIENT"; then collectPorts_Old; return; fi
-  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc -f json -c Name -c ID -c Networks
+  ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc -f json -c Name -c ID -c Networks
   IPRESP="$OSTACKRESP"
   # FIXME: We could use the new reporting: -c ID -c "Fixed IP Addressess" -c "Device ID"
   # (but that does not help either to recover the lost device_id fields)
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
+  ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
   #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'\n\'$IPRESP\'"
   #echo "#DEBUG: cP VMs ${VMS[*]}"
   if test -n "$SECONDNET" -a -z "$SECONDPORTS"; then COLLSECOND=1; else unset COLLSECOND; fi
@@ -2334,14 +2349,14 @@ delPortsLBs()
   local ERR=0
   echo -n "Deleting ports of failed LBs "
   for LBAAS in ${REMLBAASS[*]}; do
-    ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show $LBAAS -f value -c vip_port_id
+    ostackcmd_tm_retry LBSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show $LBAAS -f value -c vip_port_id
     let ERR+=$?
     LBPORT=$OSTACKRESP
-    #ostackcmd_tm LBSTATS $NETTIMEOUT neutron port-show $LBPORT
+    #ostackcmd_tm_retry LBSTATS $NETTIMEOUT neutron port-show $LBPORT
     openstack port show $LBPORT >/dev/null 2>&1
     if test $? != 0; then echo -n "$LBAAS:ALREADY_DELETED "; continue; fi
     echo -n "$LBAAS:$LBPORT "
-    ostackcmd_tm LBSTATS $NETTIMEOUT neutron port-delete $LBPORT
+    ostackcmd_tm_retry LBSTATS $NETTIMEOUT neutron port-delete $LBPORT
     let ERR+=$?
   done
   echo
@@ -2443,7 +2458,7 @@ testLBs()
   # FIXME: We still get those occasional LB immutable errors -- how can we avoid this?
   # For now push member creation after FIP allocation
   # Assign a FIP to the LB
-  ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show ${LBAASS[0]} -f value -c vip_port_id
+  ostackcmd_tm_retry LBSTATS $NETTIMEOUT neutron lbaas-loadbalancer-show ${LBAASS[0]} -f value -c vip_port_id
   handleLBErr $? "ShowLB"
   LBPORT=$OSTACKRESP
   echo -n "Attach FIP to LB port $LBPORT: "
@@ -2477,7 +2492,7 @@ testLBs()
   LBDUR=$(echo "10*($ENTM-$STTM)" | bc -l)
   LBDUR=$(printf %.2f $LBDUR)
   log_grafana LBconn $NOVMS $LBDUR $LBCERR
-  ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
+  ostackcmd_tm_retry LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
   handleLBErr $? "PoolShow"
   echo " $OSTACKRESP"
   test "$OSTACKRESP" != "ONLINE" && handleLBErr 1 "OpStatusNotOnline"
@@ -2487,7 +2502,7 @@ testLBs()
   killhttp
   sleep $((1+WAITLB))
   # TODO: Test for degraded status of pool, ERROR for members
-  ostackcmd_tm LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
+  ostackcmd_tm_retry LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
   handleLBErr $? "PoolShow2"
   echo $OSTACKRESP
   test "$OSTACKRESP" != "DEGRADED" && handleLBErr 1 "OpStatusNotDegraded"
@@ -2614,7 +2629,7 @@ createVMsAll()
   declare -a STMS
   if test -n "$VMVOLSIZE"; then
     IMAGE="--block-device id=$IMGID,source=image,dest=volume,size=$VMVOLSIZE,shutdown=remove,bootindex=0"
-    ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder list -f value -c ID #-c Name # -c Status -c Size
+    ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder list -f value -c ID #-c Name # -c Status -c Size
     OLDVOLS="$OSTACKRESP"
     echo "#DEBUG: $(echo $OLDVOLS | wc -w) OLDVOLS"
   else
@@ -2634,7 +2649,7 @@ createVMsAll()
   done
   sleep 1
   # Collect VMIDs
-  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc
+  ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc
   orderVMs
   echo "${VMS[*]}"
   #collectPorts
@@ -2679,7 +2694,7 @@ createVMs()
 tagVols()
 {
   if test "$VOLNEEDSTAG" != "1"; then return $((NOVMS+NOAZS)); fi
-  ostackcmd_tm VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder list -c Attached
+  ostackcmd_tm_retry VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder list -c Attached
   OSTACKRESP=$(echo "$OSTACKRESP" | grep -v '^+' | grep -v '| ID' | sed -e 's/|$//' -e 's/ *| */,/g')
   COLL=""
   local natt
@@ -2701,7 +2716,7 @@ tagVols()
   for att in $COLL; do
     ID=${att%:*}
     NM=${att##*:}
-    ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder rename $NM $ID && let natt+=1
+    ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder rename $NM $ID && let natt+=1
   done
   return $natt
 }
@@ -2723,7 +2738,7 @@ dbgout()
 # Cleanup volumes created by nova but which did not get attached
 delUnattachedVols()
 {
-  ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder list -f value || return 1
+  ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder list -f value || return 1
   CAND=()
   while read id nm stat sz; do
     if test -z "$sz"; then sz="$stat"; stat="$nm"; nm=""; fi
@@ -2741,9 +2756,9 @@ delUnattachedVols()
   # TODO: Do sanity checking and filtering for img metadata and size
   if test ${#CAND[*]} -gt $RC; then echo "#ERROR: More new unatt. vols than errs, clean up not yet implemented" 1>&2; return 1; fi
   for idx in $(seq 0 $((${#CAND[*]}-1))); do
-    ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder rename ${RPRE}RootVol_VM_$loop_$idx ${CAND[$idx]}
+    ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder rename ${RPRE}RootVol_VM_$loop_$idx ${CAND[$idx]}
   done
-  #ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder delete ${CAND[*]}
+  #ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder delete ${CAND[*]}
 }
 
 # Wait for VMs to get into active state
@@ -2775,7 +2790,7 @@ deleteVMs()
     if test $? != 0; then
       echo -e "${YELLOW}ERROR: VM delete call returned error. Retrying ...$NORM" 1>&2
       sleep 2
-      ostackcmd_tm NOVABSTATS $(($NOVMS*$DEFTIMEOUT/2+$NOVABOOTTIMEOUT)) nova delete ${VMS[*]}
+      ostackcmd_tm_retry NOVABSTATS $(($NOVMS*$DEFTIMEOUT/2+$NOVABOOTTIMEOUT)) nova delete ${VMS[*]}
     fi
     for vm in $(seq 0 $((${#VMS[*]}-1))); do VMSTIME[$vm]=$DT; done
   else
@@ -2822,7 +2837,7 @@ config2ndNIC()
       pno=${red#*tcp,}
       pno=${pno%%,*}
       #echo -n " $pno "
-      ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-show ${SECONDPORTS[$st]}
+      ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-show ${SECONDPORTS[$st]}
       if test -n "$OPENSTACKCLIENT"; then
         IP=$(echo "$OSTACKRESP" | grep 'fixed_ips' | sed "s@^.*ip_address=$SQ\([^$SQ]*\)$SQ.*\$@\1@")
       else
@@ -2849,7 +2864,7 @@ reShuffle()
   # Attach
   echo -n "Detaching 2ndary ports ... "
   for no in `seq 0 $(($NOVMS-1))`; do
-    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova interface-detach ${VMS[$no]} ${SECONDPORTS[$no]}
+    ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova interface-detach ${VMS[$no]} ${SECONDPORTS[$no]}
     echo -n "."
   done
   echo " done. Now reshuffle ..."
@@ -2926,7 +2941,7 @@ wait222()
       if test -n "$LOGFILE"; then echo "nc $NCPROXY -w 2 ${FLOATS[$JHNO]} $pno" >> $LOGFILE; fi
       if test -n "$LOGFILE"; then
         vno=$((vmno*NOAZS+JHNO))
-        ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${VMS[$vno]}
+        ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova show ${VMS[$vno]}
       fi
       while [ $ctr -le $MAXWAIT ]; do
         echo "quit" | nc $NCPROXY -w 2 ${FLOATS[$JHNO]} $pno >/dev/null 2>&1 && break
@@ -2939,7 +2954,7 @@ wait222()
         let waiterr+=1; verr=1;
         # Calc no
         vno=$((vmno*NOAZS+JHNO))
-        ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${VMS[$vno]}
+        ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova show ${VMS[$vno]}
         STATUS=$(echo "$OSTACKRESP" | grep "^| *status *|" | sed -e "s/^| *status *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
         if test -z "$STATUS"; then STATUS=$(echo "$OSTACKRESP" | grep "^| *provisioning_status *|" | sed -e "s/^| *provisioning_status *| *\([^|]*\).*\$/\1/" -e 's/ *$//'); fi
         echo -n "$STATUS "
@@ -3049,7 +3064,7 @@ testjhinet()
     echo -n "Access JH$JHNO (${FLOATS[$JHNO]}): "
     if test -n "$LOGFILE"; then
       # Create info for the logfile
-      ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${JHVMS[$JHNO]}
+      ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova show ${JHVMS[$JHNO]}
     fi
     # Do wait up to 60s for ping
     declare -i ctr=0
@@ -3069,7 +3084,7 @@ testjhinet()
       let CUMPINGERRORS+=1; ERR="${ERR}ssh JH$JHNO ping $PINGTARGET || ping $PINGTARGET2; "
     fi
     if test $R != 0; then
-      ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${JHVMS[$JHNO]}
+      ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova show ${JHVMS[$JHNO]}
       ERR="${ERR}openstack server show ${JHVMS[$JHNO]}
 $OSTACKRESP
 "
@@ -3142,7 +3157,7 @@ testsnat()
       testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
       RC=$?
       if test $RC != 0; then
-        ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${VMS[$no]}
+        ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova show ${VMS[$no]}
       fi
       if test $RC == 2; then
         ERRJH[$JHNO]="${ERRJH[$JHNO]}$red "
@@ -3226,7 +3241,7 @@ exit \$((RETRIES+FAILS))
 EOT
   chmod +x ${RPRE}ping
   # collect all IPs
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
+  ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
   IPS=()
   NP=${#PORTS[*]}
   for pno in $(seq 0 $(($NP-1))); do
@@ -3449,14 +3464,14 @@ findFIPs()
 {
   FIPRESP="$OSTACKRESP"
   EP="$NEUTRON_EP"
-  ostackcmd_tm NETSTATS $NETTIMEOUT myopenstack port list --network ${JHNETS[0]} --sort-column Name
+  ostackcmd_tm_retry NETSTATS $NETTIMEOUT myopenstack port list --network ${JHNETS[0]} --sort-column Name
   JHPORTS=()
   while read ln; do
     PORT=$(echo "$ln" | sed 's/^| \([0-9a-f-]*\) .*$/\1/')
     JHPORTS+=$PORT
   done < <(echo "$OSTACKRESP")
   #echo -n " JHPorts(${#JHPORTS[*]}): ${JHPORTS[*]}"
-  ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list
+  ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron floatingip-list
   FIPS=(); FLOATS=()
   for fno in $(seq 0 $((${#JHPORTS[*]}-1))); do
     #echo -en "\nneutron floatingip-list | grep -e \"${JHPORTS[$fno]}\": "
@@ -3512,14 +3527,14 @@ collectRes()
   if test -n "$SECONDNETS"; then SECONDNET=1; fi
   #SECONDPORTS=( $(findres ${RPRE}Port2_VM neutron port-list) )
   #if test -n "$SECONDPORTS"; then SECONDNET=1; SECONDPORTS=(); fi
-  #ostackcmd_tm NETSTATS $NETTIMEOUT neutron floatingip-list || return 1
+  #ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron floatingip-list || return 1
   #FIPS=( $(echo "$OSTACKRESP" | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   #if test "${#FIPS[*]} != ${NOAZS[*]}"; then filterFIPs; fi
   findFIPs
   #echo "FIPS: ${FIPS[*]}, FLOATS: ${FLOATS[*]}"
   echo -n " ${#FLOATS[*]} Floats (${FLOATS[*]}) "
   #VMS=( $(findres ${RPRE}VM_VM nova list --sort display_name:asc) )
-  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc
+  ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova list --sort display_name:asc
   orderVMs
   NOVMS=${#VMS[*]}
   echo " $NOVMS VMs "
@@ -3530,7 +3545,7 @@ collectRes()
   calcRedirs
   if test ${#VMS[*]} -gt 0; then
     # Determine batch mode
-    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova show ${VMS[0]}
+    ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova show ${VMS[0]}
     if echo "$OSTACKRESP" | grep -e 'metadata' | grep '"deployment": "cfbatch"' >/dev/null 2>&1; then BOOTALLATONCE=1; fi
     # openstack server list output is slightly different
     if echo "$OSTACKRESP" | grep -e 'properties' | grep "deployment='cfbatch'" >/dev/null 2>&1; then BOOTALLATONCE=1; fi
@@ -3645,7 +3660,7 @@ waitnetgone()
   deleteVMs
   ROUTERS=( $(findres "" neutron router-list) )
   # Floating IPs don't have a name and are thus hard to associate with us
-  ostackcmd_tm NETSTATS $FIPTIMEOUT neutron floatingip-list
+  ostackcmd_tm_retry NETSTATS $FIPTIMEOUT neutron floatingip-list
   if test -n "$CLEANALLFIPS"; then
     FIPS=( $(echo "$OSTACKRESP" | grep '[0-9]\{1,3\}\.[0-9]\{1,3\}\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   elif test -n "${OLDFIPS[*]}"; then
@@ -3662,7 +3677,7 @@ waitnetgone()
   waitdelVMs; deleteVols
   JHVOLUMES=( $(findres ${RPRE}RootVol_JH cinder list) ); DJHVOLS=(${JHVOLUMES[*]})
   waitdelJHVMs; deleteJHVols
-  ostackcmd_tm NOVASTATS $DEFTIMEOUT nova keypair-list
+  ostackcmd_tm_retry NOVASTATS $DEFTIMEOUT nova keypair-list
   KEYPAIRS=( $(echo "$OSTACKCMD" | grep $RPRE | sed 's/^| *\([^ ]*\) *|.*$/\1/') ); DKPS=(${KEYPAIRS[*]})
   deleteKeypairs
   if test -n "$DVMS$DFIPS$DJHVMS$DKPS$DVOL$DJHVOLS"; then
@@ -3739,7 +3754,7 @@ getPublicEP()
 TOKEN=""
 getToken()
 {
-  ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack catalog list -f json
+  ostackcmd_tm_retry KEYSTONESTATS $DEFTIMEOUT openstack catalog list -f json
   NOVA_EP=$(getPublicEP nova)
   CINDER_EP=$(getPublicEP cinderv3)
   if test -z "$CINDER_EP"; then CINDER_EP=$(getPublicEP cinderv2); fi
@@ -3752,7 +3767,7 @@ getToken()
   if test -z "$OCTAVIA_EP"; then OCTAVIA_EP="$NEUTRON_EP"; fi
   if test -z "$SWIFT_EP"; then SWIFT_EP=$(getPublicEP radosgw-swift); fi
   #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP"
-  ostackcmd_tm KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
+  ostackcmd_tm_retry KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
   TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')
   #echo "TOKEN: {SHA1}$(echo $TOKEN | sha1sum)"
   PROJECT=$(echo "$OSTACKRESP" | jq '.project_id' | tr -d '"')
@@ -4040,6 +4055,7 @@ elif test "$1" = "CONNTEST"; then
    if test -n "$RESHUFFLE" -a -n "$STARTRESHUFFLE"; then reShuffle; fi
    fullconntest
    #if test $? != 0; then exit 4; fi
+   log_grafana ping stats $FPRETRY $FPERR
    if test $FPERR -gt 0; then
      PINGERRORS+=$FPERR
      sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
@@ -4049,11 +4065,10 @@ elif test "$1" = "CONNTEST"; then
    elif test $FPRETRY != 0; then
      echo -e "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
    fi
-   log_grafana ping errors 1 $FPERR
-   log_grafana ping retries 1 $FPRETRY
    if test -n "$RESHUFFLE"; then
      reShuffle
      fullconntest
+     log_grafana ping stats $FPRETRY $FPERR
      if test $FPERR -gt 0; then
        PINGERRORS+=$FPERR
        sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
@@ -4088,7 +4103,7 @@ else # test "$1" = "DEPLOY"; then
  if test -z "$IMGID" -o "$IMG" == "0"; then sendalarm 1 "No image $IMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
  let APICALLS+=2
  # Retrieve root volume size
- ostackcmd_tm GLANCESTATS $GLANCETIMEOUT glance image-show -f json $JHIMGID
+ ostackcmd_tm_retry GLANCESTATS $GLANCETIMEOUT glance image-show -f json $JHIMGID
  if test $? != 0; then
   let APIERRORS+=1; sendalarm 1 "glance image-show failed" "" $GLANCETIMEOUT
   errwait $ERRWAIT
@@ -4103,7 +4118,7 @@ else # test "$1" = "DEPLOY"; then
   JHVOLSIZE=$(($MD+$ADDJHVOLSIZE))
   if test -n "$USER" -a "$USER" != "null"; then JHDEFLTUSER="$USER"; fi
  fi
- ostackcmd_tm GLANCESTATS $GLANCETIMEOUT glance image-show -f json $IMGID
+ ostackcmd_tm_retry GLANCESTATS $GLANCETIMEOUT glance image-show -f json $IMGID
  if test $? != 0; then
   let APIERRORS+=1; sendalarm 1 "glance image-show failed" "" $GLANCETIMEOUT
  else
@@ -4117,7 +4132,7 @@ else # test "$1" = "DEPLOY"; then
  fi
  #let APICALLS+=2
  # Check VM flavor
- ostackcmd_tm NOVASTATS $NOVATIMEOUT nova flavor-show -f json $FLAVOR
+ ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova flavor-show -f json $FLAVOR
  if test $? != 0; then
   let APIERRORS+=1; sendalarm 1 "nova flavor-show $FLAVOR failed" "" $NOVATIMEOUT; exit 1
  else
@@ -4217,11 +4232,13 @@ else # test "$1" = "DEPLOY"; then
                   elif test $FPRETRY != 0; then
                    echo -e "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
                   fi
+                  log_grafana ping stats $FPRETRY $FPERR
                   if test -n "$SECONDNET" -a -n "$RESHUFFLE"; then
                     reShuffle
                     fullconntest
                     if test $FPERR -gt 0; then
                       PINGERRORS+=$FPERR
+                      log_grafana ping stats $FPRETRY $FPERR
                       sendalarm 2 "Connectivity errors" "$FPERR + $FPRETRY\n$ERR" 5
                       errwait $ERRWAIT
                     fi
