@@ -2741,7 +2741,7 @@ delUnattachedVols()
   # TODO: Do sanity checking and filtering for img metadata and size
   if test ${#CAND[*]} -gt $RC; then echo "#ERROR: More new unatt. vols than errs, clean up not yet implemented" 1>&2; return 1; fi
   for idx in $(seq 0 $((${#CAND[*]}-1))); do
-    ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder rename ${RPRE}BootVol_VM_$idx ${CAND[$idx]}
+    ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder rename ${RPRE}BootVol_VM_$loop_$idx ${CAND[$idx]}
   done
   #ostackcmd_tm VOLSTATS $CINDERTIMEOUT cinder delete ${CAND[*]}
 }
