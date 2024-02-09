@@ -2737,6 +2737,7 @@ dbgout()
 # Cleanup volumes created by nova but which did not get attached
 delUnattachedVols()
 {
+  local MISS=$1
   ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder list -f value || return 1
   CAND=()
   while read id nm stat sz; do
@@ -2751,10 +2752,10 @@ delUnattachedVols()
     CAND[${#CAND[*]}]=$id
     dbgout "added"
   done < <(echo "$OSTACKRESP")
-  echo "#DEBUG: Found ${#CAND[*]} unatt new vols for $RC errors: ${CAND[*]}" 1>&2
+  echo "#DEBUG: Found ${#CAND[*]} unatt new vols for $MISS errors: ${CAND[*]}" 1>&2
   if test ${#CAND[*]} -eq 0; then return 0; fi
   # TODO: Do sanity checking and filtering for img metadata and size
-  if test ${#CAND[*]} -gt $RC; then echo "#ERROR: More new unatt. vols than errs, clean up not yet implemented" 1>&2; return 1; fi
+  if test ${#CAND[*]} -gt $MISS; then echo "#ERROR: More new unatt. vols than errs, clean up not yet implemented" 1>&2; return 1; fi
   for idx in $(seq 0 $((${#CAND[*]}-1))); do
     ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder rename ${RPRE}RootVol_VM_$loop_$idx ${CAND[$idx]}
   done
