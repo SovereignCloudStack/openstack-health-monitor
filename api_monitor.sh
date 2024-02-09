@@ -4132,6 +4132,8 @@ elif test "$1" = "CONNTEST"; then
    elif test $FPRETRY != 0; then
      echo -e "${YELLOW}Warning:${NORM} Needed $FPRETRY ping retries"
    fi
+   log_grafana ping errors 1 $FPERR
+   log_grafana ping retries 1 $FPRETRY
    if test -n "$RESHUFFLE"; then
      reShuffle
      fullconntest
