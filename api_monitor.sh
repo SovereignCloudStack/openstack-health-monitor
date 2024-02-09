@@ -1114,13 +1114,13 @@ ostackcmd_tm()
 ostackcmd_tm_retry()
 {
   ostackcmd_tm "$@"
-  RC=$?
-  if test $RC != 0; then
+  local RRC=$?
+  if test $RRC != 0; then
     sleep 2
     ostackcmd_tm "$@"
-    RC=$?
+    RRC=$?
   fi
-  return $RC
+  return $RRC
 }
 
 
@@ -2689,16 +2689,15 @@ createVMs()
   return $RC
 }
 
-# tag volumes
-# $1 => run
-tagVols()
+# assign names to volumes
+# $1 => attempt
+nameVols()
 {
   if test "$VOLNEEDSTAG" != "1"; then return $((NOVMS+NOAZS)); fi
-  ostackcmd_tm_retry VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder list -c Attached
+  ostackcmd_tm_retry VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder list -c Attached || return 0
   OSTACKRESP=$(echo "$OSTACKRESP" | grep -v '^+' | grep -v '| ID' | sed -e 's/|$//' -e 's/ *| */,/g')
-  COLL=""
-  local natt
-  natt=0
+  local COLL=""
+  local natt=0
   while read line; do
     id=$(echo "$line" | cut -d "," -f 2)
     nm=$(echo "$line" | cut -d "," -f 3)
@@ -2745,7 +2744,8 @@ delUnattachedVols()
     dbgout -n "#DEBUG: \"$id\" \"$nm\" \"$stat\" \"$z\": "
     # Filter out vols with names or with wrong size
     if test -n "$nm"; then dbgout named; continue; fi
-    if test "$stat" != "available"; then dbgout "not available"; continue; fi
+    #if test "$stat" == "in-use" -o "$stat" == "deleting"; then dbgout "in-use or deleting"; continue; fi
+    if test "$stat" != "available" -a "$stat" != "downloading" -a "$stat" != "creating"; then dbgout "not available, downloading, creating"; continue; fi
     if test "$sz" != "$VMVOLSIZE"; then dbgout "!= $VMVOLSIZE"; continue; fi
     if inList $id "$OLDVOLS"; then dbgout "preexist"; continue; fi
     CAND[${#CAND[*]}]=$id
@@ -2764,17 +2764,17 @@ delUnattachedVols()
 # Wait for VMs to get into active state
 waitVMs()
 {
-  tagVols 1
+  nameVols 1
   tagged=$?
-  if test "$tagged" != $((NOVMS+NOAZS)) -a $tagged -gt $NOAZS; then sleep 2; tagVols 2; tagged=$?; fi
+  if test "$tagged" != $((NOVMS+NOAZS)) -a $tagged -gt $NOAZS; then sleep 2; nameVols 2; tagged=$?; fi
   #waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" $NOVATIMEOUT nova show
   waitlistResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
   handleWaitErr "VMs" NOVASTATS $NOVATIMEOUT nova show
-  RC=$?
-  if test "$tagged" != $((NOVMS+NOAZS)); then tagVols 3; tagged=$?; fi
+  local VRC=$?
+  if test "$tagged" != $((NOVMS+NOAZS)); then nameVols 3; tagged=$?; fi
   if test "$tagged" != $((NOVMS+NOAZS)); then echo "ERROR: Tagged volume number incorrect: $tagged != $((NOVMS+NOAZS))" 1>&2; fi
-  if test $RC != 0 -a -n "$VMVOLSIZE"; then delUnattachedVols $RC; fi
-  return $RC
+  if test $VRC != 0 -a -n "$VMVOLSIZE"; then delUnattachedVols $VRC; fi
+  return $VRC
 }
 
 # Remove VMs (one by one or by batch if we created in batches)
