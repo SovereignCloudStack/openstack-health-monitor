@@ -2804,7 +2804,7 @@ dbgout()
 }
 
 # Cleanup volumes created by nova but which did not get attached
-namelUnattachedVols()
+nameUnattachedVols()
 {
   local MISS=$1
   ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder list -f value || return 1
