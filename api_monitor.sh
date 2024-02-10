@@ -3380,7 +3380,7 @@ done
 exit 1
 EOT
   chmod +x ${RPRE}wait
-  # Do tests from 2nd host in 1st net and connect to 1st hosts in 1st/2nd/... net
+  # Do tests from last host in net and connect to 1st hosts in 1st/2nd/... net
   #calcRedirs
   red=${REDIRS[$((NOAZS-1))]}
   #red=$(echo $red | cut -d " " -f $((NONETS+1)))
@@ -3393,7 +3393,14 @@ EOT
   echo -n "IPerf3 tests:"
   for VM in $(seq 0 $((NONETS-1))); do
     TGT=${IPS[$VM]}
+    if test -z "$TGT"; then TGT=${IPS[$(($VM+$NONETS))]}; fi
     SRC=${IPS[$(($VM+$NOVMS-$NONETS))]}
+    if test -z "$SRC"; then SRC=${IPS[$(($VM+$NOVMS-2*$NONETS))]}; fi
+    if test -z "$SRC" -o -z "$TGT" -o "$SRC" = "$TGT"; then
+      echo "#ERROR: Skip test $SRC <-> $TGT"
+      if test -n "$LOGFILE"; then echo "IPerf3: ${SRC}-${TGT}: skipped" >>$LOGFILE; fi
+      continue
+    fi
     FLT=${FLOATS[$(($VM%$NOAZS))]}
     #echo -n "Test ($SRC,$(($VM+$NOVMS-$NONETS)),$FLT/$pno)->$TGT: "
     scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]} -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
@@ -3415,7 +3422,7 @@ EOT
     HUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.host_total'))
     RUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.remote_total'))
     echo -e " ${SRC} <-> ${TGT}: ${BOLD}$SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL${NORM}"
-    if test -n "$LOGFILE"; then echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
+    if test -n "$LOGFILE"; then echo -e "IPerf3: ${SRC}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
     BANDWIDTH+=($SENDBW $RECVBW)
     SBW=$(echo "scale=2; $SENDBW/1000" | bc -l)
     RBW=$(echo "scale=2; $RECVBW/1000" | bc -l)
