@@ -1631,7 +1631,7 @@ $OSTACKRESP"
   # Change in 1.74: Just generate an alarm here unless $1 == ""
   # Before, we left it to the caller
   if test -n "$WAITERRPREFIX"; then
-    sendalarm $RETV "Error waiting for $WAITERRPREFIX" "$WAITERRSTR"
+    sendalarm $RETV "Error waiting for $WAITERRPREFIX" "$WAITERRSTR" 0
   fi
   return $RETV
 }
