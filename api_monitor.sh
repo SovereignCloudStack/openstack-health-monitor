@@ -2771,7 +2771,7 @@ nameVols()
     nm=$(echo "$line" | cut -d "," -f 3)
     att=$(echo "$line" | cut -d "," -f 6)
     if test -z "$att"; then continue; fi
-    NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_VM_\([^ ]*\) .*$/\1_RootVol_\2/')
+    NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_\(VM\|JH\)_\([^ ]*\) .*$/\1_RootVol_\3/')
     if [[ "$NM" != APIMonitor* ]]; then
       NM=$(echo "$att" | sed "s/^Attached to \([0-9a-f\-]*\) .*\$/${RPRE}RootVol_\1/")
       if test -n "$nm"; then let natt+=1; continue; fi
@@ -2811,7 +2811,7 @@ nameUnattachedVols()
   CAND=()
   while read id nm stat sz; do
     if test -z "$sz"; then sz="$stat"; stat="$nm"; nm=""; fi
-    dbgout -n "#DEBUG: \"$id\" \"$nm\" \"$stat\" \"$z\": "
+    dbgout -n "#DEBUG: \"$id\" \"$nm\" \"$stat\" \"$sz\": "
     # Filter out vols with names or with wrong size
     if test -n "$nm"; then dbgout named; continue; fi
     #if test "$stat" == "in-use" -o "$stat" == "deleting"; then dbgout "in-use or deleting"; continue; fi
