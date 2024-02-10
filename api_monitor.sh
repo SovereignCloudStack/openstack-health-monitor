@@ -2757,7 +2757,8 @@ createVMs()
 }
 
 # assign names to volumes
-# $1 => attempt
+# $1 => attempt (for reporting)
+# retval => number of names assigned
 nameVols()
 {
   if test "$VOLNEEDSTAG" != "1"; then return $((NOVMS+NOAZS)); fi
@@ -2769,16 +2770,17 @@ nameVols()
     id=$(echo "$line" | cut -d "," -f 2)
     nm=$(echo "$line" | cut -d "," -f 3)
     att=$(echo "$line" | cut -d "," -f 6)
-    if test -n "$nm"; then let natt+=1; continue; fi
     if test -z "$att"; then continue; fi
     NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_VM_\([^ ]*\) .*$/\1_RootVol_\2/')
     if [[ "$NM" != APIMonitor* ]]; then
       NM=$(echo "$att" | sed "s/^Attached to \([0-9a-f\-]*\) .*\$/${RPRE}RootVol_\1/")
+      if test -n "$nm"; then let natt+=1; continue; fi
     fi
+    if test -n "$nm"; then continue; fi
     COLL="$COLL $id:$NM"
   done < <(echo "$OSTACKRESP")
   COLL="${COLL# }"
-  if test -n "$COLL"; then echo "# DEBUG: Attach names to Volumes $1: $COLL" 1>&2; fi
+  if test -n "$COLL"; then echo "#DEBUG: Attach names to Volumes $1: $COLL" 1>&2; fi
   for att in $COLL; do
     ID=${att%:*}
     NM=${att##*:}
@@ -2802,7 +2804,7 @@ dbgout()
 }
 
 # Cleanup volumes created by nova but which did not get attached
-delUnattachedVols()
+namelUnattachedVols()
 {
   local MISS=$1
   ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder list -f value || return 1
@@ -2840,8 +2842,8 @@ waitVMs()
   handleWaitErr "VMs" NOVASTATS $NOVATIMEOUT nova show
   local VRC=$?
   if test "$tagged" != $((NOVMS+NOAZS)); then nameVols 3; tagged=$?; fi
-  if test "$tagged" != $((NOVMS+NOAZS)); then echo "ERROR: Tagged volume number incorrect: $tagged != $((NOVMS+NOAZS))" 1>&2; fi
-  if test $VRC != 0 -a -n "$VMVOLSIZE"; then delUnattachedVols $VRC; fi
+  if test "$tagged" != $((NOVMS+NOAZS)); then echo "#WARN: Tagged volume number incorrect: $tagged != $((NOVMS+NOAZS))" 1>&2; fi
+  if test $VRC != 0 -a -n "$VMVOLSIZE"; then nameUnattachedVols $VRC; fi
   return $VRC
 }
 
