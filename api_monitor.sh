@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.96
+VERSION=1.97
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -1631,7 +1631,7 @@ $OSTACKRESP"
   # Change in 1.74: Just generate an alarm here unless $1 == ""
   # Before, we left it to the caller
   if test -n "$WAITERRPREFIX"; then
-    sendalarm $RETV "Error waiting for $WAITERRPREFIX" "$WAITERRSTR"
+    sendalarm $RETV "Error waiting for $WAITERRPREFIX" "$WAITERRSTR" 0
   fi
   return $RETV
 }
@@ -2460,6 +2460,7 @@ killhttp()
     #echo "DEBUG: $i: ${VMINFO[*]}"
     #testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
     echo -n "$i: ${VMINFO[6]}[${VMINFO[2]}]}:${VMINFO[7]} (${VMINFO[5]}/${VMINFO[8]}) "
+    if test -z ${VMINFO[8]}; then echo -n "X "; continue; fi
     HOSTN=$(ssh -i $DATADIR/${KEYPAIRS[1]} -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3")
     if test $? == 0; then echo -n "($HOSTN) "; else echo -n "ERROR "; fi
     #ssh -i $DATADIR/${KEYPAIRS[1]} -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3"
@@ -2756,7 +2757,8 @@ createVMs()
 }
 
 # assign names to volumes
-# $1 => attempt
+# $1 => attempt (for reporting)
+# retval => number of names assigned
 nameVols()
 {
   if test "$VOLNEEDSTAG" != "1"; then return $((NOVMS+NOAZS)); fi
@@ -2768,16 +2770,19 @@ nameVols()
     id=$(echo "$line" | cut -d "," -f 2)
     nm=$(echo "$line" | cut -d "," -f 3)
     att=$(echo "$line" | cut -d "," -f 6)
-    if test -n "$nm"; then let natt+=1; continue; fi
     if test -z "$att"; then continue; fi
-    NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_VM_\([^ ]*\) .*$/\1_RootVol_\2/')
+    NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_\(VM_\|JH\)\([^ ]*\) .*$/\1_RootVol_\3/')
     if [[ "$NM" != APIMonitor* ]]; then
       NM=$(echo "$att" | sed "s/^Attached to \([0-9a-f\-]*\) .*\$/${RPRE}RootVol_\1/")
     fi
+    if [[ "$NM" == APIMonitor* ]]; then
+      if test -n "$nm"; then let natt+=1; continue; fi
+    fi
+    if test -n "$nm"; then continue; fi
     COLL="$COLL $id:$NM"
   done < <(echo "$OSTACKRESP")
   COLL="${COLL# }"
-  if test -n "$COLL"; then echo "# DEBUG: Attach names to Volumes $1: $COLL" 1>&2; fi
+  if test -n "$COLL"; then echo "#DEBUG: Attach names to Volumes $1: $COLL" 1>&2; fi
   for att in $COLL; do
     ID=${att%:*}
     NM=${att##*:}
@@ -2801,14 +2806,14 @@ dbgout()
 }
 
 # Cleanup volumes created by nova but which did not get attached
-delUnattachedVols()
+nameUnattachedVols()
 {
   local MISS=$1
   ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder list -f value || return 1
   CAND=()
   while read id nm stat sz; do
     if test -z "$sz"; then sz="$stat"; stat="$nm"; nm=""; fi
-    dbgout -n "#DEBUG: \"$id\" \"$nm\" \"$stat\" \"$z\": "
+    dbgout -n "#DEBUG: \"$id\" \"$nm\" \"$stat\" \"$sz\": "
     # Filter out vols with names or with wrong size
     if test -n "$nm"; then dbgout named; continue; fi
     #if test "$stat" == "in-use" -o "$stat" == "deleting"; then dbgout "in-use or deleting"; continue; fi
@@ -2839,8 +2844,8 @@ waitVMs()
   handleWaitErr "VMs" NOVASTATS $NOVATIMEOUT nova show
   local VRC=$?
   if test "$tagged" != $((NOVMS+NOAZS)); then nameVols 3; tagged=$?; fi
-  if test "$tagged" != $((NOVMS+NOAZS)); then echo "ERROR: Tagged volume number incorrect: $tagged != $((NOVMS+NOAZS))" 1>&2; fi
-  if test $VRC != 0 -a -n "$VMVOLSIZE"; then delUnattachedVols $VRC; fi
+  if test "$tagged" != $((NOVMS+NOAZS)); then echo "#WARN: Tagged volume number incorrect: $tagged != $((NOVMS+NOAZS))" 1>&2; fi
+  if test $VRC != 0 -a -n "$VMVOLSIZE"; then nameUnattachedVols $VRC; fi
   return $VRC
 }
 
@@ -3380,7 +3385,7 @@ done
 exit 1
 EOT
   chmod +x ${RPRE}wait
-  # Do tests from 2nd host in 1st net and connect to 1st hosts in 1st/2nd/... net
+  # Do tests from last host in net and connect to 1st hosts in 1st/2nd/... net
   #calcRedirs
   red=${REDIRS[$((NOAZS-1))]}
   #red=$(echo $red | cut -d " " -f $((NONETS+1)))
@@ -3393,7 +3398,14 @@ EOT
   echo -n "IPerf3 tests:"
   for VM in $(seq 0 $((NONETS-1))); do
     TGT=${IPS[$VM]}
+    if test -z "$TGT"; then TGT=${IPS[$(($VM+$NONETS))]}; fi
     SRC=${IPS[$(($VM+$NOVMS-$NONETS))]}
+    if test -z "$SRC"; then SRC=${IPS[$(($VM+$NOVMS-2*$NONETS))]}; fi
+    if test -z "$SRC" -o -z "$TGT" -o "$SRC" = "$TGT"; then
+      echo "#ERROR: Skip test $SRC <-> $TGT"
+      if test -n "$LOGFILE"; then echo "IPerf3: ${SRC}-${TGT}: skipped" >>$LOGFILE; fi
+      continue
+    fi
     FLT=${FLOATS[$(($VM%$NOAZS))]}
     #echo -n "Test ($SRC,$(($VM+$NOVMS-$NONETS)),$FLT/$pno)->$TGT: "
     scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]} -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
@@ -3415,7 +3427,7 @@ EOT
     HUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.host_total'))
     RUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.remote_total'))
     echo -e " ${SRC} <-> ${TGT}: ${BOLD}$SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL${NORM}"
-    if test -n "$LOGFILE"; then echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
+    if test -n "$LOGFILE"; then echo -e "IPerf3: ${SRC}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
     BANDWIDTH+=($SENDBW $RECVBW)
     SBW=$(echo "scale=2; $SENDBW/1000" | bc -l)
     RBW=$(echo "scale=2; $RECVBW/1000" | bc -l)
