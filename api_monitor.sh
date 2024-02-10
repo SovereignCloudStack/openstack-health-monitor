@@ -2771,9 +2771,11 @@ nameVols()
     nm=$(echo "$line" | cut -d "," -f 3)
     att=$(echo "$line" | cut -d "," -f 6)
     if test -z "$att"; then continue; fi
-    NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_\(VM\|JH\)_\([^ ]*\) .*$/\1_RootVol_\3/')
+    NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_\(VM_\|JH\)\([^ ]*\) .*$/\1_RootVol_\3/')
     if [[ "$NM" != APIMonitor* ]]; then
       NM=$(echo "$att" | sed "s/^Attached to \([0-9a-f\-]*\) .*\$/${RPRE}RootVol_\1/")
+    fi
+    if [[ "$NM" == APIMonitor* ]]; then
       if test -n "$nm"; then let natt+=1; continue; fi
     fi
     if test -n "$nm"; then continue; fi
