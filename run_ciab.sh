@@ -8,7 +8,8 @@
 export JHIMG="openSUSE 15.5"
 #export ADDJHVOLSIZE=2
 #export IMG="Ubuntu 20.04"
-export IMG="openSUSE 15.5 raw"
+#export IMG="openSUSE 15.5 raw"
+export IMG="openSUSE 15.5"
 #export IMG="CentOS 8"
 # DEFLTUSER from image_original_user property
 #export DEFLTUSER=opensuse
@@ -39,7 +40,7 @@ export DEFAULTNAMESERVER="true"
 export EMAIL_PARAM=${EMAIL_PARAM:-"scs@garloff.de"}
 
 # Ensure that all commands find custom CA
-export OS_CACERT=/etc/ca-cert-ciab.pem
+export OS_CACERT=/etc/ca-cert-ciab.crt
 
 # Notifications & Alarms (pass as list, arrays can't be exported)
 ALARM_EMAIL_ADDRESSES="scs@garloff.de"
@@ -94,6 +95,6 @@ done
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
 #exec api_monitor.sh -o -C -D -N 2 -n 8 -s -e sender@domain.org "$@"
 #exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -a 2 -t -T -R "$@"
-exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -LL -b -B -a 2 -t -T -R -S ciab "$@"
+exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -LO -b -B -a 2 -t -T -R -S ciab "$@"
 #exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -b -B -a 2 -t -T -R -S wavestack1 "$@"
 
