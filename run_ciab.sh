@@ -39,7 +39,7 @@ export DEFAULTNAMESERVER="true"
 
 export EMAIL_PARAM=${EMAIL_PARAM:-"scs@garloff.de"}
 
-# Ensure that all commands find custom CA
+# Ensure that all commands find custom CA, place the custom CiaB CA cert here:
 export OS_CACERT=/etc/ca-cert-ciab.crt
 
 # Notifications & Alarms (pass as list, arrays can't be exported)
