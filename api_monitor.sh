@@ -128,7 +128,7 @@ SHPRJ="${OS_PROJECT_NAME%_Project}"
 ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_REGION_NAME}/${SHPRJ#*_}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
 GRAFANANM="${GRAFANANM:-api-monitoring}"
-WAITLB=${WAITLB:-15}
+WAITLB=${WAITLB:-16}
 KPTYPE=${KPTYPE:-rsa}
 
 # Number of VMs and networks
@@ -473,8 +473,8 @@ patch_openstackclient()
 {
   ostclient=`type -p openstack`
   srvfile=`dirname $ostclient`
-  srvfile=`ls ${srvfile%/*}/lib/python3.*/site-packages/openstackclient/compute/v2/server.py`
-  if ! test -r $srvfile; then echo "INFO: Can not patch openstackclient $srvfile" 2>&1; return; fi
+  srvfile=`ls ${srvfile%/*}/lib/python3.*/site-packages/openstackclient/compute/v2/server.py 2>/dev/null`
+  if ! test -r "$srvfile"; then echo "INFO: Can not patch openstackclient $srvfile" 2>&1; return; fi
   if grep -A1 'disk_group = parser.add_mutually_excl' $srvfile 2>/dev/null | grep 'required=True' 2>/dev/null >/dev/null; then
     echo "INFO: patching openstackclient $srvfile ..."
     sudo cp -p $srvfile $srvfile.orig
@@ -2567,13 +2567,14 @@ testLBs()
   if test -z "$SKIPKILLLB"; then
   echo -n "Kill backends: "
   killhttp
-  sleep $((1+WAITLB))
+  echo -n " wait ... "
+  sleep $((2+WAITLB))
   # TODO: Test for degraded status of pool, ERROR for members
   ostackcmd_tm_retry LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
   handleLBErr $? "PoolShow2"
   echo $OSTACKRESP
   test "$OSTACKRESP" != "DEGRADED" && handleLBErr 1 "OpStatusNotDegraded"
-  echo -n "Retest LB at $LBIP (after $((1+WAITLB)) s):"
+  echo -n "Retest LB at $LBIP (after $((2+WAITLB)) s):"
   LBCERR=0
   STTM=$(date +%s.%N)
   # Access LB NOVMS times (RR -> each server gets one request)
