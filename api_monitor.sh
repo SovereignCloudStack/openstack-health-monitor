@@ -128,7 +128,7 @@ SHPRJ="${OS_PROJECT_NAME%_Project}"
 ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_REGION_NAME}/${SHPRJ#*_}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
 GRAFANANM="${GRAFANANM:-api-monitoring}"
-WAITLB=${WAITLB:-15}
+WAITLB=${WAITLB:-16}
 KPTYPE=${KPTYPE:-rsa}
 
 # Number of VMs and networks
@@ -2567,13 +2567,14 @@ testLBs()
   if test -z "$SKIPKILLLB"; then
   echo -n "Kill backends: "
   killhttp
-  sleep $((1+WAITLB))
+  echo -n " wait ... "
+  sleep $((2+WAITLB))
   # TODO: Test for degraded status of pool, ERROR for members
   ostackcmd_tm_retry LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
   handleLBErr $? "PoolShow2"
   echo $OSTACKRESP
   test "$OSTACKRESP" != "DEGRADED" && handleLBErr 1 "OpStatusNotDegraded"
-  echo -n "Retest LB at $LBIP (after $((1+WAITLB)) s):"
+  echo -n "Retest LB at $LBIP (after $((2+WAITLB)) s):"
   LBCERR=0
   STTM=$(date +%s.%N)
   # Access LB NOVMS times (RR -> each server gets one request)
