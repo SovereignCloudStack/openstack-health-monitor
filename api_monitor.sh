@@ -4033,7 +4033,7 @@ echo " Send alarms to ${ALARM_EMAIL_ADDRESSES[@]} ${ALARM_MOBILE_NUMBERS[@]}"
 echo " Send  notes to ${NOTE_EMAIL_ADDRESSES[@]} ${NOTE_MOBILE_NUMBERS[@]}"
 
 # MAIN LOOP
-while test $loop != $MAXITER -a -z "$INTERRUPTED"; do
+while test $loop != $MAXITER -a -z "$INTERRUPTED" -a ! -e stop-os-hm; do
 
 declare -i PINGERRORS=0
 declare -i APIERRORS=0
@@ -4455,7 +4455,7 @@ CDATE=$(date +%Y-%m-%d)
 CTIME=$(date +%H:%M:%S)
 if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn ERRORS"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
 if test -n "$LOADBALANCER"; then LBTXT="$CUMLBERRORS LB ERRORS"; LBST="|$CUMLBERRORS"; else LBTXT=""; LBST=""; fi
-if cycle_mon || test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED"; then
+if cycle_mon || test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED" -o -e stop-os-hm; then
   if test -n "$ROUTERS"; then deleteRouters; fi
   reallysendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $HOSTNAME testing $STRIPLE ($JHIMG/$IMG):
@@ -4522,7 +4522,7 @@ $(allstats -m)" > $DATADIR/Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv
 fi
 
 # Clean up residuals, if any
-if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0 -o -n "$INTERRUPTED"; then waitnetgone; fi
+if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0 -o -n "$INTERRUPTED" -o -e stop-os-hm; then waitnetgone; fi
 #waitnetgone
 if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   unset STATSENT
