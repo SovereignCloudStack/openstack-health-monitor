@@ -106,8 +106,8 @@ if test "$1" == "--debug"; then set -x; shift; fi
 
 # Sanitize locale
 export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
-export LC_NUMERIC=en_US.UTF-8
+export LC_ALL=C # en_US.UTF-8
+export LC_NUMERIC=C #en_US.UTF-8
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
@@ -301,7 +301,7 @@ usage()
   echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test"
   echo " -3     Create 2ndary subnets, attach, test, reshuffle and retest"
   echo " -4     Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest"
-  echo " -R     Recreate 2ndary ports after detaching (OpenStack <= Mitaka bug)"
+  echo " -R2    Recreate 2ndary ports after detaching (OpenStack <= Mitaka bug)"
   echo "Or: api_monitor.sh [-f] [-o/-O] CLEANUP XXX to clean up all resources with prefix XXX"
   echo "        Option -f forces the deletion"
   echo "Or: api_monitor.sh [Options] CONNTEST XXX for full conn test for existing env XXX"
@@ -358,7 +358,7 @@ while test -n "$1"; do
     "-B") IPERF=1;;
     "-t") let TIMEOUTFACT+=1;;
     "-T") TAG=1; TAGARG="--tag ${RPRE%_}";;
-    "-R") SECONDRECREATE=1;;
+    "-R2") SECONDRECREATE=1;;
     "-2") SECONDNET=1;;
     "-3") SECONDNET=1; RESHUFFLE=1;;
     "-4") SECONDNET=1; RESHUFFLE=1; STARTRESHUFFLE=1;;
