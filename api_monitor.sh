@@ -99,15 +99,15 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.97
+VERSION=1.98
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
 
 # Sanitize locale
 export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
-export LC_NUMERIC=en_US.UTF-8
+export LC_ALL=C # en_US.UTF-8
+export LC_NUMERIC=C #en_US.UTF-8
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
@@ -301,7 +301,7 @@ usage()
   echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test"
   echo " -3     Create 2ndary subnets, attach, test, reshuffle and retest"
   echo " -4     Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest"
-  echo " -R     Recreate 2ndary ports after detaching (OpenStack <= Mitaka bug)"
+  echo " -R2    Recreate 2ndary ports after detaching (OpenStack <= Mitaka bug)"
   echo "Or: api_monitor.sh [-f] [-o/-O] CLEANUP XXX to clean up all resources with prefix XXX"
   echo "        Option -f forces the deletion"
   echo "Or: api_monitor.sh [Options] CONNTEST XXX for full conn test for existing env XXX"
@@ -358,7 +358,7 @@ while test -n "$1"; do
     "-B") IPERF=1;;
     "-t") let TIMEOUTFACT+=1;;
     "-T") TAG=1; TAGARG="--tag ${RPRE%_}";;
-    "-R") SECONDRECREATE=1;;
+    "-R2") SECONDRECREATE=1;;
     "-2") SECONDNET=1;;
     "-3") SECONDNET=1; RESHUFFLE=1;;
     "-4") SECONDNET=1; RESHUFFLE=1; STARTRESHUFFLE=1;;
@@ -394,6 +394,18 @@ OSTACKVERSION=$((10000*$OSTACKVERMAJ+100*${OSTACKVERREST%.*}+${OSTACKVERREST#*.}
 type -p jq >/dev/null 2>&1
 if test $? != 0; then
   echo "Need jq installed"
+  exit 1
+fi
+
+type -p bc >/dev/null 2>&1
+if test $? != 0; then
+  echo "Need bc installed"
+  exit 1
+fi
+
+type -p nc >/dev/null 2>&1
+if test $? != 0; then
+  echo "Need nc (netcat) installed"
   exit 1
 fi
 
@@ -472,8 +484,12 @@ fi
 patch_openstackclient()
 {
   ostclient=`type -p openstack`
-  srvfile=`dirname $ostclient`
-  srvfile=`ls ${srvfile%/*}/lib/python3.*/site-packages/openstackclient/compute/v2/server.py 2>/dev/null`
+  ostdir=`dirname $ostclient`
+  for dir in ${ostdir%/*}/lib/python3.*/site-packages ${ostdir%/*}/lib/python3/site-packages \
+             ${ostdir%/*}/lib/python3.*/dist-packages ${ostdir%/*}/lib/python3/dist-packages; do
+    srvfile=`ls ${dir}/openstackclient/compute/v2/server.py 2>/dev/null`
+    if test -r "$srvfile"; then break; fi
+  done
   if ! test -r "$srvfile"; then echo "INFO: Can not patch openstackclient $srvfile" 2>&1; return; fi
   if grep -A1 'disk_group = parser.add_mutually_excl' $srvfile 2>/dev/null | grep 'required=True' 2>/dev/null >/dev/null; then
     echo "INFO: patching openstackclient $srvfile ..."
@@ -4029,7 +4045,7 @@ echo " Send alarms to ${ALARM_EMAIL_ADDRESSES[@]} ${ALARM_MOBILE_NUMBERS[@]}"
 echo " Send  notes to ${NOTE_EMAIL_ADDRESSES[@]} ${NOTE_MOBILE_NUMBERS[@]}"
 
 # MAIN LOOP
-while test $loop != $MAXITER -a -z "$INTERRUPTED"; do
+while test $loop != $MAXITER -a -z "$INTERRUPTED" -a ! -e stop-os-hm; do
 
 declare -i PINGERRORS=0
 declare -i APIERRORS=0
@@ -4451,7 +4467,7 @@ CDATE=$(date +%Y-%m-%d)
 CTIME=$(date +%H:%M:%S)
 if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn ERRORS"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
 if test -n "$LOADBALANCER"; then LBTXT="$CUMLBERRORS LB ERRORS"; LBST="|$CUMLBERRORS"; else LBTXT=""; LBST=""; fi
-if cycle_mon || test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED"; then
+if cycle_mon || test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED" -o -e stop-os-hm; then
   if test -n "$ROUTERS"; then deleteRouters; fi
   reallysendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $HOSTNAME testing $STRIPLE ($JHIMG/$IMG):
@@ -4518,7 +4534,7 @@ $(allstats -m)" > $DATADIR/Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv
 fi
 
 # Clean up residuals, if any
-if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0 -o -n "$INTERRUPTED"; then waitnetgone; fi
+if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0 -o -n "$INTERRUPTED" -o -e stop-os-hm; then waitnetgone; fi
 #waitnetgone
 if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   unset STATSENT
