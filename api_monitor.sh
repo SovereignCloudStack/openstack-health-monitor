@@ -397,6 +397,18 @@ if test $? != 0; then
   exit 1
 fi
 
+type -p bc >/dev/null 2>&1
+if test $? != 0; then
+  echo "Need bc installed"
+  exit 1
+fi
+
+type -p nc >/dev/null 2>&1
+if test $? != 0; then
+  echo "Need nc (netcat) installed"
+  exit 1
+fi
+
 type -p otc.sh >/dev/null 2>&1
 if test $? != 0 -a -n "$SMNID"; then
   echo "Need otc.sh for SMN notifications"
