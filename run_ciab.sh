@@ -50,7 +50,7 @@ NOTE_EMAIL_ADDRESSES="scs@garloff.de"
 export ALARM_EMAIL_ADDRESSES NOTE_EMAIL_ADDRESSES
 
 # Terminate early on auth error
-openstack server list >/dev/null
+openstack server list >/dev/null || exit 1
 
 # Find Floating IPs
 FIPLIST=""
