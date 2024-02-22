@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.98
+VERSION=1.99
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -421,8 +421,8 @@ if test $? != 0 -a -n "$EMAIL"; then
   exit 1
 fi
 
-if test -z "$OS_USERNAME" -a -z "$OS_CLOUD"; then
-  echo "source OS_ settings file before running this test"
+if test -z "$OS_USERNAME" -a -z "$OS_CLOUD" -a -z "$OS_APPLICATION_CREDENTIAL_ID"; then
+  echo "source OS_ settings file before running this test, preferrably OS_CLOUD"
   exit 1
 fi
 
@@ -974,10 +974,10 @@ myopenstack()
   #FIXME: $OS_EXTRA_PARAMS is *only* used here when we talk to the endpoint directly.
   # It is not used when we use the normal mechanism where we get a token from keystone first.
   #TODO: Check whether old openstack client version accept the syntax (maybe they need --os-auth-type admin_token?)
-  #echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-url $EP $@" >> $LOGFILE
+  #echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA2}$(echo $TOKEN| sha256sum) --os-url $EP $@" >> $LOGFILE
   local TOUT
   if test "${1:0:2}" = "-t"; then TOUT=${1:2}; shift; fi
-  echo "openstack --os-token {SHA1}$(echo $TOKEN| sha1sum | sed 's/ .*$//') --os-endpoint $EP --os-auth-type admin_token --os-project-name=\"\" $OS_EXTRA_PARAMS $@" >> $LOGFILE
+  echo "openstack --os-token {SHA256}$(echo $TOKEN| sha256sum | sed 's/ .*$//') --os-endpoint $EP --os-auth-type admin_token --os-project-name=\"\" $OS_EXTRA_PARAMS $@" >> $LOGFILE
   #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-project-name "" --os-token $TOKEN --os-url $EP "$@"
   #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP "$@"
   if test -n "$TOUT"; then
@@ -1078,6 +1078,16 @@ ostackcmd_id()
   return $RC
 }
 
+# For token issue: redact the ID response
+redact_token()
+{
+  local TKN SHATKN
+  TKN=$(echo "$@" | jq '.id' | tr -d '"')
+  SHATKN=$(echo "$TKN" | sha256sum | sed 's/ .*$//')
+  #echo "#DEBUG: Token {SHA256}$SHATKN" 1>&2
+  echo "$@" | sed "s/^\(.*\"id\": \)\"[^\"]*\"/\1\"{SHA256}$SHATKN\"/"
+}
+
 # Another variant -- return results in global variable OSTACKRESP
 # Append timing to $1 array
 # $2 = timeout (in s)
@@ -1120,8 +1130,14 @@ ostackcmd_tm()
   # TODO: Implement retry for HTTP 409 similar to ostackcmd_id
 
   eval "${STATNM}+=( $TIM )"
-  echo "$LSTART/$LEND/: ${OSTACKCMD[@]} => $RC $OSTACKRESP" >> $LOGFILE
-  if test "${TIM%.*}" -gt $((3+$TIMEOUT/4)); then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $OSTACKRESP$NORM" 1>&2; fi
+  case "$@" in
+    *"token issue"*) echo "$LSTART/$LEND/: ${OSTACKCMD[@]} => $RC $(redact_token $OSTACKRESP)" >> $LOGFILE
+	if test "${TIM%.*}" -gt $((3+$TIMEOUT/4)); then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $(redact_token $OSTACKRESP)$NORM" 1>&2; fi
+	;;
+    *)	echo "$LSTART/$LEND/: ${OSTACKCMD[@]} => $RC $OSTACKRESP" >> $LOGFILE
+	if test "${TIM%.*}" -gt $((3+$TIMEOUT/4)); then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $OSTACKRESP$NORM" 1>&2; fi
+	;;
+  esac
   return $RC
 }
 
@@ -3865,7 +3881,7 @@ getToken()
   #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP"
   ostackcmd_tm_retry KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
   TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')
-  #echo "TOKEN: {SHA1}$(echo $TOKEN | sha1sum)"
+  #echo "TOKEN: {SHA256}$(echo $TOKEN | sha256sum)"
   PROJECT=$(echo "$OSTACKRESP" | jq '.project_id' | tr -d '"')
   USER=$(echo "$OSTACKRESP" | jq '.user_id' | tr -d '"')
   #echo "PROJECT: $PROJECT, USER: $USER"
@@ -4250,7 +4266,7 @@ else # test "$1" = "DEPLOY"; then
   if createNets; then
    if createSubNets; then
     if createRIfaces; then
-     if createSGroups; then
+     if createSGroups -a -z "$INTERRUPTED" -a ! -e stop-os-hm; then
       createLBs;
       if createJHVols; then
        if createVIPs; then
@@ -4320,7 +4336,7 @@ else # test "$1" = "DEPLOY"; then
                 config2ndNIC
                 MSTOP=$(date +%s)
                 # Full connection test
-                if test -n "$FULLCONN"; then
+                if test -n "$FULLCONN" -a -z "$INTERRUPTED" -a ! -e stop-os-hm; then
                   fullconntest
                   # Test for FPERR instead?
                   if test $FPERR -gt 0; then
@@ -4348,7 +4364,7 @@ else # test "$1" = "DEPLOY"; then
                 # TODO: Attach additional net interfaces to JHs ... and test IP addr
                 WAITTIME+=($(($MSTOP-$WSTART)))
                 # Test load balancer
-                if test -n "$LOADBALANCER" -a $LBERRORS = 0; then 
+                if test -n "$LOADBALANCER" -a $LBERRORS = 0 -a -z "$INTERRUPTED" -a ! -e stop-os-hm; then
 		 LBACTIVE=1
 		 testLBs
                 else
@@ -4398,7 +4414,7 @@ else # test "$1" = "DEPLOY"; then
   fi; deleteNets
  fi
  # We may recycle the router
- if test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED" -o $((($loop+1)%$ROUTERITER)) == 0; then deleteRouters; fi
+ if test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED" -o $((($loop+1)%$ROUTERITER)) == 0 -o -e stop-os-hm; then deleteRouters; fi
  #echo "${NETSTATS[*]}"
  echo -e "$BOLD *** Cleanup complete *** $NORM"
  THISRUNTIME=$(($(date +%s)-$MSTART+$TESTTIME))
