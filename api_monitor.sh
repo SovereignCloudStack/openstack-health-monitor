@@ -421,8 +421,8 @@ if test $? != 0 -a -n "$EMAIL"; then
   exit 1
 fi
 
-if test -z "$OS_USERNAME" -a -z "$OS_CLOUD"; then
-  echo "source OS_ settings file before running this test"
+if test -z "$OS_USERNAME" -a -z "$OS_CLOUD" -a -z "$OS_APPLICATION_CREDENTIAL_ID"; then
+  echo "source OS_ settings file before running this test, preferrably OS_CLOUD"
   exit 1
 fi
 
