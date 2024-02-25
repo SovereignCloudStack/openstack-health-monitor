@@ -3114,7 +3114,6 @@ testlsandping()
     ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".........."; sleep 20;
     ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=20" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1; }; } || {
 	if test -n "$LOGFILE"; then echo "ERROR ssh ls on $2" >> $LOGFILE; fi
-	ostackcmd_tm NOVASTATS $NOVATIMEOUT nova console-log ${VMS[$4]}
 	return 2; }
   else
     if test -n "$LOGFILE"; then
@@ -3126,13 +3125,11 @@ testlsandping()
       ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "o"; sleep 12;
       ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || {
 	if test -n "$LOGFILE"; then echo "ERROR ssh grep on $2:$3" >> $LOGFILE; fi
-	ostackcmd_tm NOVASTATS $NOVATIMEOUT nova console-log ${VMS[$4]}
 	return 2; }
     else
       ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "O"; sleep 12;
       ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || {
 	if test -n "$LOGFILE"; then echo "ERROR ssh grep on $2:$3" >> $LOGFILE; fi
-	ostackcmd_tm NOVASTATS $NOVATIMEOUT nova console-log ${VMS[$4]}
 	return 2; }
     fi
   fi
@@ -3184,7 +3181,7 @@ testjhinet()
       let ctr+=1
     done
     if test $ctr -ge 15; then echo -n "(ping timeout)"; ERR="${ERR}ping ${FLOATS[$JHNO]}; "; fi
-    # Wait up to 36s for ssh
+    # Wait up to 40s for ssh
     testlsandping ${KEYPAIRS[0]} ${FLOATS[$JHNO]}
     R=$?
     if test $R == 2; then
@@ -3193,6 +3190,7 @@ testjhinet()
       let CUMPINGERRORS+=1; ERR="${ERR}ssh JH$JHNO ping $PINGTARGET || ping $PINGTARGET2; "
     fi
     if test $R != 0; then
+      ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova console-log ${JHVMS[$JHNO]}
       ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova show ${JHVMS[$JHNO]}
       ERR="${ERR}openstack server show ${JHVMS[$JHNO]}
 $OSTACKRESP
@@ -3266,6 +3264,7 @@ testsnat()
       testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
       RC=$?
       if test $RC != 0; then
+        ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova console-log ${VMS[$no]}
         ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova show ${VMS[$no]}
       fi
       if test $RC == 2; then
