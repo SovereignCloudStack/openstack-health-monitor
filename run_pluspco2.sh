@@ -36,7 +36,7 @@ export FROM=kurt@garloff.de
 # Only use one AZ
 export AZS="az1"
 # Upload (compressed) logfiles and stats to container
-#export SWIFTCONTAINER=OS-HM-Logfiles
+export SWIFTCONTAINER=OS-HM-Logfiles
 
 # Assume OS_ parameters have already been sourced from some .openrc file
 # export OS_CLOUD=gx-scs-healthmgr
