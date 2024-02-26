@@ -99,15 +99,15 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.96
+VERSION=1.99
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
 
 # Sanitize locale
 export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
-export LC_NUMERIC=en_US.UTF-8
+export LC_ALL=C # en_US.UTF-8
+export LC_NUMERIC=C #en_US.UTF-8
 
 # TODO: Document settings that can be ovverriden by environment variables
 # such as PINGTARGET, ALARMPRE, FROM, [JH]IMG, [JH]IMGFILT, JHDEFLTUSER, DEFLTUSER, [JH]FLAVOR
@@ -128,7 +128,7 @@ SHPRJ="${OS_PROJECT_NAME%_Project}"
 ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_REGION_NAME}/${SHPRJ#*_}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
 GRAFANANM="${GRAFANANM:-api-monitoring}"
-WAITLB=${WAITLB:-15}
+WAITLB=${WAITLB:-16}
 KPTYPE=${KPTYPE:-rsa}
 
 # Number of VMs and networks
@@ -301,7 +301,7 @@ usage()
   echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test"
   echo " -3     Create 2ndary subnets, attach, test, reshuffle and retest"
   echo " -4     Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest"
-  echo " -R     Recreate 2ndary ports after detaching (OpenStack <= Mitaka bug)"
+  echo " -R2    Recreate 2ndary ports after detaching (OpenStack <= Mitaka bug)"
   echo "Or: api_monitor.sh [-f] [-o/-O] CLEANUP XXX to clean up all resources with prefix XXX"
   echo "        Option -f forces the deletion"
   echo "Or: api_monitor.sh [Options] CONNTEST XXX for full conn test for existing env XXX"
@@ -358,7 +358,7 @@ while test -n "$1"; do
     "-B") IPERF=1;;
     "-t") let TIMEOUTFACT+=1;;
     "-T") TAG=1; TAGARG="--tag ${RPRE%_}";;
-    "-R") SECONDRECREATE=1;;
+    "-R2") SECONDRECREATE=1;;
     "-2") SECONDNET=1;;
     "-3") SECONDNET=1; RESHUFFLE=1;;
     "-4") SECONDNET=1; RESHUFFLE=1; STARTRESHUFFLE=1;;
@@ -397,6 +397,18 @@ if test $? != 0; then
   exit 1
 fi
 
+type -p bc >/dev/null 2>&1
+if test $? != 0; then
+  echo "Need bc installed"
+  exit 1
+fi
+
+type -p nc >/dev/null 2>&1
+if test $? != 0; then
+  echo "Need nc (netcat) installed"
+  exit 1
+fi
+
 type -p otc.sh >/dev/null 2>&1
 if test $? != 0 -a -n "$SMNID"; then
   echo "Need otc.sh for SMN notifications"
@@ -409,8 +421,8 @@ if test $? != 0 -a -n "$EMAIL"; then
   exit 1
 fi
 
-if test -z "$OS_USERNAME" -a -z "$OS_CLOUD"; then
-  echo "source OS_ settings file before running this test"
+if test -z "$OS_USERNAME" -a -z "$OS_CLOUD" -a -z "$OS_APPLICATION_CREDENTIAL_ID"; then
+  echo "source OS_ settings file before running this test, preferrably OS_CLOUD"
   exit 1
 fi
 
@@ -472,9 +484,13 @@ fi
 patch_openstackclient()
 {
   ostclient=`type -p openstack`
-  srvfile=`dirname $ostclient`
-  srvfile=`ls ${srvfile%/*}/lib/python3.*/site-packages/openstackclient/compute/v2/server.py`
-  if ! test -r $srvfile; then echo "INFO: Can not patch openstackclient $srvfile" 2>&1; return; fi
+  ostdir=`dirname $ostclient`
+  for dir in ${ostdir%/*}/lib/python3.*/site-packages ${ostdir%/*}/lib/python3/site-packages \
+             ${ostdir%/*}/lib/python3.*/dist-packages ${ostdir%/*}/lib/python3/dist-packages; do
+    srvfile=`ls ${dir}/openstackclient/compute/v2/server.py 2>/dev/null`
+    if test -r "$srvfile"; then break; fi
+  done
+  if ! test -r "$srvfile"; then echo "INFO: Can not patch openstackclient $srvfile" 2>&1; return; fi
   if grep -A1 'disk_group = parser.add_mutually_excl' $srvfile 2>/dev/null | grep 'required=True' 2>/dev/null >/dev/null; then
     echo "INFO: patching openstackclient $srvfile ..."
     sudo cp -p $srvfile $srvfile.orig
@@ -958,10 +974,10 @@ myopenstack()
   #FIXME: $OS_EXTRA_PARAMS is *only* used here when we talk to the endpoint directly.
   # It is not used when we use the normal mechanism where we get a token from keystone first.
   #TODO: Check whether old openstack client version accept the syntax (maybe they need --os-auth-type admin_token?)
-  #echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA1}$(echo $TOKEN| sha1sum) --os-url $EP $@" >> $LOGFILE
+  #echo "openstack --os-auth-type token_endpoint --os-project-name \"\" --os-token {SHA2}$(echo $TOKEN| sha256sum) --os-url $EP $@" >> $LOGFILE
   local TOUT
   if test "${1:0:2}" = "-t"; then TOUT=${1:2}; shift; fi
-  echo "openstack --os-token {SHA1}$(echo $TOKEN| sha1sum | sed 's/ .*$//') --os-endpoint $EP --os-auth-type admin_token --os-project-name=\"\" $OS_EXTRA_PARAMS $@" >> $LOGFILE
+  echo "openstack --os-token {SHA256}$(echo $TOKEN| sha256sum | sed 's/ .*$//') --os-endpoint $EP --os-auth-type admin_token --os-project-name=\"\" $OS_EXTRA_PARAMS $@" >> $LOGFILE
   #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-auth-type token_endpoint --os-project-name "" --os-token $TOKEN --os-url $EP "$@"
   #OS_CLOUD="" OS_PROJECT_NAME="" OS_PROJECT_ID="" OS_PROJECT_DOMAIN_ID="" OS_USER_DOMAIN_NAME="" OS_PROJECT_DOMAIN_NAME="" exec openstack --os-token $TOKEN --os-endpoint $EP "$@"
   if test -n "$TOUT"; then
@@ -1062,6 +1078,16 @@ ostackcmd_id()
   return $RC
 }
 
+# For token issue: redact the ID response
+redact_token()
+{
+  local TKN SHATKN
+  TKN=$(echo "$@" | jq '.id' | tr -d '"')
+  SHATKN=$(echo "$TKN" | sha256sum | sed 's/ .*$//')
+  #echo "#DEBUG: Token {SHA256}$SHATKN" 1>&2
+  echo "$@" | sed "s/^\(.*\"id\": \)\"[^\"]*\"/\1\"{SHA256}$SHATKN\"/"
+}
+
 # Another variant -- return results in global variable OSTACKRESP
 # Append timing to $1 array
 # $2 = timeout (in s)
@@ -1104,8 +1130,14 @@ ostackcmd_tm()
   # TODO: Implement retry for HTTP 409 similar to ostackcmd_id
 
   eval "${STATNM}+=( $TIM )"
-  echo "$LSTART/$LEND/: ${OSTACKCMD[@]} => $RC $OSTACKRESP" >> $LOGFILE
-  if test "${TIM%.*}" -gt $((3+$TIMEOUT/4)); then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $OSTACKRESP$NORM" 1>&2; fi
+  case "$@" in
+    *"token issue"*) echo "$LSTART/$LEND/: ${OSTACKCMD[@]} => $RC $(redact_token $OSTACKRESP)" >> $LOGFILE
+	if test "${TIM%.*}" -gt $((3+$TIMEOUT/4)); then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $(redact_token $OSTACKRESP)$NORM" 1>&2; fi
+	;;
+    *)	echo "$LSTART/$LEND/: ${OSTACKCMD[@]} => $RC $OSTACKRESP" >> $LOGFILE
+	if test "${TIM%.*}" -gt $((3+$TIMEOUT/4)); then echo -e "${YELLOW}Slow ${TIM}s: ${OSTACKCMD[@]} => $RC $OSTACKRESP$NORM" 1>&2; fi
+	;;
+  esac
   return $RC
 }
 
@@ -1631,7 +1663,7 @@ $OSTACKRESP"
   # Change in 1.74: Just generate an alarm here unless $1 == ""
   # Before, we left it to the caller
   if test -n "$WAITERRPREFIX"; then
-    sendalarm $RETV "Error waiting for $WAITERRPREFIX" "$WAITERRSTR"
+    sendalarm $RETV "Error waiting for $WAITERRPREFIX" "$WAITERRSTR" 0
   fi
   return $RETV
 }
@@ -2460,6 +2492,7 @@ killhttp()
     #echo "DEBUG: $i: ${VMINFO[*]}"
     #testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
     echo -n "$i: ${VMINFO[6]}[${VMINFO[2]}]}:${VMINFO[7]} (${VMINFO[5]}/${VMINFO[8]}) "
+    if test -z ${VMINFO[8]}; then echo -n "X "; continue; fi
     HOSTN=$(ssh -i $DATADIR/${KEYPAIRS[1]} -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3")
     if test $? == 0; then echo -n "($HOSTN) "; else echo -n "ERROR "; fi
     #ssh -i $DATADIR/${KEYPAIRS[1]} -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3"
@@ -2566,13 +2599,14 @@ testLBs()
   if test -z "$SKIPKILLLB"; then
   echo -n "Kill backends: "
   killhttp
-  sleep $((1+WAITLB))
+  echo -n " wait ... "
+  sleep $((2+WAITLB))
   # TODO: Test for degraded status of pool, ERROR for members
   ostackcmd_tm_retry LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
   handleLBErr $? "PoolShow2"
   echo $OSTACKRESP
   test "$OSTACKRESP" != "DEGRADED" && handleLBErr 1 "OpStatusNotDegraded"
-  echo -n "Retest LB at $LBIP (after $((1+WAITLB)) s):"
+  echo -n "Retest LB at $LBIP (after $((2+WAITLB)) s):"
   LBCERR=0
   STTM=$(date +%s.%N)
   # Access LB NOVMS times (RR -> each server gets one request)
@@ -2756,7 +2790,8 @@ createVMs()
 }
 
 # assign names to volumes
-# $1 => attempt
+# $1 => attempt (for reporting)
+# retval => number of names assigned
 nameVols()
 {
   if test "$VOLNEEDSTAG" != "1"; then return $((NOVMS+NOAZS)); fi
@@ -2768,16 +2803,19 @@ nameVols()
     id=$(echo "$line" | cut -d "," -f 2)
     nm=$(echo "$line" | cut -d "," -f 3)
     att=$(echo "$line" | cut -d "," -f 6)
-    if test -n "$nm"; then let natt+=1; continue; fi
     if test -z "$att"; then continue; fi
-    NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_VM_\([^ ]*\) .*$/\1_RootVol_\2/')
+    NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_\(VM_\|JH\)\([^ ]*\) .*$/\1_RootVol_\3/')
     if [[ "$NM" != APIMonitor* ]]; then
       NM=$(echo "$att" | sed "s/^Attached to \([0-9a-f\-]*\) .*\$/${RPRE}RootVol_\1/")
     fi
+    if [[ "$NM" == APIMonitor* ]]; then
+      if test -n "$nm"; then let natt+=1; continue; fi
+    fi
+    if test -n "$nm"; then continue; fi
     COLL="$COLL $id:$NM"
   done < <(echo "$OSTACKRESP")
   COLL="${COLL# }"
-  if test -n "$COLL"; then echo "# DEBUG: Attach names to Volumes $1: $COLL" 1>&2; fi
+  if test -n "$COLL"; then echo "#DEBUG: Attach names to Volumes $1: $COLL" 1>&2; fi
   for att in $COLL; do
     ID=${att%:*}
     NM=${att##*:}
@@ -2801,14 +2839,14 @@ dbgout()
 }
 
 # Cleanup volumes created by nova but which did not get attached
-delUnattachedVols()
+nameUnattachedVols()
 {
   local MISS=$1
   ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder list -f value || return 1
   CAND=()
   while read id nm stat sz; do
     if test -z "$sz"; then sz="$stat"; stat="$nm"; nm=""; fi
-    dbgout -n "#DEBUG: \"$id\" \"$nm\" \"$stat\" \"$z\": "
+    dbgout -n "#DEBUG: \"$id\" \"$nm\" \"$stat\" \"$sz\": "
     # Filter out vols with names or with wrong size
     if test -n "$nm"; then dbgout named; continue; fi
     #if test "$stat" == "in-use" -o "$stat" == "deleting"; then dbgout "in-use or deleting"; continue; fi
@@ -2839,8 +2877,8 @@ waitVMs()
   handleWaitErr "VMs" NOVASTATS $NOVATIMEOUT nova show
   local VRC=$?
   if test "$tagged" != $((NOVMS+NOAZS)); then nameVols 3; tagged=$?; fi
-  if test "$tagged" != $((NOVMS+NOAZS)); then echo "ERROR: Tagged volume number incorrect: $tagged != $((NOVMS+NOAZS))" 1>&2; fi
-  if test $VRC != 0 -a -n "$VMVOLSIZE"; then delUnattachedVols $VRC; fi
+  if test "$tagged" != $((NOVMS+NOAZS)); then echo "#WARN: Tagged volume number incorrect: $tagged != $((NOVMS+NOAZS))" 1>&2; fi
+  if test $VRC != 0 -a -n "$VMVOLSIZE"; then nameUnattachedVols $VRC; fi
   return $VRC
 }
 
@@ -3380,7 +3418,7 @@ done
 exit 1
 EOT
   chmod +x ${RPRE}wait
-  # Do tests from 2nd host in 1st net and connect to 1st hosts in 1st/2nd/... net
+  # Do tests from last host in net and connect to 1st hosts in 1st/2nd/... net
   #calcRedirs
   red=${REDIRS[$((NOAZS-1))]}
   #red=$(echo $red | cut -d " " -f $((NONETS+1)))
@@ -3393,7 +3431,14 @@ EOT
   echo -n "IPerf3 tests:"
   for VM in $(seq 0 $((NONETS-1))); do
     TGT=${IPS[$VM]}
+    if test -z "$TGT"; then TGT=${IPS[$(($VM+$NONETS))]}; fi
     SRC=${IPS[$(($VM+$NOVMS-$NONETS))]}
+    if test -z "$SRC"; then SRC=${IPS[$(($VM+$NOVMS-2*$NONETS))]}; fi
+    if test -z "$SRC" -o -z "$TGT" -o "$SRC" = "$TGT"; then
+      echo "#ERROR: Skip test $SRC <-> $TGT"
+      if test -n "$LOGFILE"; then echo "IPerf3: ${SRC}-${TGT}: skipped" >>$LOGFILE; fi
+      continue
+    fi
     FLT=${FLOATS[$(($VM%$NOAZS))]}
     #echo -n "Test ($SRC,$(($VM+$NOVMS-$NONETS)),$FLT/$pno)->$TGT: "
     scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i $DATADIR/${KEYPAIRS[1]} -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
@@ -3415,7 +3460,7 @@ EOT
     HUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.host_total'))
     RUTIL=$(printf "%.1f%%\n" $(echo "$IPJSON" | jq '.end.cpu_utilization_percent.remote_total'))
     echo -e " ${SRC} <-> ${TGT}: ${BOLD}$SENDBW Mbps $RECVBW Mbps $HUTIL $RUTIL${NORM}"
-    if test -n "$LOGFILE"; then echo -e "IPerf3: ${IPS[$NONETS]}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
+    if test -n "$LOGFILE"; then echo -e "IPerf3: ${SRC}-${TGT}: $SENDBW Mbps $RECVBW Mbps $HTUIL $RUTIL" >>$LOGFILE; fi
     BANDWIDTH+=($SENDBW $RECVBW)
     SBW=$(echo "scale=2; $SENDBW/1000" | bc -l)
     RBW=$(echo "scale=2; $RECVBW/1000" | bc -l)
@@ -3836,7 +3881,7 @@ getToken()
   #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP"
   ostackcmd_tm_retry KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
   TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')
-  #echo "TOKEN: {SHA1}$(echo $TOKEN | sha1sum)"
+  #echo "TOKEN: {SHA256}$(echo $TOKEN | sha256sum)"
   PROJECT=$(echo "$OSTACKRESP" | jq '.project_id' | tr -d '"')
   USER=$(echo "$OSTACKRESP" | jq '.user_id' | tr -d '"')
   #echo "PROJECT: $PROJECT, USER: $USER"
@@ -4016,7 +4061,7 @@ echo " Send alarms to ${ALARM_EMAIL_ADDRESSES[@]} ${ALARM_MOBILE_NUMBERS[@]}"
 echo " Send  notes to ${NOTE_EMAIL_ADDRESSES[@]} ${NOTE_MOBILE_NUMBERS[@]}"
 
 # MAIN LOOP
-while test $loop != $MAXITER -a -z "$INTERRUPTED"; do
+while test $loop != $MAXITER -a -z "$INTERRUPTED" -a ! -e stop-os-hm; do
 
 declare -i PINGERRORS=0
 declare -i APIERRORS=0
@@ -4221,7 +4266,7 @@ else # test "$1" = "DEPLOY"; then
   if createNets; then
    if createSubNets; then
     if createRIfaces; then
-     if createSGroups; then
+     if createSGroups -a -z "$INTERRUPTED" -a ! -e stop-os-hm; then
       createLBs;
       if createJHVols; then
        if createVIPs; then
@@ -4291,7 +4336,7 @@ else # test "$1" = "DEPLOY"; then
                 config2ndNIC
                 MSTOP=$(date +%s)
                 # Full connection test
-                if test -n "$FULLCONN"; then
+                if test -n "$FULLCONN" -a -z "$INTERRUPTED" -a ! -e stop-os-hm; then
                   fullconntest
                   # Test for FPERR instead?
                   if test $FPERR -gt 0; then
@@ -4319,7 +4364,7 @@ else # test "$1" = "DEPLOY"; then
                 # TODO: Attach additional net interfaces to JHs ... and test IP addr
                 WAITTIME+=($(($MSTOP-$WSTART)))
                 # Test load balancer
-                if test -n "$LOADBALANCER" -a $LBERRORS = 0; then 
+                if test -n "$LOADBALANCER" -a $LBERRORS = 0 -a -z "$INTERRUPTED" -a ! -e stop-os-hm; then
 		 LBACTIVE=1
 		 testLBs
                 else
@@ -4369,7 +4414,7 @@ else # test "$1" = "DEPLOY"; then
   fi; deleteNets
  fi
  # We may recycle the router
- if test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED" -o $((($loop+1)%$ROUTERITER)) == 0; then deleteRouters; fi
+ if test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED" -o $((($loop+1)%$ROUTERITER)) == 0 -o -e stop-os-hm; then deleteRouters; fi
  #echo "${NETSTATS[*]}"
  echo -e "$BOLD *** Cleanup complete *** $NORM"
  THISRUNTIME=$(($(date +%s)-$MSTART+$TESTTIME))
@@ -4438,7 +4483,7 @@ CDATE=$(date +%Y-%m-%d)
 CTIME=$(date +%H:%M:%S)
 if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn ERRORS"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
 if test -n "$LOADBALANCER"; then LBTXT="$CUMLBERRORS LB ERRORS"; LBST="|$CUMLBERRORS"; else LBTXT=""; LBST=""; fi
-if cycle_mon || test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED"; then
+if cycle_mon || test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED" -o -e stop-os-hm; then
   if test -n "$ROUTERS"; then deleteRouters; fi
   reallysendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $HOSTNAME testing $STRIPLE ($JHIMG/$IMG):
@@ -4505,7 +4550,7 @@ $(allstats -m)" > $DATADIR/Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv
 fi
 
 # Clean up residuals, if any
-if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0 -o -n "$INTERRUPTED"; then waitnetgone; fi
+if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0 -o -n "$INTERRUPTED" -o -e stop-os-hm; then waitnetgone; fi
 #waitnetgone
 if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   unset STATSENT

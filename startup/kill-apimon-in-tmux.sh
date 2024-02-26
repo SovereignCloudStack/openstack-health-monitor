@@ -6,6 +6,7 @@ tmux select-window -t $session:0
 cd ~/openstack-health-monitor
 touch stop-os-hm
 # Send two ^C to the api_monitor for immediate cleanup
+# Sidenote: If we are patient, we could just leave it with the touched stop file
 tmux send-keys C-c
 sleep 1
 tmux send-keys C-c
