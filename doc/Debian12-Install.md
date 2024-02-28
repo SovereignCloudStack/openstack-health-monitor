@@ -494,7 +494,7 @@ There are a few things that may need support from a cloud admin:
 
 More like these may happen, but those two are the only ones that have been observed to happen occasionally. Some services seem to be less robust than others against an event in the event queue (rabbitmq) being lost or an connection to be interrupted.
 
-## Notes from Nils -- alternative approach to install and configure the dashboard
+## Alternative approach to install and configure the dashboard behind a reverse proxy
 
 Install influxdb via apt: https://docs.influxdata.com/influxdb/v1/introduction/install/#installing-influxdb-oss
 Install telegraf (same apt repo as influxdb): `sudo apt update && sudo apt install telegraf`
@@ -512,6 +512,8 @@ Changes to `/etc/grafana/grafana.ini` as we do tls termination at the reverse pr
 - comment out `domain` option (? FIXME)
 - comment out `cert_*` options
 
+Change the admin password in `grafana.ini`.
+
 Changes to `/etc/grafana/grafana.ini` if github auth should not be used yet:
 - comment out whole `[auth.github]` section for now (can be enabled later)
 
@@ -523,6 +525,5 @@ Configuration in grafana web gui:
 - Finally import dashboard `dashboard/openstack-health-dashboard.json` to grafana.
 
 TODO:
-* Change admin password in grafana.ini
 * Reverse proxy with LE cert
 * Github auth
