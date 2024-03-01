@@ -2809,7 +2809,7 @@ nameVols()
     if [[ "$NM" != APIMonitor* ]]; then
       NM=$(echo "$att" | sed "s/^Attached to \([0-9a-f\-]*\) .*\$/${RPRE}RootVol_\1/")
     fi
-    if [[ "$NM" == APIMonitor* ]]; then
+    if [[ "$NM" == ${RPRE}* ]]; then
       if test -n "$nm"; then let natt+=1; continue; fi
     fi
     if test -n "$nm"; then continue; fi
@@ -2839,7 +2839,7 @@ dbgout()
   if test -n "$DEBUG"; then echo "$@"; fi
 }
 
-# Cleanup volumes created by nova but which did not get attached
+# Name volumes created by nova but which did not get attached
 nameUnattachedVols()
 {
   local MISS=$1
