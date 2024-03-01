@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.99
+VERSION=1.100
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -2809,7 +2809,7 @@ nameVols()
     if [[ "$NM" != APIMonitor* ]]; then
       NM=$(echo "$att" | sed "s/^Attached to \([0-9a-f\-]*\) .*\$/${RPRE}RootVol_\1/")
     fi
-    if [[ "$NM" == APIMonitor* ]]; then
+    if [[ "$NM" == ${RPRE}* ]]; then
       if test -n "$nm"; then let natt+=1; continue; fi
     fi
     if test -n "$nm"; then continue; fi
@@ -2839,7 +2839,7 @@ dbgout()
   if test -n "$DEBUG"; then echo "$@"; fi
 }
 
-# Cleanup volumes created by nova but which did not get attached
+# Name volumes created by nova but which did not get attached
 nameUnattachedVols()
 {
   local MISS=$1
@@ -3677,7 +3677,9 @@ cleanup_new()
   deleteLBs
   delPortsLBs
   deleteVIPs
+  unset REMVOLUMES
   waitdelVMs; deleteVols
+  REVOLS=("${REMVOLUMES[*]}")
   VOLUMES=("${VOLUMES2[@]}"); deleteVols
   waitdelJHVMs; deleteJHVols
   deleteKeypairs
@@ -3691,6 +3693,8 @@ cleanup_new()
   deleteNets; deleteJHNets
   unset NOFILTERTAG
   deleteRouters
+  # A second pass on volumes
+  if test -n "$REVOLS"; then VOLUMES=("${REVOLS[*]}"); deleteVols; fi
 }
 
 cleanup()
@@ -3727,6 +3731,7 @@ cleanup()
   deleteVIPs
   VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
   waitdelVMs; deleteVols
+  REVOLS=("${REMVOLUMES[*]}")
   # When we boot from image, names are different ...
   VOLUMES=( $(findres ${RPRE}VM_VM cinder list) )
   deleteVols
@@ -3763,6 +3768,10 @@ cleanup()
   deleteNets
   unset NOFILTERTAG
   deleteRouters
+  # A second pass on volumes
+  if test -n "$REMJHVOLUMES"; then JHVOLUMES=("${REMJHVOLUMES[*]}"); deleteJHVols; fi
+  if test -n "$REMVOLUMES"; then VOLUMES=("${REMVOLUMES[*]}"); deleteVols; fi
+  if test -n "$REVOLS"; then VOLUMES=("${REVOLS[*]}"); deleteVols; fi
 }
 
 # Network cleanups can fail if VM deletion failed, so cleanup again
