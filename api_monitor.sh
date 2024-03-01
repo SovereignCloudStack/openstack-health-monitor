@@ -297,7 +297,7 @@ usage()
   echo " -b     run a simple compute benchmark"
   echo " -B     run iperf3"
   echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
-  echo " -T     assign tags to resources; use to clean up floating IPs and volumes"
+  echo " -T     assign tags to resources; use to clean up floating IPs"
   echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test"
   echo " -3     Create 2ndary subnets, attach, test, reshuffle and retest"
   echo " -4     Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest"
@@ -311,7 +311,7 @@ usage()
   echo " PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,"
   echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES,"
   echo " NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER, FIPWAITPORTDEVOWNER, EXTSEARCH, OS_EXTRA_PARAMS."
-  echo "Typically, you should configure [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER."
+  echo "Typically, you should configure OS_CLOUD, [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER."
   exit 0
 }
 
@@ -811,6 +811,7 @@ translate()
     C1=${C1//-/ }
     shift
     if test "$CMD" == "show" -o "$CMD" == "list"; then LWAIT=""; else LWAIT="$LBWAIT"; fi
+    if test "$C1" == "console" -a CMD=="log"; then CMD="log show"; fi
     #OSTACKCMD=($OPST $C1 $CMD $MYTAG "$@")
     ARGS=$(echo "${@//--property-filter/--property}" | sed -e 's/\-\-pub\-key/--public-key/')
     OSTACKCMD=($OPST $C1 $CMD $MYTAG "$ARGS")
@@ -3093,13 +3094,13 @@ testlsandping()
   unset SSH_AUTH_SOCK
   # Jumphost
   if test -z "$3" -o "$3" = "22"; then
-    MAXWAIT=36
+    MAXWAIT=40
     unset pport
     ssh-keygen -R $2 -f ~/.ssh/known_hosts.$RPRE >/dev/null 2>&1
     USER="$JHDEFLTUSER"
   # VM
   else
-    MAXWAIT=26
+    MAXWAIT=30
     pport="-p $3"
     ssh-keygen -R [$2]:$3 -f ~/.ssh/known_hosts.$RPRE >/dev/null 2>&1
     USER="$DEFLTUSER"
@@ -3109,8 +3110,8 @@ testlsandping()
       echo "ssh -i $DATADIR/$1 $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ls" >> $LOGFILE
     fi
     # no user_data on JumpHosts
-    ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".."; sleep 8;
-    ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n "........"; sleep 16;
+    ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n "......"; sleep 12;
+    ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".........."; sleep 20;
     ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=20" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ls >/dev/null 2>&1; }; } || {
 	if test -n "$LOGFILE"; then echo "ERROR ssh ls on $2" >> $LOGFILE; fi
 	return 2; }
@@ -3121,12 +3122,12 @@ testlsandping()
     # Test whether user_data file injection worked
     if test -n "$BOOTALLATONCE"; then
       # no indiv user data per VM when mass booting ...
-      ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "o"; sleep 4;
+      ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "o"; sleep 12;
       ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || {
 	if test -n "$LOGFILE"; then echo "ERROR ssh grep on $2:$3" >> $LOGFILE; fi
 	return 2; }
     else
-      ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "O"; sleep 4;
+      ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "O"; sleep 12;
       ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || {
 	if test -n "$LOGFILE"; then echo "ERROR ssh grep on $2:$3" >> $LOGFILE; fi
 	return 2; }
@@ -3134,10 +3135,10 @@ testlsandping()
   fi
   # PING
   if test -n "$LOGFILE"; then
-    echo "timeout 24 ssh -i $DATADIR/$1 $pport -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
+    echo "timeout 22 ssh -i $DATADIR/$1 $pport -o \"PasswordAuthentication=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@$2 ping -c1 $PINGTARGET" >> $LOGFILE
   fi
   #nslookup $PINGTARGET >/dev/null 2>&1
-  PING=$(timeout 24 ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
+  PING=$(timeout 22 ssh -i $DATADIR/$1 $pport -o "PasswordAuthentication=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@$2 ping -c1 $PINGTARGET 2>/dev/null | tail -n2; exit ${PIPESTATUS[0]})
   RC=$?
   if test $RC = 0; then echo $PING; return 0; fi
   #nslookup $PINGTARGET2 >/dev/null 2>&1
@@ -3180,7 +3181,7 @@ testjhinet()
       let ctr+=1
     done
     if test $ctr -ge 15; then echo -n "(ping timeout)"; ERR="${ERR}ping ${FLOATS[$JHNO]}; "; fi
-    # Wait up to 36s for ssh
+    # Wait up to 40s for ssh
     testlsandping ${KEYPAIRS[0]} ${FLOATS[$JHNO]}
     R=$?
     if test $R == 2; then
@@ -3189,6 +3190,7 @@ testjhinet()
       let CUMPINGERRORS+=1; ERR="${ERR}ssh JH$JHNO ping $PINGTARGET || ping $PINGTARGET2; "
     fi
     if test $R != 0; then
+      ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova console-log ${JHVMS[$JHNO]}
       ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova show ${JHVMS[$JHNO]}
       ERR="${ERR}openstack server show ${JHVMS[$JHNO]}
 $OSTACKRESP
@@ -3262,6 +3264,7 @@ testsnat()
       testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
       RC=$?
       if test $RC != 0; then
+        ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova console-log ${VMS[$no]}
         ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova show ${VMS[$no]}
       fi
       if test $RC == 2; then
@@ -4375,7 +4378,7 @@ else # test "$1" = "DEPLOY"; then
                 let SUCCRUNS+=1
                 THISRUNSUCCESS=1
 		sleep 1
-                if test $SUCCWAIT -ge 0; then echo -n "Sleep ..."; sleep $SUCCWAIT; echo;
+		if test $SUCCWAIT -ge 0; then echo -n "Sleep ... (safe to hit ^C) ..."; sleep $SUCCWAIT; echo;
 		else echo -n "Hit enter to continue ..."; read ANS; fi
                 # Refresh token if needed
                 if test -n "$TOKENSTAMP" && test $(($(date +%s)-$TOKENSTAMP)) -ge 36000; then

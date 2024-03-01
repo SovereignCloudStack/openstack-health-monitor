@@ -4,10 +4,10 @@
 # Options for the images: my openSUSE 15.2 (linux), Ubuntu 20.04 (ubuntu),
 #  openSUSE Leap 15.2 (opensuse), CentOS 8 (centos)
 # You can freely mix ...
-export JHIMG="Ubuntu 20.04"
+export JHIMG="Ubuntu 22.04"
 #export JHIMG="openSUSE 15.2"
 export ADDJHVOLSIZE=5
-export IMG="Ubuntu 20.04"
+export IMG="Ubuntu 22.04"
 #export IMG="openSUSE 15.2"
 export ADDVOLSIZE=10
 #export IMG="CentOS 8"
