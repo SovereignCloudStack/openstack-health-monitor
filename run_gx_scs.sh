@@ -28,7 +28,7 @@ export FLAVOR=SCS-1L:1
 # EMail notifications sender address
 export FROM=kurt@garloff.de
 # Only use one AZ
-export AZS="nova"
+#export AZS="nova"
 # Upload (compressed) logfiles and stats to container
 export SWIFTCONTAINER=OS-HM-Logfiles
 # NAMESERVER
