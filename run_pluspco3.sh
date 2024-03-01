@@ -5,10 +5,12 @@
 #  openSUSE Leap 15.2 (opensuse), CentOS 8 (centos)
 # You can freely mix ...
 #export JHIMG="Ubuntu 22.04"
-export JHIMG="openSUSE 15.5"
+#export JHIMG="openSUSE 15.5"
+export JHIMG="Debian 12"
 #export ADDJHVOLSIZE=2
 #export IMG="Ubuntu 22.04"
-export IMG="openSUSE 15.5"
+#export IMG="openSUSE 15.5"
+export IMG="Debian 12"
 #export IMG="CentOS 8"
 # DEFLTUSER from image_original_user property
 #export DEFLTUSER=opensuse

@@ -111,6 +111,7 @@ I would recommend a larger flavor (4GiB RAM, 20GB disk).
 Use `api_monitor.sh -h` to get a list of the command line options. For reference find the output (from v1.82) here:
 
 ```
+Running api_monitor.sh v1.99 on host framekurt
 Usage: api_monitor.sh [options]
  --debug Use set -x to print every line executed
  -n N   number of VMs to create (beyond #AZ JumpHosts, def: 12)
@@ -146,6 +147,7 @@ Usage: api_monitor.sh [options]
  -I     dIsassociate floating IPs before deleting them
  -L     create HTTP Loadbalancer (LBaaSv2/octavia) and test it
  -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it
+ -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)
  -b     run a simple compute benchmark
  -B     run iperf3
  -t     long Timeouts (2x, multiple times for 3x, 4x, ...)
@@ -153,17 +155,17 @@ Usage: api_monitor.sh [options]
  -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test
  -3     Create 2ndary subnets, attach, test, reshuffle and retest
  -4     Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest
- -R     Recreate 2ndary ports after detaching (OpenStack <= Mitaka bug)
+ -R2    Recreate 2ndary ports after detaching (OpenStack <= Mitaka bug)
 Or: api_monitor.sh [-f] [-o/-O] CLEANUP XXX to clean up all resources with prefix XXX
         Option -f forces the deletion
 Or: api_monitor.sh [Options] CONNTEST XXX for full conn test for existing env XXX
         Options: [-2/3/4] [-o/O] [-i N] [-e ADR] [-E] [-w/W/V N] [-l LOGFILE]
 You need to have the OS_ variables set to allow OpenStack CLI tools to work.
-You can override defaults by exporting the environment variables AZS, VAZS, RPRE,
+You can override defaults by exporting the environment variables AZS, VAZS, NAZS, RPRE,
  PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,
  ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES,
- NAMESERVER, SWIFTCONTAINER.
-Typically, you should configure [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER.
+ NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER, FIPWAITPORTDEVOWNER, EXTSEARCH, OS_EXTRA_PARAMS.
+Typically, you should configure OS_CLOUD, [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER.
 ```
 
 ## Examples

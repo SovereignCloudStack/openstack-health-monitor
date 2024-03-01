@@ -4,12 +4,13 @@
 # Options for the images: my openSUSE 15.2 (linux), Ubuntu 20.04 (ubuntu),
 #  openSUSE Leap 15.2 (opensuse), CentOS 8 (centos)
 # You can freely mix ...
-#export JHIMG="Ubuntu 20.04"
-export JHIMG="openSUSE 15.2"
+#export JHIMG="Ubuntu 22.04"
+#export JHIMG="openSUSE 15.5"
+export JHIMG="Debian 12"
 #export ADDJHVOLSIZE=2
-#export IMG="Ubuntu 20.04"
-export IMG="openSUSE 15.2"
-#export IMG="CentOS 8"
+#export IMG="Ubuntu 22.04"
+#export IMG="openSUSE 15.5"
+export IMG="Debian 12"
 #export DEFLTUSER=ubuntu
 #export JHDEFLTUSER=ubuntu
 # You can use a filter when listing images (because your catalog is huge)
@@ -57,6 +58,5 @@ for ENV in $TOCLEAN; do
 done
 
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
-#exec api_monitor.sh -o -C -D -N 2 -n 8 -s -e sender@domain.org "$@"
-exec api_monitor.sh -O -C -D -N 2 -n 8 -s -e sender@domain.org "$@"
+exec api_monitor.sh -O -C -D -N 2 -n 8 -s -LL -b -B -T -e recipient@domain.org "$@"
 
