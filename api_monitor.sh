@@ -3677,7 +3677,9 @@ cleanup_new()
   deleteLBs
   delPortsLBs
   deleteVIPs
+  unset REMVOLUMES
   waitdelVMs; deleteVols
+  REVOLS=("${REMVOLUMES[*]}")
   VOLUMES=("${VOLUMES2[@]}"); deleteVols
   waitdelJHVMs; deleteJHVols
   deleteKeypairs
@@ -3691,6 +3693,8 @@ cleanup_new()
   deleteNets; deleteJHNets
   unset NOFILTERTAG
   deleteRouters
+  # A second pass on volumes
+  if test -n "$REVOLS"; then VOLUMES=("${REVOLS[*]}"); deleteVols; fi
 }
 
 cleanup()
@@ -3727,6 +3731,7 @@ cleanup()
   deleteVIPs
   VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
   waitdelVMs; deleteVols
+  REVOLS=("${REMVOLUMES[*]}")
   # When we boot from image, names are different ...
   VOLUMES=( $(findres ${RPRE}VM_VM cinder list) )
   deleteVols
@@ -3763,6 +3768,10 @@ cleanup()
   deleteNets
   unset NOFILTERTAG
   deleteRouters
+  # A second pass on volumes
+  if test -n "$REMJHVOLUMES"; then JHVOLUMES=("${REMJHVOLUMES[*]}"); deleteJHVols; fi
+  if test -n "$REMVOLUMES"; then VOLUMES=("${REMVOLUMES[*]}"); deleteVols; fi
+  if test -n "$REVOLS"; then VOLUMES=("${REVOLS[*]}"); deleteVols; fi
 }
 
 # Network cleanups can fail if VM deletion failed, so cleanup again
