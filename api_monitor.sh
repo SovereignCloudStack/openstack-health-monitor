@@ -1156,6 +1156,25 @@ ostackcmd_tm_retry()
   return $RRC
 }
 
+# ostackcmd_tm with a retry after 2s (idempotent commands only)
+# Parameters: See ostackcmd_tm
+ostackcmd_tm_retry3()
+{
+  ostackcmd_tm "$@"
+  local RRC=$?
+  if test $RRC != 0; then
+    sleep 2
+    ostackcmd_tm "$@"
+    RRC=$?
+    if test $RRC != 0; then
+      sleep 4
+      ostackcmd_tm "$@"
+      RRC=$?
+    fi
+  fi
+  return $RRC
+}
+
 
 SCOL=""
 # Set SCOL according to state in $1
@@ -2730,7 +2749,7 @@ createVMsAll()
   declare -a STMS
   if test -n "$VMVOLSIZE"; then
     IMAGE="--block-device id=$IMGID,source=image,dest=volume,size=$VMVOLSIZE,shutdown=remove,bootindex=0"
-    ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder list -f value -c ID #-c Name # -c Status -c Size
+    ostackcmd_tm_retry3 VOLSTATS $CINDERTIMEOUT cinder list -f value -c ID #-c Name # -c Status -c Size
     OLDVOLS="$OSTACKRESP"
     echo "#DEBUG: $(echo $OLDVOLS | wc -w) OLDVOLS"
   else
@@ -2796,7 +2815,7 @@ createVMs()
 nameVols()
 {
   if test "$VOLNEEDSTAG" != "1"; then return $((NOVMS+NOAZS)); fi
-  ostackcmd_tm_retry VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder list -c Attached || return 0
+  ostackcmd_tm_retry3 VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder list -c Attached || return 0
   OSTACKRESP=$(echo "$OSTACKRESP" | grep -v '^+' | grep -v '| ID' | sed -e 's/|$//' -e 's/ *| */,/g')
   local COLL=""
   local natt=0
@@ -2820,7 +2839,7 @@ nameVols()
   for att in $COLL; do
     ID=${att%:*}
     NM=${att##*:}
-    ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder rename $NM $ID && let natt+=1
+    ostackcmd_tm_retry3 VOLSTATS $CINDERTIMEOUT cinder rename $NM $ID && let natt+=1
   done
   return $natt
 }
@@ -2843,7 +2862,7 @@ dbgout()
 nameUnattachedVols()
 {
   local MISS=$1
-  ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder list -f value || return 1
+  ostackcmd_tm_retry3 VOLSTATS $CINDERTIMEOUT cinder list -f value || return 1
   CAND=()
   while read id nm stat sz; do
     if test -z "$sz"; then sz="$stat"; stat="$nm"; nm=""; fi
@@ -2862,7 +2881,7 @@ nameUnattachedVols()
   # TODO: Do sanity checking and filtering for img metadata and size
   if test ${#CAND[*]} -gt $MISS; then echo "#ERROR: More new unatt. vols than errs, clean up not yet implemented" 1>&2; return 1; fi
   for idx in $(seq 0 $((${#CAND[*]}-1))); do
-    ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder rename ${RPRE}RootVol_VM_$loop_$idx ${CAND[$idx]}
+    ostackcmd_tm_retry3 VOLSTATS $CINDERTIMEOUT cinder rename ${RPRE}RootVol_VM_$loop_$idx ${CAND[$idx]}
   done
   #ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder delete ${CAND[*]}
 }
@@ -3607,6 +3626,10 @@ findres()
   translate "$@"
   # FIXME: Add timeout handling
   ${OSTACKCMD[@]} 2>/dev/null | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
+  if test $? != 0; then
+    sleep 2
+    ${OSTACKCMD[@]} 2>/dev/null | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
+  fi
 }
 
 collectRes()
