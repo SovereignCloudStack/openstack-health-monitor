@@ -1143,38 +1143,37 @@ ostackcmd_tm()
 }
 
 # ostackcmd_tm with a retry after 2s (idempotent commands only)
+ostackcmd_tm_retry_N()
+{
+  local NORETRY=$1
+  local RESLEEP=2
+  local RECTR=0
+  local RRC=0
+  shift
+  while test $RECTR -lt $NORETRY; do
+    ostackcmd_tm "$@"
+    local RRC=$?
+    if test $RRC = 0; then return 0; fi
+    sleep $RESLEEP
+    let RESLEEP+=1
+    let RECTR+=1
+  done
+  return $RRC
+}
+
+# ostackcmd_tm with a retry after 2s (idempotent commands only)
 # Parameters: See ostackcmd_tm
 ostackcmd_tm_retry()
 {
-  ostackcmd_tm "$@"
-  local RRC=$?
-  if test $RRC != 0; then
-    sleep 2
-    ostackcmd_tm "$@"
-    RRC=$?
-  fi
-  return $RRC
+  ostackcmd_tm_retry_N 2 "$@"
 }
 
 # ostackcmd_tm with a retry after 2s (idempotent commands only)
 # Parameters: See ostackcmd_tm
 ostackcmd_tm_retry3()
 {
-  ostackcmd_tm "$@"
-  local RRC=$?
-  if test $RRC != 0; then
-    sleep 2
-    ostackcmd_tm "$@"
-    RRC=$?
-    if test $RRC != 0; then
-      sleep 4
-      ostackcmd_tm "$@"
-      RRC=$?
-    fi
-  fi
-  return $RRC
+  ostackcmd_tm_retry_N 3 "$@"
 }
-
 
 SCOL=""
 # Set SCOL according to state in $1
@@ -1533,12 +1532,12 @@ waitlistResources()
     ostackcmd_tm $STATNM $TIMEOUT $CMD
     if test $? != 0; then
       echo -e "\n${YELLOW}ERROR: $CMD => $OSTACKRESP$NORM" 1>&2
-      # Only bail out after 4th error;
+      # Only bail out after 6th error;
       # so we retry in case there are spurious 500/503 (throttling) errors
       # Do not give up so early on waiting for deletion ...
       let NERR+=1
-      if test $NERR -ge 4 -a "$COMP1" != "XDELX" -o $NERR -ge 20; then return 1; fi
-      sleep 10
+      if test $NERR -ge 6 -a "$COMP1" != "XDELX" -o $NERR -ge 24; then return 1; fi
+      sleep 5
     fi
     local TM
     #misserr=0
@@ -3743,7 +3742,7 @@ cleanup()
   if test "$TAG" == "1"; then
     FIPS=( $(${OSTACKCMD[@]} | grep '^| [0-9a-f]\{8\}\-' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   else
-    FIPS=( $(${OSTACKCMD[@]} | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+    FIPS=( $(${OSTACKCMD[@]} | grep '10\.250\.255\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   fi
   deleteFIPs
   JHVMS=( $(findres ${RPRE}VM_JH nova list) )
@@ -3873,6 +3872,7 @@ waitnetgone()
   unset NOFILTERTAG
   if test -n "$ROUTERS"; then deleteRouters; fi
   unset IGNORE_ERRORS
+  unset OLDFIPS
 }
 
 # Token retrieval and catalog ...
