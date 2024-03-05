@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.99
+VERSION=1.100
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -1143,19 +1143,37 @@ ostackcmd_tm()
 }
 
 # ostackcmd_tm with a retry after 2s (idempotent commands only)
-# Parameters: See ostackcmd_tm
-ostackcmd_tm_retry()
+ostackcmd_tm_retry_N()
 {
-  ostackcmd_tm "$@"
-  local RRC=$?
-  if test $RRC != 0; then
-    sleep 2
+  local NORETRY=$1
+  local RESLEEP=2
+  local RECTR=0
+  local RRC=0
+  shift
+  while test $RECTR -lt $NORETRY; do
     ostackcmd_tm "$@"
-    RRC=$?
-  fi
+    local RRC=$?
+    if test $RRC = 0; then return 0; fi
+    sleep $RESLEEP
+    let RESLEEP+=1
+    let RECTR+=1
+  done
   return $RRC
 }
 
+# ostackcmd_tm with a retry after 2s (idempotent commands only)
+# Parameters: See ostackcmd_tm
+ostackcmd_tm_retry()
+{
+  ostackcmd_tm_retry_N 2 "$@"
+}
+
+# ostackcmd_tm with a retry after 2s (idempotent commands only)
+# Parameters: See ostackcmd_tm
+ostackcmd_tm_retry3()
+{
+  ostackcmd_tm_retry_N 3 "$@"
+}
 
 SCOL=""
 # Set SCOL according to state in $1
@@ -1514,12 +1532,12 @@ waitlistResources()
     ostackcmd_tm $STATNM $TIMEOUT $CMD
     if test $? != 0; then
       echo -e "\n${YELLOW}ERROR: $CMD => $OSTACKRESP$NORM" 1>&2
-      # Only bail out after 4th error;
+      # Only bail out after 6th error;
       # so we retry in case there are spurious 500/503 (throttling) errors
       # Do not give up so early on waiting for deletion ...
       let NERR+=1
-      if test $NERR -ge 4 -a "$COMP1" != "XDELX" -o $NERR -ge 20; then return 1; fi
-      sleep 10
+      if test $NERR -ge 6 -a "$COMP1" != "XDELX" -o $NERR -ge 24; then return 1; fi
+      sleep 5
     fi
     local TM
     #misserr=0
@@ -2730,7 +2748,7 @@ createVMsAll()
   declare -a STMS
   if test -n "$VMVOLSIZE"; then
     IMAGE="--block-device id=$IMGID,source=image,dest=volume,size=$VMVOLSIZE,shutdown=remove,bootindex=0"
-    ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder list -f value -c ID #-c Name # -c Status -c Size
+    ostackcmd_tm_retry3 VOLSTATS $CINDERTIMEOUT cinder list -f value -c ID #-c Name # -c Status -c Size
     OLDVOLS="$OSTACKRESP"
     echo "#DEBUG: $(echo $OLDVOLS | wc -w) OLDVOLS"
   else
@@ -2796,7 +2814,7 @@ createVMs()
 nameVols()
 {
   if test "$VOLNEEDSTAG" != "1"; then return $((NOVMS+NOAZS)); fi
-  ostackcmd_tm_retry VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder list -c Attached || return 0
+  ostackcmd_tm_retry3 VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder list -c Attached || return 0
   OSTACKRESP=$(echo "$OSTACKRESP" | grep -v '^+' | grep -v '| ID' | sed -e 's/|$//' -e 's/ *| */,/g')
   local COLL=""
   local natt=0
@@ -2809,7 +2827,7 @@ nameVols()
     if [[ "$NM" != APIMonitor* ]]; then
       NM=$(echo "$att" | sed "s/^Attached to \([0-9a-f\-]*\) .*\$/${RPRE}RootVol_\1/")
     fi
-    if [[ "$NM" == APIMonitor* ]]; then
+    if [[ "$NM" == ${RPRE}* ]]; then
       if test -n "$nm"; then let natt+=1; continue; fi
     fi
     if test -n "$nm"; then continue; fi
@@ -2820,7 +2838,7 @@ nameVols()
   for att in $COLL; do
     ID=${att%:*}
     NM=${att##*:}
-    ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder rename $NM $ID && let natt+=1
+    ostackcmd_tm_retry3 VOLSTATS $CINDERTIMEOUT cinder rename $NM $ID && let natt+=1
   done
   return $natt
 }
@@ -2839,11 +2857,11 @@ dbgout()
   if test -n "$DEBUG"; then echo "$@"; fi
 }
 
-# Cleanup volumes created by nova but which did not get attached
+# Name volumes created by nova but which did not get attached
 nameUnattachedVols()
 {
   local MISS=$1
-  ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder list -f value || return 1
+  ostackcmd_tm_retry3 VOLSTATS $CINDERTIMEOUT cinder list -f value || return 1
   CAND=()
   while read id nm stat sz; do
     if test -z "$sz"; then sz="$stat"; stat="$nm"; nm=""; fi
@@ -2862,7 +2880,7 @@ nameUnattachedVols()
   # TODO: Do sanity checking and filtering for img metadata and size
   if test ${#CAND[*]} -gt $MISS; then echo "#ERROR: More new unatt. vols than errs, clean up not yet implemented" 1>&2; return 1; fi
   for idx in $(seq 0 $((${#CAND[*]}-1))); do
-    ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder rename ${RPRE}RootVol_VM_$loop_$idx ${CAND[$idx]}
+    ostackcmd_tm_retry3 VOLSTATS $CINDERTIMEOUT cinder rename ${RPRE}RootVol_VM_$loop_$idx ${CAND[$idx]}
   done
   #ostackcmd_tm_retry VOLSTATS $CINDERTIMEOUT cinder delete ${CAND[*]}
 }
@@ -3607,6 +3625,10 @@ findres()
   translate "$@"
   # FIXME: Add timeout handling
   ${OSTACKCMD[@]} 2>/dev/null | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
+  if test $? != 0; then
+    sleep 2
+    ${OSTACKCMD[@]} 2>/dev/null | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
+  fi
 }
 
 collectRes()
@@ -3677,7 +3699,9 @@ cleanup_new()
   deleteLBs
   delPortsLBs
   deleteVIPs
+  unset REMVOLUMES
   waitdelVMs; deleteVols
+  REVOLS=("${REMVOLUMES[*]}")
   VOLUMES=("${VOLUMES2[@]}"); deleteVols
   waitdelJHVMs; deleteJHVols
   deleteKeypairs
@@ -3691,6 +3715,8 @@ cleanup_new()
   deleteNets; deleteJHNets
   unset NOFILTERTAG
   deleteRouters
+  # A second pass on volumes
+  if test -n "$REVOLS"; then VOLUMES=("${REVOLS[*]}"); deleteVols; fi
 }
 
 cleanup()
@@ -3716,7 +3742,7 @@ cleanup()
   if test "$TAG" == "1"; then
     FIPS=( $(${OSTACKCMD[@]} | grep '^| [0-9a-f]\{8\}\-' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   else
-    FIPS=( $(${OSTACKCMD[@]} | grep '10\.250\.255' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+    FIPS=( $(${OSTACKCMD[@]} | grep '10\.250\.255\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   fi
   deleteFIPs
   JHVMS=( $(findres ${RPRE}VM_JH nova list) )
@@ -3727,6 +3753,7 @@ cleanup()
   deleteVIPs
   VOLUMES=( $(findres ${RPRE}RootVol_VM cinder list) )
   waitdelVMs; deleteVols
+  REVOLS=("${REMVOLUMES[*]}")
   # When we boot from image, names are different ...
   VOLUMES=( $(findres ${RPRE}VM_VM cinder list) )
   deleteVols
@@ -3763,6 +3790,10 @@ cleanup()
   deleteNets
   unset NOFILTERTAG
   deleteRouters
+  # A second pass on volumes
+  if test -n "$REMJHVOLUMES"; then JHVOLUMES=("${REMJHVOLUMES[*]}"); deleteJHVols; fi
+  if test -n "$REMVOLUMES"; then VOLUMES=("${REMVOLUMES[*]}"); deleteVols; fi
+  if test -n "$REVOLS"; then VOLUMES=("${REVOLS[*]}"); deleteVols; fi
 }
 
 # Network cleanups can fail if VM deletion failed, so cleanup again
@@ -3841,6 +3872,7 @@ waitnetgone()
   unset NOFILTERTAG
   if test -n "$ROUTERS"; then deleteRouters; fi
   unset IGNORE_ERRORS
+  unset OLDFIPS
 }
 
 # Token retrieval and catalog ...
