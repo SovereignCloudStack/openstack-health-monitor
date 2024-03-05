@@ -4,11 +4,13 @@
 # Options for the images: my openSUSE 15.2 (linux), Ubuntu 20.04 (ubuntu),
 #  openSUSE Leap 15.2 (opensuse), CentOS 8 (centos)
 # You can freely mix ...
-export JHIMG="Ubuntu 22.04"
-#export JHIMG="openSUSE 15.4"
+#export JHIMG="Ubuntu 22.04"
+export JHIMG="Debian 12"
+#export JHIMG="openSUSE 15.5"
 #export ADDJHVOLSIZE=2
-export IMG="Ubuntu 22.04"
-#export IMG="openSUSE 15.4"
+#export IMG="Ubuntu 22.04"
+export IMG="Debian 12"
+#export IMG="openSUSE 15.5"
 #export IMG="CentOS 8"
 # DEFLTUSER from image_original_user property
 #export DEFLTUSER=opensuse
@@ -20,11 +22,11 @@ export IMG="Ubuntu 22.04"
 # ECP flavors
 #if test $OS_REGION_NAME == Kna1; then
 #export JHFLAVOR=SCS-1L:1:5
-export JHFLAVOR=SCS-1V:1
+export JHFLAVOR=SCS-1V-1
 #export JHFLAVOR=SCS-1V:1:10
 #export FLAVOR=SCS-1L:1:5
 #export FLAVOR=SCS-1V:1:10
-export FLAVOR=SCS-1L:1
+export FLAVOR=SCS-1L-1
 #else
 #export JHFLAVOR=1C-1GB-10GB
 #export FLAVOR=1C-1GB-10GB
