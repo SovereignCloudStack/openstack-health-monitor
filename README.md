@@ -184,3 +184,8 @@ started manually or from Jenkins, partially with recording stats to a local Tele
 and failures into a Grafana dashboard.
 Configuration files for telegraf, influxdb and a nice grafana dashboard can be found in the `dashboard/`
 subdirectory.
+
+## HOWTO Guide
+
+The directory docs contains a complete [setup guide](https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/docs/Debian12-Install.md)
+ using Debian 12 VMs on an SCS reference deployement.

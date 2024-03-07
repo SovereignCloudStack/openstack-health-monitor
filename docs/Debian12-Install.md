@@ -1,4 +1,4 @@
-# Setting up openstack-health-monitor on Debian 12
+# Guide: Setting up openstack-health-monitor on Debian 12
 Kurt Garloff, 2024-02-20
 
 ## Intro
@@ -10,6 +10,8 @@ Note: This is a rather classical snowflake setup -- we create a VM and do some m
 
 openstack-health-monitor implements a scripted scenario test with a large shell-script that uses the openstackclient tools to set up the scenario, test it and tear everything down again in a loop. Any errors are recorded, as well as timings and some very basic benchmarks. The script sets up some virtual network infrastructure (routers, networks, subnets, floating IPs), security groups, keypairs, volumes and finally boots some VMs. Access to these is tested (ensuring metadata injection works) and connectivity between them tested and measured. A loadbalancer (optionally) is set up with a health-monitor and access via it before and after killing some backends is tested.
 The scenario is described in a bit more detail in the [repository's README.md](https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/README.md) file.
+
+The openstack-health-monitor is not the intended long-term solution for monitoring your infrastructure. The SCS project has a project underway that will create more modern, flexible, and more maintainable monitoring infrastructure; the conecpts are described on the [monitoring section](https://docs.scs.community/docs/category/monitoring) of the project's documentation. The openstack-health-monitor will thus not see any significant enhancements any more; it will be maintained and kept alive as long as there are users. This guide exclusively focuses on how to set it up.
 
 ## Setting up the driver VM
 
@@ -24,7 +26,7 @@ The author tends to see running it internally as advantageous -- ideally combine
 
 ### Unprivileged operation
 
-Nothing in this test requires admin privileges on the cloud where the driver runs nor on the cloud under test. We do install and configure a few software packages in the driver VM, which requires sudo power there, but the script should just run as a normal user.
+Nothing in this test requires admin privileges on the cloud where the driver runs nor on the cloud under test. We do install and configure a few software packages in the driver VM, which requires sudo power there, but the script should just run as a normal user. For the cloud under test it is recommended to use a user (or an application credential) with a normal tenant member role to access the cloud under test. If you can, give it an OpenStack project on its own.
 
 ### Driver VM via openstack CLI
 
@@ -65,13 +67,14 @@ Rather than creating a new key (and storing and protecting the private key), we 
 5. Look up Debian 12 image UUID.
 ```
 IMGUUID=$(openstack image list --name "Debian 12" -f value -c ID)
+echo $IMGUUID
 ```
 
 6. Boot the driver VM
 ```
 openstack server create --network oshm-network --key-name oshm-key --security-group default --security-group sshping --security-group grafana --flavor SCS-2V-4 --block-device boot_index=0,uuid=$IMGUUID,source_type=image,volume_size=10,destination_type=volume,delete_on_termination=true oshm-driver
 ```
-Chose a flavor that exists on your cloud. Here we have used  one without root disk and asked nova to create a volume on the fly. See [diskless flavor blog article](https://scs.community/2023/08/21/diskless-flavors/).
+Chose a flavor that exists on your cloud. Here we have used  one without root disk and asked nova to create a volume on the fly by passing `--block-device`. See [diskless flavor blog article](https://scs.community/2023/08/21/diskless-flavors/). For flavors with local root disks, you could have used the `--image $IMGUUID` parameter instead.
 
 7. Wait for it to boot (optional)
 You can look at the boot log with `openstack console log show oshm-driver` or connect to it via VNC at the URL given by `openstack console url show oshm-driver`. You can of course also query openstack on the status `openstack server list` or `openstack server show oshm-driver`. You can also just create a simple loop:
@@ -93,6 +96,7 @@ if [ $RC != 0 ]; then false; fi
 ```
 FIXEDIP=$(openstack server list --name oshm-driver -f value -c Networks |  sed "s@^[^:]*:[^']*'\([0-9\.]*\)'.*\$@\1@")
 FIXEDPORT=$(openstack port list --fixed-ip ip-address=$FIXEDIP,subnet=oshm-subnet -f value -c ID)
+echo $FIXEDIP $FIXEDPORT
 openstack floating ip create --port $FIXEDPORT $PUBLIC
 FLOATINGIP=$(openstack floating ip list --fixed-ip-address $FIXEDIP -f value -c "Floating IP Address")
 echo "Floating IP: $FLOATINGIP"
@@ -103,9 +107,9 @@ Remember this floating IP address.
 ```
 ssh -i ~/.ssh/oshm-key.pem debian@$FLOATINGIP
 ```
-On the first connection, you need to accept the new ssh host key. (Ultra-careful people would compare the fingerprint with the console log output.)
+On the first connection, you need to accept the new ssh host key. (Very careful people would compare the fingerprint with the console log output.)
 
-**All the following commands are performed on the newly started VM.**
+**All the following commands are performed on the newly started driver VM.**
 
 ### Configuring openstack CLI on the driver VM
 
@@ -193,6 +197,8 @@ git clone https://github.com/SovereignCloudStack/openstack-health-monitor
 cd openstack-health-monitor
 ```
 
+You may want to start a `tmux` (or `screen`) session now, so you can do multiple things in parallel (e.g. for debugging) and reconnect.
+
 The script `api_monitor.sh` is the main worker of openstack-health-monitor and runs one to many iterations of a cycle where resources are created, tested and torn down. Its operation is described in the [README.md](https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/README.md) file.
 
 It is good practice to use `tmux`. This allows you to return (reattach) to console sessions and to open new windows to investigate things. Traditional people may prefer to `screen` over `tmux`.
@@ -205,9 +211,9 @@ export JHIMG="Debian 12"
 ```
 Leave out the `-LL` if you don't have a working loadbalancer service or replace `-LL` with `-LO` if you want to test the ovn loadbalancer instead of amphorae (saving quite some resources).
 
-Feel free to study the meaning of all the command line parameters by looking at the README.md. (Note: Many of the things enabled by the parameters should be default, but are not for historic reasons. This would change if we rewrite this whole thing in python.)
+Feel free to study the meaning of all the command line parameters by looking at the [README.md](https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/README.md). (Note: Many of the things enabled by the parameters should be default, but are not for historic reasons. This would change if we rewrite this whole thing in python.)
 
-This will run for ~7 minutes, depending on the performance of your OpenStack environment. You should not get any error. Studying the console output may be instructive to follow the script's progress. You may also open another window (remember the tmux recommendation above) and look at the resources with the usual `openstack RESOURCE list` and `openstack RESOURCE show NAME` and `RESOURCE` being something like `router`, `network`, `subnet`, `port`, `volume`, `server`, `floating ip`, `loadbalancer`, `loadbalancer pool`, `loadbalancer listener`, `security group`, `keypair`, `image`, ...)
+This will run for ~7 minutes, depending on the performance of your OpenStack environment. You should not get any error. (The amber-colored outputs `DOWN`, `BUILD`, `creating` are not errors. Nothing in red should be displayed.) Studying the console output may be instructive to follow the script's progress. You may also open another window (remember the tmux recommendation above) and look at the resources with the usual `openstack RESOURCE list` and `openstack RESOURCE show NAME` and `RESOURCE` being something like `router`, `network`, `subnet`, `port`, `volume`, `server`, `floating ip`, `loadbalancer`, `loadbalancer pool`, `loadbalancer listener`, `security group`, `keypair`, `image`, ...)
 
 The `api_monitor.sh` uses and `APIMonitor_TIMESTAMP` prefix for all OpenStack resource names. This allows to identify the created resources and clean them up even if things go wrong.
 `TIMESTAMP` is an integer number representing the seconds after 1970-01-01 00:00:00 UTC (Unix time). 
@@ -216,7 +222,7 @@ This may be the time to check that you have sufficient quota to create the resou
 
 ### Resource impact and charging
 
-Note that `api_monitor.sh` uses small flavors (`SCS-1V-2` for the N jump hosts and `SCS-1L-1` for the other VMs) to keep the impact on your cloud (and on your invoice if you are not monitoring your own cloud) small.
+Note that `api_monitor.sh` uses small flavors (`SCS-1V-2` for the N jump hosts and `SCS-1L-1` for the other VMs) to keep the impact on your cloud (and on your invoice if you are not monitoring your own cloud) small. You can change the flavors.
 
 If you have to pay for this, also consider that some clouds are not charging by the minute but may count by the started hour. So when you run `api_monitor.sh` in a loop (which you will) with say 10 VMs (e.g. `-N 2 -n 8`) in each iteration and run this for an hour with 8 iterations, you will never have more than 10 VMs in parallel and they only are alive a bit more than half of the time, but rather than being charged for ~6 VM hours, you end up being charged for ~80 VM hours. Similar for volumes, routers, floating IPs. This makes a huge difference.
 
@@ -324,7 +330,7 @@ This assumes that you are using the user `debian` for this monitoring and have c
 
 If you want to change the parameters passed to `api_monitor.sh`, you best do this by editing `run_CLOUDNAME.sh`, potentially after testing it with one iteration before.
 
-To make the change effective, you can wait until the current 200 iterations are completed and the `run_in_loop.sh` calls `run_CLOUDNAME.sh` again. You can also hit `^C` in the tmux window that has`api_monitor.sh` running. The script will then exit after the current iteration. Note that sending this interrupt is handled by the script, so it does still continue the current iteration and do all the cleanup work. However, you may interrupt an API call and thus cause a spurious error (which may in the worst case lead to a couple more spurious errors). If you want to avoid this, hit `^C` during the wait/sleep phases of the script (after having done all the tests or after having completed the iteration). If you hit `^C` twice, it will abort the the current iteration, but still try to clean up. Then the outer script will also exist and you have to restart by manually calling `./run_in_loop.sh` again.
+To make the change effective, you can wait until the current 200 iterations are completed and the `run_in_loop.sh` calls `run_CLOUDNAME.sh` again. You can also hit `^C` in the tmux window that has`api_monitor.sh` running. The script will then exit after the current iteration. Note that sending this interrupt is handled by the script, so it does still continue the current iteration and do all the cleanup work. However, you may interrupt an API call and thus cause a spurious error (which may in the worst case lead to a couple more spurious errors). If you want to avoid this, hit `^C` during the wait/sleep phases of the script (after having done all the tests or after having completed the iteration). If you hit `^C` twice, it will abort the the current iteration, but still try to clean up. Then the outer script will also exit and you have to restart by manually calling `./run_in_loop.sh` again.
 
 You can also issue the `systemctl --user stop apimon` command; it will basically do the same thing: Send `^C` and then wait for everything to be completed and tear down the tmux session.
 After waiting for that to complete, you can start it again with `systemctl --user start apimon`.
@@ -348,6 +354,7 @@ Note that `api_monitor.sh` does take some care not to expose secrets -- since v1
 
 The log file is written to the file system. After finishing the 200 iterations, the log file is compressed. If the environment variable `SWIFTCONTAINER` has been set (in `run_COULDNAME.sh`) when starting `api_monitor.sh`. the log file will be uploaded to a container with that name if it exists and if the swift object storage service is supported by the cloud. So create the container (a bucket in S3 speak) before if you want to use this: `export SWIFTCONTAINER=OSHM_Logs; openstack container create $SWIFTCONTAINER`
 
+After the 200 iterations, a `.psv` file (pipe-separated values) is created `Stats.STARTTIME-ENDTIME.psv` (with times as calendar dates) which contains a bit of statistics on the last 200 iterations. This one will also be uploaded to $SWIFTCONTAINER (if configured).
 
 ## Data collection and dashboard
 See https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/dashboard/README.md
@@ -356,16 +363,15 @@ See https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/da
 To install telegraf on Debian 12, we need to find packages that we can install. I chose the ones from here:
 https://www.server-world.info/en/note?s=Debian_12&p=influxdb&f=7
 
-Following the steps there (as root):
+Following the steps there:
 ```bash
-curl -fsSL https://repos.influxdata.com/influxdata-archive_compat.key -o /etc/apt/keyrings/influxdata-archive_compat.key
-echo "deb [signed-by=/etc/apt/keyrings/influxdata-archive_compat.key] https://repos.influxdata.com/debian stable main" | tee /etc/apt/sources.list.d/influxdata.list
-apt update
-apt -y install telegraf 
+sudo curl -fsSL https://repos.influxdata.com/influxdata-archive_compat.key -o /etc/apt/keyrings/influxdata-archive_compat.key
+echo "deb [signed-by=/etc/apt/keyrings/influxdata-archive_compat.key] https://repos.influxdata.com/debian stable main" | sudo tee /etc/apt/sources.list.d/influxdata.list
+sudo apt update
+sudo apt -y install telegraf
 ```
 
-In the config file `/etc/telegraf/telegraf.conf`
-we enable
+In the config file `/etc/telegraf/telegraf.conf`, we enable
 ```
 [[inputs.influxdb_listener]]
   service_address = ":8186"
@@ -373,13 +379,13 @@ we enable
 [[outputs.influxdb]]
   urls = ["http://127.0.0.1:8086"]
 ```
-and restart the service (`systemctl restart telegraf`).
+and restart the service (`sudo systemctl restart telegraf`).
 
 ### influxdb
 
 We proceed to influxdb:
 ```
-apt-get install influxdb
+sudo apt-get install influxdb
 ```
 No configuration beyond the defaults is necessary.
 
@@ -393,10 +399,10 @@ You need to tell the monitor that it should send data via telegraf to influxdb b
 
 Finally grafana: We (still as root) follow https://www.server-world.info/en/note?os=Debian_12&p=grafana
 ```
-wget -q -O /usr/share/keyrings/grafana.key https://packages.grafana.com/gpg.key
-echo "deb [signed-by=/usr/share/keyrings/grafana.key] https://packages.grafana.com/oss/deb stable main" | tee -a /etc/apt/sources.list.d/grafana.list
-apt update
-apt -y install grafana 
+sudo wget -q -O /usr/share/keyrings/grafana.key https://packages.grafana.com/gpg.key
+echo "deb [signed-by=/usr/share/keyrings/grafana.key] https://packages.grafana.com/oss/deb stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+sudo apt update
+sudo apt -y install grafana
 ```
 
 The config file `/etc/grafana/grafana.ini` needs some adjustments:
@@ -444,9 +450,44 @@ You can change the time interval and zoom in also by marking an interval with th
 
 The SCS providers do allow all github users that belong to the SovereignCloudStack organziation to get Viewer access to the dashboards by adding a `client_id` and `client_secret` in the ``[github.auth]`` section that you request from the SCS github admins (github's oauth auth). This allows to exchange experience and to get a feeling for the achievable stability. (Hint: A single digit number of API call fails per week and no other failures is achievable on loaded clouds.)
 
+## Alternative approach to install and configure the dashboard behind a reverse proxy
+
+Install influxdb via apt: https://docs.influxdata.com/influxdb/v1/introduction/install/#installing-influxdb-oss
+Install telegraf (same apt repo as influxdb): `sudo apt update && sudo apt install telegraf`
+Install grafana: https://grafana.com/docs/grafana/latest/setup-grafana/installation/debian/#install-from-apt-repository
+
+Prepare configuration by using the config files from the repository as an alternativ to doing the changes manually (as described above):
+```
+sudo cp dashboard/telegraf.conf /etc/telegraf && sudo chown root:root /etc/telegraf/telegraf.conf && sudo chmod 0644 /etc/telegraf/telegraf.conf
+sudo cp dashboard/config.toml /etc/influxdb && sudo chown root:influxdb /etc/influxdb/config.toml && sudo chmod 0640 /etc/influxdb/config.toml
+sudo cp dashboard/grafana.ini /etc/grafana && sudo chown root:grafana /etc/grafana/grafana.ini && sudo chmod 0640 /etc/grafana/grafana.ini
+```
+These config files should work as long as the versions of telegraf, influxdb and grafana don't evolve too far from the ones used in the repository. (Otherwise refer to above instructions how to tweak the default config files.)
+
+Changes to `/etc/grafana/grafana.ini` as we do tls termination at the reverse proxy:
+- set `protocol = http`
+- comment out `domain` option (? FIXME) or set it to the hostname
+- comment out `cert_*` options
+
+Also change the admin password in `grafana.ini`.
+
+Changes to `/etc/grafana/grafana.ini` if github auth should not be used yet:
+- comment out whole `[auth.github]` section for now (can be enabled later)
+
+Restart services: `sudo systemctl restart telegraf && sudo systemctl restart influxdb && sudo systemctl restart grafana-server`
+
+Configuration in grafana web gui:
+- Login to grafana `http(s)://<domain>:3000` with user admin and default password from `/etc/grafana/grafana.ini` and change password.
+- Create influxdb datasource with url `http://localhost:8086` and database name `telegraf`.
+- Finally import dashboard `dashboard/openstack-health-dashboard.json` to grafana.
+
+TODO:
+* Reverse proxy (aka ingress) with Let's Encrypt cert
+* Github auth as described above
+
 ## Maintenance
 
-The driver VM is a snowflake: A manually set up system (unless you automate all the above steps, which is possible of course)  that holds data and is long-lived. As such it's important to be maintained.
+The driver VM is a snowflake: A manually set up system (unless you automate all the above steps, which is possible of course) that holds data and is long-lived. As such it's important to be maintained.
 
 ### Unattended upgrades
 
@@ -494,36 +535,4 @@ There are a few things that may need support from a cloud admin:
 
 More like these may happen, but those two are the only ones that have been observed to happen occasionally. Some services seem to be less robust than others against an event in the event queue (rabbitmq) being lost or an connection to be interrupted.
 
-## Alternative approach to install and configure the dashboard behind a reverse proxy
 
-Install influxdb via apt: https://docs.influxdata.com/influxdb/v1/introduction/install/#installing-influxdb-oss
-Install telegraf (same apt repo as influxdb): `sudo apt update && sudo apt install telegraf`
-Install grafana: https://grafana.com/docs/grafana/latest/setup-grafana/installation/debian/#install-from-apt-repository
-
-Prepare configuration:
-```
-sudo cp dashboard/telegraf.conf /etc/telegraf && sudo chown root:root /etc/telegraf/telegraf.conf && sudo chmod 0644 /etc/telegraf/telegraf.conf
-sudo cp dashboard/config.toml /etc/influxdb && sudo chown root:influxdb /etc/influxdb/config.toml && sudo chmod 0640 /etc/influxdb/config.toml
-sudo cp dashboard/grafana.ini /etc/grafana && sudo chown root:grafana /etc/grafana/grafana.ini && sudo chmod 0640 /etc/grafana/grafana.ini
-```
-
-Changes to `/etc/grafana/grafana.ini` as we do tls termination at the reverse proxy:
-- set `protocol = http`
-- comment out `domain` option (? FIXME)
-- comment out `cert_*` options
-
-Change the admin password in `grafana.ini`.
-
-Changes to `/etc/grafana/grafana.ini` if github auth should not be used yet:
-- comment out whole `[auth.github]` section for now (can be enabled later)
-
-Restart services: `sudo systemctl restart telegraf && sudo systemctl restart influxdb && sudo systemctl restart grafana-server`
-
-Configuration in grafana web gui:
-- Login to grafana `http(s)://<domain>:3000` with user admin and default password from `/etc/grafana/grafana.ini` and change password.
-- Create influxdb datasource with url `http://localhost:8086` and database name `telegraf`.
-- Finally import dashboard `dashboard/openstack-health-dashboard.json` to grafana.
-
-TODO:
-* Reverse proxy with LE cert
-* Github auth
