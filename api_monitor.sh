@@ -181,6 +181,7 @@ patch_openstackclient_computeazlist()
   echo "INFO: patching openstackclient $avz ..."
   sudo cp -p $avz $avz.orig
   sudo sed -i 's/nova_exceptions/sdk_exceptions/g' $avz
+  sudo sed -i 's/data = compute_client\.availability_zones(details=True)/data = list(compute_client.availability_zones(details=True))/' $avz
   sudo sed -i 's/data = volume_client\.availability_zones()/data = list(volume_client.availability_zones())/' $avz
 }
 
@@ -191,19 +192,21 @@ if test -z "$AZS"; then
   AZS=$(openstack availability zone list --compute -f json 2>/dev/null | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
   if test -z "$AZS"; then AZS=$(otc.sh vm listaz 2>/dev/null | grep -v region | sort -u); fi
   if test -z "$AZS"; then
-    #echo "ERROR: Broken openstack client (openstack availability zone list --compute fails). Trying to patch." 1>&2
-    #patch_openstackclient_computeazlist
-    #AZS=$(openstack availability zone list --compute -f json 2>/dev/null | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
-    echo "ERROR: Broken openstack client 6.3/6.4 (openstack availability zone list --compute fails). Working around..." 1>&2
-    TKN=$(openstack token issue -f value -c id)
-    NOVAEP=$(openstack catalog list -f json | jq '.[] | select(.Name == "nova") | .Endpoints[] | select(.interface == "public") | .url' | tr -d '"')
-    if test -n "$OS_CACERT"; then CURLARG="--cacert $OS_CACERT"; else unset CURLARG; fi
-    RESP=$(curl $CURLARG -H "Accept: application/json" -H "X-Auth-Token: $TKN" -X GET "$NOVAEP/os-availability-zone" 2>/dev/null)
-    if test -n "$RESP"; then
+    echo "ERROR: Broken openstack client 6.3/6.4 (openstack availability zone list --compute fails). Trying to patch." 1>&2
+    patch_openstackclient_computeazlist
+    AZS=$(openstack availability zone list --compute -f json 2>/dev/null | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
+    if test -z "$AZS"; then
+      echo "ERROR: openstack client still broken. Working around with curl ..." 1>&2
+      if test -n "$OS_CACERT"; then CURLARG="--cacert $OS_CACERT"; else unset CURLARG; fi
+      NOVAEP=$(openstack catalog list -f json | jq '.[] | select(.Name == "nova") | .Endpoints[] | select(.interface == "public") | .url' | tr -d '"')
+      TKN=$(openstack token issue -f value -c id)
+      RESP=$(curl $CURLARG -H "Accept: application/json" -H "X-Auth-Token: $TKN" -X GET "$NOVAEP/os-availability-zone" 2>/dev/null)
+      unset TKN
+      if test -n "$RESP"; then
 	AZS=$(echo "$RESP" | jq '.availabilityZoneInfo[] | select(.zoneState.available == true) | .zoneName' | tr -d '"')
+      fi
     fi
-    unset TKN
-    if test -z "$AZS"; then echo "ERROR: Still no luck. Pass AZS manually or isntall openstackclient-6.5+" 1>&2; exit 1; fi
+    if test -z "$AZS"; then echo "ERROR: Still no luck. Pass AZS manually or install openstackclient-6.5+" 1>&2; exit 1; fi
   fi
 fi
 AZS=($AZS)
