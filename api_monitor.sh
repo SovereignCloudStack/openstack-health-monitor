@@ -181,6 +181,10 @@ patch_openstackclient_computeazlist()
   echo "INFO: patching openstackclient $avz ..."
   sudo cp -p $avz $avz.orig
   sudo sed -i 's/nova_exceptions/sdk_exceptions/g' $avz
+  sudo sed -i '/from novaclient import exceptions/{
+i from openstack import exceptions as openstack_exceptions
+}' $avz
+  sudo sed -i 's/sdk_exceptions\.Forbidden:/(sdk_exceptions.Forbidden,openstack_exceptions.ForbiddenException):/g' $avz
   sudo sed -i 's/data = compute_client\.availability_zones(details=True)/data = list(compute_client.availability_zones(details=True))/' $avz
   sudo sed -i 's/data = volume_client\.availability_zones()/data = list(volume_client.availability_zones())/' $avz
 }
