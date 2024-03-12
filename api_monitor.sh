@@ -177,7 +177,7 @@ patch_openstackclient_computeazlist()
   esac
   avz=${comppy%/*}/common/availability_zone.py
   if test ! -r "$avz"; then echo "No such file $avz to patch" 1&>2; return 1; fi
-  if ! grep 'nova_exceptions' $avz >/dev/null 2>&1; then return 0; fi
+  if grep 'ForbiddenException' $avz >/dev/null 2>&1; then return 0; fi
   echo "INFO: patching openstackclient $avz ..."
   sudo cp -p $avz $avz.orig
   sudo sed -i 's/nova_exceptions/sdk_exceptions/g' $avz
