@@ -196,9 +196,12 @@ if test -z "$AZS"; then
   AZS=$(openstack availability zone list --compute -f json 2>/dev/null | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
   if test -z "$AZS"; then AZS=$(otc.sh vm listaz 2>/dev/null | grep -v region | sort -u); fi
   if test -z "$AZS"; then
-    echo "ERROR: Broken openstack client 6.3/6.4 (openstack availability zone list --compute fails). Trying to patch." 1>&2
-    patch_openstackclient_computeazlist
-    AZS=$(openstack availability zone list --compute -f json 2>/dev/null | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
+    # Dangerous territory, guard it by PATCHOSTACK
+    if test -n "$PATCHOSTACK"; then
+      echo "ERROR: Broken openstack client 6.3/6.4 (openstack availability zone list --compute fails). Trying to patch." 1>&2
+      patch_openstackclient_computeazlist
+      AZS=$(openstack availability zone list --compute -f json 2>/dev/null | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
+    fi
     if test -z "$AZS"; then
       echo "ERROR: openstack client still broken. Working around with curl ..." 1>&2
       if test -n "$OS_CACERT"; then CURLARG="--cacert $OS_CACERT"; else unset CURLARG; fi
