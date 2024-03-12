@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.100
+VERSION=1.101
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -131,12 +131,80 @@ GRAFANANM="${GRAFANANM:-api-monitoring}"
 WAITLB=${WAITLB:-16}
 KPTYPE=${KPTYPE:-rsa}
 
+# Find python openstackclient install
+# Returns comppy
+find_ostclient_compute()
+{
+  ostclient=`type -p openstack`
+  ostdir=`dirname $ostclient`
+  for dir in ~/.local/python3.* ~/.local/python3 \
+	     ${ostdir%/*}/lib/python3.*/site-packages ${ostdir%/*}/lib/python3/site-packages \
+             ${ostdir%/*}/lib/python3.*/dist-packages ${ostdir%/*}/lib/python3/dist-packages \
+	     ${ostdir%/*}/lib/python3.*; do
+    comppy=`ls -d ${dir}/openstackclient/compute 2>/dev/null`
+    if test -d "$comppy"; then return 0; fi
+  done
+  if ! test -d "$comppy"; then echo "INFO: Can not find openstackclient $comppy" 2>&1; unset comppy; return 1; fi
+}
+
+# Patch openstackclient to support booting with --block-device
+patch_openstackclient_disklessboot()
+{
+  find_ostclient_compute || return
+  srvpy=$comppy/v2/server.py
+  if grep -A1 'disk_group = parser.add_mutually_excl' $srvpy 2>/dev/null | grep 'required=True' 2>/dev/null >/dev/null; then
+    echo "INFO: patching openstackclient $srvpy ..."
+    sudo cp -p $srvpy $srvpy.orig
+    sudo sed -i '/disk_group = parser\.add_mutually_excl/{n
+s@required=True@required=False@
+b exit
+}
+:exit' $srvpy
+    echo "INFO: openstackclient patched $?"
+  fi
+}
+
+# Patch openstackclient to support availabiliy zone list --compute as project member
+patch_openstackclient_computeazlist()
+{
+  ostackver=$(openstack --version | sed 's/^openstack //')
+  find_ostclient_compute || return
+  case $ostackver in
+	6.3.0|6.4.0)
+		;;
+	*)
+		return;;
+  esac
+  avz=${comppy%/*}/common/availability_zone.py
+  if test ! -r "$avz"; then echo "No such file $avz to patch" 1&>2; return 1; fi
+  if ! grep 'nova_exceptions' $avz >/dev/null 2>&1; then return 0; fi
+  echo "INFO: patching openstackclient $avz ..."
+  sudo cp -p $avz $avz.orig
+  sudo sed -i 's/nova_exceptions/sdk_exceptions/g' $avz
+  sudo sed -i 's/data = volume_client\.availability_zones()/data = list(volume_client.availability_zones())/' $avz
+}
+
 # Number of VMs and networks
 if test -z "$AZS"; then
   #AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
   #AZS=$(openstack availability zone list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | grep -v '| Zone Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
-  AZS=$(openstack availability zone list --compute -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
+  AZS=$(openstack availability zone list --compute -f json 2>/dev/null | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
   if test -z "$AZS"; then AZS=$(otc.sh vm listaz 2>/dev/null | grep -v region | sort -u); fi
+  if test -z "$AZS"; then
+    #echo "ERROR: Broken openstack client (openstack availability zone list --compute fails). Trying to patch." 1>&2
+    #patch_openstackclient_computeazlist
+    #AZS=$(openstack availability zone list --compute -f json 2>/dev/null | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
+    echo "ERROR: Broken openstack client 6.3/6.4 (openstack availability zone list --compute fails). Working around..." 1>&2
+    TKN=$(openstack token issue -f value -c id)
+    NOVAEP=$(openstack catalog list -f json | jq '.[] | select(.Name == "nova") | .Endpoints[] | select(.interface == "public") | .url' | tr -d '"')
+    if test -n "$OS_CACERT"; then CURLARG="--cacert $OS_CACERT"; else unset CURLARG; fi
+    RESP=$(curl $CURLARG -H "Accept: application/json" -H "X-Auth-Token: $TKN" -X GET "$NOVAEP/os-availability-zone" 2>/dev/null)
+    if test -n "$RESP"; then
+	AZS=$(echo "$RESP" | jq '.availabilityZoneInfo[] | select(.zoneState.available == true) | .zoneName' | tr -d '"')
+    fi
+    unset TKN
+    if test -z "$AZS"; then echo "ERROR: Still no luck. Pass AZS manually or isntall openstackclient-6.5+" 1>&2; exit 1; fi
+  fi
 fi
 AZS=($AZS)
 #echo "${#AZS[*]} AZs: ${AZS[*]}"; exit 0
@@ -479,31 +547,6 @@ if ! type -p timeout >/dev/null 2>&1; then
   echo "Need to install the timeout tool (coreutils)" 1>&2
   exit 1
 fi
-
-# Patch openstackclient to support booting with --block-device
-patch_openstackclient()
-{
-  ostclient=`type -p openstack`
-  ostdir=`dirname $ostclient`
-  for dir in ${ostdir%/*}/lib/python3.*/site-packages ${ostdir%/*}/lib/python3/site-packages \
-             ${ostdir%/*}/lib/python3.*/dist-packages ${ostdir%/*}/lib/python3/dist-packages; do
-    srvfile=`ls ${dir}/openstackclient/compute/v2/server.py 2>/dev/null`
-    if test -r "$srvfile"; then break; fi
-  done
-  if ! test -r "$srvfile"; then echo "INFO: Can not patch openstackclient $srvfile" 2>&1; return; fi
-  if grep -A1 'disk_group = parser.add_mutually_excl' $srvfile 2>/dev/null | grep 'required=True' 2>/dev/null >/dev/null; then
-    echo "INFO: patching openstackclient $srvfile ..."
-    sudo cp -p $srvfile $srvfile.orig
-    sudo sed -i '/disk_group = parser\.add_mutually_excl/{n
-s@required=True@required=False@
-b exit
-}
-:exit' $srvfile
-    echo "INFO: openstackclient patched $?"
-  #else
-    #echo "INFO: openstackclient should work"
-  fi
-}
 
 
 # Alarm notification
@@ -4287,7 +4330,7 @@ else # test "$1" = "DEPLOY"; then
  else
   VMFLVDISK=$(echo "$OSTACKRESP" | jq '.disk')
   if test $VMFLVDISK -lt $VOLSIZE -a -n "$BOOTFROMIMAGE"; then
-    patch_openstackclient
+    patch_openstackclient_disklessboot
     NEED_BLKDEV=1
     VMVOLSIZE=${VMVOLSIZE:-$VOLSIZE}
   else
