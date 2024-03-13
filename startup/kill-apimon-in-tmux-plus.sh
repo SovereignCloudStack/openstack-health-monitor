@@ -32,5 +32,11 @@ while test $ctr -lt $MAXW; do
 	sleep 1
 	let ctr+=1
 done
-if test $ctr = $MAXW; then killall run_in_loop_pluspco.sh; killall run_in_loop_pluspco2.sh; killall run_in_loop_pluspco3.sh; sleep 1; fi
+if test $ctr = $MAXW; then
+	killall run_in_loop_pluspco.sh
+	killall run_in_loop_pluspco2.sh
+	killall run_in_loop_pluspco3.sh
+	killall run_in_loop_pluspco4.sh
+	sleep 1
+fi
 tmux kill-session -t $session
