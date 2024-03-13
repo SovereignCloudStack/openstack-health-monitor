@@ -11,7 +11,6 @@ export JHIMG="Debian 12"
 #export IMG="Ubuntu 22.04"
 #export IMG="openSUSE 15.5"
 export IMG="Debian 12"
-#export IMG="CentOS 8"
 # DEFLTUSER from image_original_user property
 #export DEFLTUSER=opensuse
 #export DEFLTUSER=ubuntu
@@ -21,9 +20,9 @@ export IMG="Debian 12"
 #export IMGFILT="--property-filter os_version=openSUSE-15.0"
 # ECP flavors
 #if test $OS_REGION_NAME == Kna1; then
-export JHFLAVOR=SCS-1L:1
+export JHFLAVOR=SCS-1L-1
 #export JHFLAVOR=SCS-1V:1:10
-export FLAVOR=SCS-1L:1
+export FLAVOR=SCS-1L-1
 #else
 #export JHFLAVOR=1C-1GB-10GB
 #export FLAVOR=1C-1GB-10GB
@@ -33,7 +32,7 @@ export FROM=kurt@garloff.de
 # Only use one AZ
 export AZS="az1"
 # Upload (compressed) logfiles and stats to container
-#export SWIFTCONTAINER=OS-HM-Logfiles
+export SWIFTCONTAINER=OS-HM-Logfiles
 
 # Assume OS_ parameters have already been sourced from some .openrc file
 # export OS_CLOUD=gx-scs-healthmgr
