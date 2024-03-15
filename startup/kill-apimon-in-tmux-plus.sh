@@ -10,10 +10,18 @@ touch stop-os-hm
 tmux send-keys C-c
 sleep 1
 tmux send-keys C-c
-#tmux select-window -t $session:2
-#tmux send-keys C-c
-#sleep 1
-#tmux send-keys C-c
+tmux select-window -t $session:2
+tmux send-keys C-c
+sleep 1
+tmux send-keys C-c
+tmux select-window -t $session:4
+tmux send-keys C-c
+sleep 1
+tmux send-keys C-c
+tmux select-window -t $session:6
+tmux send-keys C-c
+sleep 1
+tmux send-keys C-c
 sync
 tmux select-window -t $session:0
 # Give it max 4min to cleanup and exit, so we don't delay a reboot by more than 5 mins
@@ -26,7 +34,9 @@ while test $ctr -lt $MAXW; do
 done
 if test $ctr = $MAXW; then
 	killall run_in_loop_pluspco.sh
-	#killall run_in_loop_pluspco2.sh
+	killall run_in_loop_pluspco2.sh
+	killall run_in_loop_pluspco3.sh
+	killall run_in_loop_pluspco4.sh
 	sleep 1
 fi
 tmux kill-session -t $session

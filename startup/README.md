@@ -46,6 +46,9 @@
   `systemctl --user start apimon`
 * This should create a tmux session in which the OpenStack Health Momitor
   is running.  Attach to the tmux session `tmux attach -t oshealthmon`.
+* The apimon service uses `run-apimon-in-tmux.sh` and `kill-apimon-in-tmux.sh`
+  scripts for startup and stopping. There are also scripts that open four
+  pairs of windows to start 4 jobs and kill 4 jobs wiht `-plus` in the name.
 * You can stop the service by hitting ^C (Control-c), possibly several times.
 * Now enable the service: `systemctl --user enable apimon`
 * And tell systemd that it should create a user session on startup:

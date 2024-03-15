@@ -11,7 +11,6 @@ export JHIMG="Debian 12"
 #export IMG="Ubuntu 22.04"
 #export IMG="openSUSE 15.5"
 export IMG="Debian 12"
-#export IMG="CentOS 8"
 # DEFLTUSER from image_original_user property
 #export DEFLTUSER=opensuse
 #export DEFLTUSER=ubuntu
@@ -34,7 +33,7 @@ export FROM=kurt@garloff.de
 # Only use one AZ
 export AZS="az1"
 # Upload (compressed) logfiles and stats to container
-#export SWIFTCONTAINER=OS-HM-Logfiles
+export SWIFTCONTAINER=OS-HM-Logfiles
 
 # Assume OS_ parameters have already been sourced from some .openrc file
 # export OS_CLOUD=gx-scs-healthmgr
