@@ -1,6 +1,6 @@
 #!/bin/bash
 session="oshealthmon"
-export OS_CLOUD=plus-hm1
+export OS_CLOUD=gxscs-hm
 #export OS_CACERT=/etc/ca-cert-ciab.crt
 tmux start-server
 tmux new-session -d -s $session -n apimon1
