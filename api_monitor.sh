@@ -3828,8 +3828,15 @@ cleanup()
     for sub in ${SUBNETS[*]}; do
       if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then echo "#DEBUG: Skip port clean subnet $sub"; continue; fi
       PORTS=( $(findres "octavia-lb" neutron port-list --fixed-ip subnet=$sub) )
-      echo "Cleaning octavia ports ${PORTS[*]} in subnet $sub ..."
-      deletePorts
+      if test -n "$PORTS"; then
+	echo "Cleaning octavia (amphorae) ports ${PORTS[*]} in subnet $sub ..."
+        deletePorts
+      fi
+      PORTS=( $(findres "ovn-lb-hm-" neutron port-list --fixed-ip subnet=$sub) )
+      if test -n "$PORTS"; then
+	echo "Cleaning octavia (ovn) ports ${PORTS[*]} in subnet $sub ..."
+        deletePorts
+      fi
     done
   #fi
   SGROUPS=( $(findres "" neutron security-group-list) )
