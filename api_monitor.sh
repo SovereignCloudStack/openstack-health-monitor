@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.101
+VERSION=1.102
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -3774,6 +3774,8 @@ cleanup_new()
 
 cleanup()
 {
+  OLDNOFILTERTAG=$NOFILTERTAG
+  unset NOFILTERTAG
   # Could also call collectres here first and then clean up ...
   # Might result in a few extra port deletions but otherwise work
   # See cleanup_new (will switch after some extra testing)
@@ -3792,7 +3794,7 @@ cleanup()
   # NOTE: This will find FIPs from other APIMon jobs in the same tenant also
   #  maybe we should use findFIPs
   translate neutron floatingip-list
-  if test "$TAG" == "1"; then
+  if test "$TAG" == "1" -a -z "$NOFILTERTAG"; then
     FIPS=( $(${OSTACKCMD[@]} | grep '^| [0-9a-f]\{8\}\-' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   else
     FIPS=( $(${OSTACKCMD[@]} | grep '10\.250\.255\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
@@ -3847,6 +3849,7 @@ cleanup()
   if test -n "$REMJHVOLUMES"; then JHVOLUMES=("${REMJHVOLUMES[*]}"); deleteJHVols; fi
   if test -n "$REMVOLUMES"; then VOLUMES=("${REMVOLUMES[*]}"); deleteVols; fi
   if test -n "$REVOLS"; then VOLUMES=("${REVOLS[*]}"); deleteVols; fi
+  NOFILTERTAG=$OLDNOFILTERTAG
 }
 
 # Network cleanups can fail if VM deletion failed, so cleanup again
