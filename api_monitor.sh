@@ -2563,7 +2563,7 @@ killhttp()
     # (0)UUID, (1)PORTUUID, (2)AZNO, (3)NETNO, (4)NETIDX, (5)NAME, (6)FIP, (7)PORT, (8)INTIP
     #echo "DEBUG: $i: ${VMINFO[*]}"
     #testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
-    echo -n "$i: ${VMINFO[6]}[${VMINFO[2]}]}:${VMINFO[7]} (${VMINFO[5]}/${VMINFO[8]}) "
+    echo -n "$i: ${VMINFO[6]}[${VMINFO[2]}]:${VMINFO[7]} (${VMINFO[5]}/${VMINFO[8]}) "
     if test -z ${VMINFO[8]}; then echo -n "X "; continue; fi
     HOSTN=$(ssh -i $DATADIR/${KEYPAIRS[1]} -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3")
     if test $? == 0; then echo -n "($HOSTN) "; else echo -n "ERROR "; fi
