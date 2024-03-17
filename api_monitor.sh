@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.102
+VERSION=1.103
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -2563,7 +2563,7 @@ killhttp()
     # (0)UUID, (1)PORTUUID, (2)AZNO, (3)NETNO, (4)NETIDX, (5)NAME, (6)FIP, (7)PORT, (8)INTIP
     #echo "DEBUG: $i: ${VMINFO[*]}"
     #testlsandping ${KEYPAIRS[1]} ${FLOATS[$JHNO]} $pno $no
-    echo -n "$i: ${VMINFO[6]}[${VMINFO[2]}]}:${VMINFO[7]} (${VMINFO[5]}/${VMINFO[8]}) "
+    echo -n "$i: ${VMINFO[6]}[${VMINFO[2]}]:${VMINFO[7]} (${VMINFO[5]}/${VMINFO[8]}) "
     if test -z ${VMINFO[8]}; then echo -n "X "; continue; fi
     HOSTN=$(ssh -i $DATADIR/${KEYPAIRS[1]} -p ${VMINFO[7]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" $DEFLTUSER@${VMINFO[6]} "cat /var/run/www/htdocs/hostname; sudo killall python3")
     if test $? == 0; then echo -n "($HOSTN) "; else echo -n "ERROR "; fi
@@ -3830,8 +3830,15 @@ cleanup()
     for sub in ${SUBNETS[*]}; do
       if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then echo "#DEBUG: Skip port clean subnet $sub"; continue; fi
       PORTS=( $(findres "octavia-lb" neutron port-list --fixed-ip subnet=$sub) )
-      echo "Cleaning octavia ports ${PORTS[*]} in subnet $sub ..."
-      deletePorts
+      if test -n "$PORTS"; then
+	echo "Cleaning octavia (amphorae) ports ${PORTS[*]} in subnet $sub ..."
+	deletePorts
+      fi
+      PORTS=( $(findres "ovn-lb-hm-" neutron port-list --fixed-ip subnet=$sub) )
+      if test -n "$PORTS"; then
+	echo "Cleaning octavia (ovn) ports ${PORTS[*]} in subnet $sub ..."
+	deletePorts
+      fi
     done
   #fi
   SGROUPS=( $(findres "" neutron security-group-list) )
@@ -3902,8 +3909,15 @@ waitnetgone()
     for sub in ${SUBNETS[*]}; do
       if ! echo "$sub" | grep '^[0-9a-f\-]\+' >/dev/null; then echo "#DEBUG: Skip port cleanup in subnet $sub"; continue; fi
       PORTS=( $(findres "octavia-lb" neutron port-list --fixed-ip subnet=$sub) )
-      echo "Cleaning octavia ports ${PORTS[*]} in subnet $sub ..."
-      deletePorts
+      if test -n "$PORTS"; then
+	echo "Cleaning octavia (amphorae) ports ${PORTS[*]} in subnet $sub ..."
+	deletePorts
+      fi
+      PORTS=( $(findres "ovn-lb-hm-" neutron port-list --fixed-ip subnet=$sub) )
+      if test -n "$PORTS"; then
+	echo "Cleaning octavia (ovn) ports ${PORTS[*]} in subnet $sub ..."
+	deletePorts
+      fi
     done
   fi
   unset IGNORE_ERRORS
