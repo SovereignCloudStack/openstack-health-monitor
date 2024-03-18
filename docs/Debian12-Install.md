@@ -2,27 +2,28 @@
 Kurt Garloff, 2024-02-20
 
 ## Intro
-The development of [openstack-health-monitor](https://github.com/SovereignCloudStack/openstack-health-monitor/) was done on [openSUSE 15.x images](https://kfg.images.obs-website.eu-de.otc.t-systems.com/), just because the author is very familiar with it and has some of the needed tools preinstalled. That said, the installation is not depending on anything specific from openSUSE and should work on every modern Linux distribution.
+The development of [openstack-health-monitor](https://github.com/SovereignCloudStack/openstack-health-monitor/) was done on [openSUSE 15.x images](https://kfg.images.obs-website.eu-de.otc.t-systems.com/), just because the author is very familiar with it and has some of the needed tools preinstalled. That said, the setup is not depending on anything specific from openSUSE and should work on every modern Linux distribution.
 
-Setting it up again in a different environment using Debian 12 images avoids a few of the shortcuts that were used and thus should be very suitable to get it working. So we record the steps here.
+Setting it up again in a different environment using Debian 12 images avoids a few of the shortcuts that were used and thus should be very suitable instructions to get it working in general. The step by step instructions are covered here.
 
-Note: This is a rather classical snowflake setup -- we create a VM and do some manual configuration to get everything configured. Having it well documented here should make this more replicatable, and is an important precondition for more automation, but larger steps to full automate this using ansible or helm charts (in a containerized variant) are not addressed here. As we expect a successor project for the increasingly hard to maintain shell code, this may not be worth the trouble.
+Note: This is a rather classical snowflake setup -- we create a VM and do some manual configuration to get everything configured. Having it well documented here should make this more replicatable, and is an important precondition for more automation, but larger steps to full automate this using ansible or helm charts (in a containerized variant) are not addressed here. As we expect a [successor project](https://github.com/SovereignCloudStack/scs-health-monitor) for the increasingly hard to maintain shell code, this may not be worth the trouble.
 
 openstack-health-monitor implements a scripted scenario test with a large shell-script that uses the openstackclient tools to set up the scenario, test it and tear everything down again in a loop. Any errors are recorded, as well as timings and some very basic benchmarks. The script sets up some virtual network infrastructure (routers, networks, subnets, floating IPs), security groups, keypairs, volumes and finally boots some VMs. Access to these is tested (ensuring metadata injection works) and connectivity between them tested and measured. A loadbalancer (optionally) is set up with a health-monitor and access via it before and after killing some backends is tested.
 The scenario is described in a bit more detail in the [repository's README.md](https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/README.md) file.
 
-The openstack-health-monitor is not the intended long-term solution for monitoring your infrastructure. The SCS project has a project underway that will create more modern, flexible, and more maintainable monitoring infrastructure; the conecpts are described on the [monitoring section](https://docs.scs.community/docs/category/monitoring) of the project's documentation. The openstack-health-monitor will thus not see any significant enhancements any more; it will be maintained and kept alive as long as there are users. This guide exclusively focuses on how to set it up.
+The openstack-health-monitor is not the intended long-term solution for monitoring your infrastructure. The SCS project has a project underway that will create more modern, flexible, and more maintainable monitoring infrastructure; the concepts are described on the [monitoring section](https://docs.scs.community/docs/category/monitoring) of the project's documentation. The openstack-health-monitor will thus not see any significant enhancements any more; it will be maintained and kept alive as long as there are users. This guide exclusively focuses on how to set it up.
 
 ## Setting up the driver VM
 
-So we start a `Debian 12` image on a cloud of our choice.
+So we start a `Debian 12` image on a cloud of our choice. This should work on any OpenStack cloud that is reasonably standard;
+the instructions use flavor names and image names from the SCS standards.
 For many, the simplest way may be to use the Web-UI of their cloud (e.g. horizon for OpenStack).
 
 ### Internal vs external monitoring
 
-There are pros and cons to run the driver in the same cloud that is also under test. We obviously don't test the external reachability of the cloud (more precisely its API endpoints and VMs) if we run it on the same cloud -- which may or may not be desirable. Having the tests happily continuing to collect data  may actually be valuable in times when external access is barred. If the cloud goes down, we will no longer see API calls against it, although the information of them not being available does not reveal much in terms of insight into the reasons for the outage. Also, the driver VM is the only long-lived VM in the openstack-health-monitor setup, so it may be useful to have it in the same cloud to reveal any issues that do not occur on the short-lived resources created and deleted by the health-monitor.
+There are pros and cons to run the driver VM in the same cloud that is also under test. We obviously don't test the external reachability of the cloud (more precisely its API endpoints and VMs) if we run it on the same cloud -- which may or may not be desirable. Having the tests happily continuing to collect data  may actually be valuable in times when external access is barred. If the cloud goes down, we will no longer see API calls against it, although the information of them not being available does not reveal much in terms of insight into the reasons for the outage. Also, the driver VM is the only long-lived VM in the openstack-health-monitor setup, so it may be useful to have it in the same cloud to reveal any issues that do not occur on the short-lived resources created and deleted by the health-monitor.
 
-The author tends to see running it internally as advantageous -- ideally combined with a simple API reachability test from the outside that sends alarms as needed to detect the reachability problems.
+The author tends to see running it internally as advantageous -- ideally combined with a simple API reachability test from the outside that sends alarms as needed to detect any reachability problems.
 
 ### Unprivileged operation
 
