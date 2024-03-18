@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.103
+VERSION=1.104
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -372,6 +372,7 @@ usage()
   echo " -L     create HTTP Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)"
+  echo " -LR    reverse order of LB healthmon and member creation and deletion"
   echo " -b     run a simple compute benchmark"
   echo " -B     run iperf3"
   echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
@@ -432,6 +433,7 @@ while test -n "$1"; do
     "-LL") LOADBALANCER=1; TCP_LB=1;;
     "-LP") LOADBALANCER=1; TCP_LB=1; LB_PROVIDER="--provider $2"; shift;;
     "-LO") LOADBALANCER=1; TCP_LB=1; LB_PROVIDER="--provider ovn";;
+    "-LR") REVERSEHMMEMBER=1 ;;
     "-b") BCBENCH=1;;
     "-B") IPERF=1;;
     "-t") let TIMEOUTFACT+=1;;
@@ -2639,8 +2641,11 @@ testLBs()
   LBFIPS=( $(echo "$OSTACKRESP" | grep ' id ' | sed 's/^|[^|]*| *\([a-f0-9\-]*\).*$/\1/') )
   echo "${LBFIPS[0]}"
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
-  createResources 1 LBSTATS HEALTHMON POOL NONE "" id $FIPTIMEOUT neutron lbaas-healthmonitor-create --name "${RPRE}HealthMon_0" --delay 3 --timeout 2 --max-retries 1 --max-retries-down 1 --type $PROTO $URLPATH --pool ${POOLS[0]}
-  handleLBErr $? "HealthMonCreate"
+  # Reverse order of HM and Member creation optionally
+  if test "$REVERSEHMMEMBER" != "1"; then
+    createResources 1 LBSTATS HEALTHMON POOL NONE "" id $FIPTIMEOUT neutron lbaas-healthmonitor-create --name "${RPRE}HealthMon_0" --delay 3 --timeout 2 --max-retries 1 --max-retries-down 1 --type $PROTO $URLPATH --pool ${POOLS[0]}
+    handleLBErr $? "HealthMonCreate"
+  fi
   #echo "DEBUG: IPS ${IPS[*]} SUBNETS ${SUBNETS[*]}"
   createResourcesCond $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT \${IPS[\$no]} neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id \${SUBNETS[\$\(\(no%$NONETS\)\)]} --protocol-port 80 ${POOLS[0]}
   #createResources $NOVMS LBSTATS MEMBER IP POOL "" id $FIPTIMEOUT neutron lbaas-member-create --name "${RPRE}Member_\$no" --address \${IPS[\$no]} --subnet-id ${JHSUBNETS[0]} --protocol-port 80 ${POOLS[0]}
@@ -2648,6 +2653,10 @@ testLBs()
   handleLBErr $? "MemberCreate"
   if test $RC != 0; then let LBERRORS+=1; reportVM $FAILEDNO; return $RC; fi
   if test "$STATE" != "ACTIVE"; then sleep 1; fi
+  if test "$REVERSEHMMEMBER" = "1"; then
+    createResources 1 LBSTATS HEALTHMON POOL NONE "" id $FIPTIMEOUT neutron lbaas-healthmonitor-create --name "${RPRE}HealthMon_0" --delay 3 --timeout 2 --max-retries 1 --max-retries-down 1 --type $PROTO $URLPATH --pool ${POOLS[0]}
+    handleLBErr $? "HealthMonCreate"
+  fi
   echo -n "Test LB at $LBIP:"
   LBCERR=0
   STTM=$(date +%s.%N)
@@ -2709,13 +2718,20 @@ cleanLBs()
 {
   if test -z "$LBAASS"; then return; fi
   echo -n "LBaaS2 "
+  if test "$REVERSEHMMEMBER" = "1"; then
+    deleteResources LBSTATS HEALTHMON "" $FIPTIMEOUT neutron lbaas-healthmonitor-delete
+    if test "$STATE" = "PENDING_DELETE"; then sleep 1; fi
+    echo -n " "
+  fi
   deleteResources LBSTATS MEMBER "" $FIPTIMEOUT neutron lbaas-member-delete ${POOLS[0]}
   # FIXME: Wait until they're gone
   if test "$STATE" = "PENDING_DELETE"; then sleep 1; fi
   echo -n " "
-  deleteResources LBSTATS HEALTHMON "" $FIPTIMEOUT neutron lbaas-healthmonitor-delete
-  if test "$STATE" = "PENDING_DELETE"; then sleep 1; fi
-  echo -n " "
+  if test "$REVERSEHMMEMBER" != "1"; then
+    deleteResources LBSTATS HEALTHMON "" $FIPTIMEOUT neutron lbaas-healthmonitor-delete
+    if test "$STATE" = "PENDING_DELETE"; then sleep 1; fi
+    echo -n " "
+  fi
   deleteResources LBSTATS LISTENER "" $((FIPTIMEOUT+12)) neutron lbaas-listener-delete
   # Delete FIP first, so no sleep waiting for listener been gone
   echo -n " "

@@ -111,7 +111,8 @@ I would recommend a larger flavor (4GiB RAM, 20GB disk).
 Use `api_monitor.sh -h` to get a list of the command line options. For reference find the output (from v1.82) here:
 
 ```
-Running api_monitor.sh v1.99 on host framekurt
+Running api_monitor.sh v1.104 on host kg-gxscs-hm.app-int.gx-scs.sovereignit.tech
+Using APIMonitor_1710794423_ prefix for resrcs on gxscs-hm (nova)
 Usage: api_monitor.sh [options]
  --debug Use set -x to print every line executed
  -n N   number of VMs to create (beyond #AZ JumpHosts, def: 12)
@@ -148,6 +149,7 @@ Usage: api_monitor.sh [options]
  -L     create HTTP Loadbalancer (LBaaSv2/octavia) and test it
  -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it
  -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)
+ -LR    reverse order of LB healthmon and member creation and deletion
  -b     run a simple compute benchmark
  -B     run iperf3
  -t     long Timeouts (2x, multiple times for 3x, 4x, ...)
