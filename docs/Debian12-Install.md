@@ -29,6 +29,8 @@ The author tends to see running it internally as advantageous -- ideally combine
 
 Nothing in this test requires admin privileges on the cloud where the driver runs nor on the cloud under test. We do install and configure a few software packages in the driver VM, which requires sudo power there, but the script should just run as a normal user. For the cloud under test it is recommended to use a user (or an application credential) with a normal tenant member role to access the cloud under test. If you can, give it an OpenStack project on its own.
 
+If `openstack availability zone list --compute` fails for you without admin rights, please fix your openstack client. (Versions 6.3.0 and 6.4.0 are broken.) Do not consider giving the OpenStack Healh-Monitor admin power. (Note: It has a workaround for the broken AZ listing using curl now.)
+
 ### Driver VM via openstack CLI
 
 The author prefers to setup the VM via `openstack` CLI tooling. He has working entries for all clouds he uses in his `~/.config/openstack/clouds.yaml` and `secure.yaml` and has exported the `OS_CLOUD` environment variable to point to the cloud he is working on to set up the driver VM. The author uses the `bash` shell. All of this of course could be scripted.
