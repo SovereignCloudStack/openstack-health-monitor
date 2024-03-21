@@ -4388,6 +4388,9 @@ else # test "$1" = "DEPLOY"; then
     #unset VMVOLSIZE
   fi
  fi
+ if test "$VOLUMETYPE" == "LUKS" -a -n "$NEED_BLKDEV"; then
+  echo "Warning: volume-type LUKS may be slow and nova may time out waiting for cinder vols for VM boot"
+ fi
  echo "Using images JH $JHDEFLTUSER@$JHIMG ($JHVOLSIZE GB), VM $DEFLTUSER@$IMG ($VOLSIZE GB)"
  echo "Deploying on AZs ${AZS[*]} (Volumes: ${VAZS[*]}, Networks: ${NAZS[*]})"
  if createRouters; then
