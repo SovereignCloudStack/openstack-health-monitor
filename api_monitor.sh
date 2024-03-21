@@ -845,6 +845,7 @@ translate()
       if test "$DEFCMD" == "server" -a "$CMD" == "boot"; then
 	if [[ $ARGS = *delete_on_termination* ]]; then VOLNEEDSTAG=1; else VOLNEEDSTAG=0; fi
         #if test "$TAG" == "1"; then ARGS=$(echo "--os-compute-api-version 2.72 $ARGS" | sed "s/delete_on_termination=true/delete_on_termination=true,tag=${RPRE%_}/g"); fi
+	if [[ $ARGS = *volume_type=* ]]; then ARGS=$(echo "--os-compute-api-version 2.67 $ARGS"); fi
       fi
       #OSTACKCMD=($OPST $DEFCMD create $ARGS)
       # No token_endpoint auth for server creation (need to talk to neutron/cinder/glance as well)
