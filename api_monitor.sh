@@ -352,6 +352,7 @@ usage()
   echo " -S [NM] sends stats to grafana via local telegraf http_listener (def for NM=api-monitoring)"
   echo " -q     do not send any alarms"
   echo " -d     boot Directly from image (not via volume)"
+  echo " -vt TP use volumetype TP (overrides env VOLUMETYPE)"
   echo " -z SZ  boots VMs from volume of size SZ"
   echo " -P     do not create Port before VM creation"
   echo " -D     create all VMs with one API call (implies -d -P)"
@@ -407,6 +408,7 @@ while test -n "$1"; do
           if test -n "$2" -a "$2" != "CLEANUP" -a "$2" != "DEPLOY" -a "${2:0:1}" != "-"; then GRAFANANM="$2"; shift; fi;;
     "-P") unset MANUALPORTSETUP;;
     "-d") BOOTFROMIMAGE=1;;
+    "-vt") VOLUMETYPE=$2; shift;;
     "-z") VMVOLSIZE=$2; shift;;
     "-D") BOOTALLATONCE=1; BOOTFROMIMAGE=1; unset MANUALPORTSETUP;;
     "-e") if test -z "$EMAIL"; then EMAIL="$2"; else EMAIL2="$2"; fi; shift;;

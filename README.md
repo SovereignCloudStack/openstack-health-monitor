@@ -108,11 +108,11 @@ I would recommend a larger flavor (4GiB RAM, 20GB disk).
 
 ## Usage
 
-Use `api_monitor.sh -h` to get a list of the command line options. For reference find the output (from v1.82) here:
+Use `api_monitor.sh -h` to get a list of the command line options. For reference find the output (from v1.105) here:
 
 ```
-Running api_monitor.sh v1.104 on host kg-gxscs-hm.app-int.gx-scs.sovereignit.tech
-Using APIMonitor_1710794423_ prefix for resrcs on gxscs-hm (nova)
+Running api_monitor.sh v1.105 on host kg-gxscs-hm.app-int.gx-scs.sovereignit.tech
+Using APIMonitor_1711038748_ prefix for resrcs on gxscs-hm (nova)
 Usage: api_monitor.sh [options]
  --debug Use set -x to print every line executed
  -n N   number of VMs to create (beyond #AZ JumpHosts, def: 12)
@@ -129,6 +129,7 @@ Usage: api_monitor.sh [options]
  -S [NM] sends stats to grafana via local telegraf http_listener (def for NM=api-monitoring)
  -q     do not send any alarms
  -d     boot Directly from image (not via volume)
+ -vt TP use volumetype TP (overrides env VOLUMETYPE)
  -z SZ  boots VMs from volume of size SZ
  -P     do not create Port before VM creation
  -D     create all VMs with one API call (implies -d -P)
@@ -165,7 +166,7 @@ Or: api_monitor.sh [Options] CONNTEST XXX for full conn test for existing env XX
 You need to have the OS_ variables set to allow OpenStack CLI tools to work.
 You can override defaults by exporting the environment variables AZS, VAZS, NAZS, RPRE,
  PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,
- ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES,
+ ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES, VOLUMETYPE,
  NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER, FIPWAITPORTDEVOWNER, EXTSEARCH, OS_EXTRA_PARAMS.
 Typically, you should configure OS_CLOUD, [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER.
 ```
