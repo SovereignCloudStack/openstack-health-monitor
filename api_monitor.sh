@@ -2058,7 +2058,7 @@ createJHVols()
   if test -n "$NOJHVOL"; then return 0; fi
   JVOLSTIME=()
   if test -n "$VOLUMETYPE"; then VOLTP="--volume-type $VOLUMETYPE"; else unset VOLTP; fi
-  createResources $NOAZS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id $CINDERTIMEOUT cinder create --image-id $JHIMGID --availability-zone \${VAZS[\$VAZN]} --name ${RPRE}RootVol_JH\$no $VOLTP $JHVOLSIZE
+  createResources $NOAZS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id $CINDERTIMEOUT cinder create --image-id $JHIMGID --availability-zone \${VAZS[\$VAZN]} $VOLTP --name ${RPRE}RootVol_JH\$no $JHVOLSIZE
 }
 
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
@@ -2081,7 +2081,7 @@ createVols()
   if test -n "$BOOTFROMIMAGE"; then return 0; fi
   VOLSTIME=()
   if test -n "$VOLUMETYPE"; then VOLTP="--volume-type $VOLUMETYPE"; else unset VOLTP; fi
-  createResources $NOVMS VOLSTATS VOLUME NONE NONE VOLSTIME id $CINDERTIMEOUT cinder create --image-id $IMGID --availability-zone \${VAZS[\$VAZN]} --name ${RPRE}RootVol_VM\$no $VOLTP $VOLSIZE
+  createResources $NOVMS VOLSTATS VOLUME NONE NONE VOLSTIME id $CINDERTIMEOUT cinder create --image-id $IMGID --availability-zone \${VAZS[\$VAZN]} $VOLTP --name ${RPRE}RootVol_VM\$no $VOLSIZE
 }
 
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
