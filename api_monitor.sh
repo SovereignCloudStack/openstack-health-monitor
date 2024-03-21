@@ -2044,7 +2044,7 @@ delete2ndPorts()
 createJHVols()
 {
   JVOLSTIME=()
-  if test -n "$VOLUMETYPE"; then VOLTP="--volume-type=$VOLUMETYPE"; else unset VOLTP; fi
+  if test -n "$VOLUMETYPE"; then VOLTP="--volume-type $VOLUMETYPE"; else unset VOLTP; fi
   createResources $NOAZS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id $CINDERTIMEOUT cinder create --image-id $JHIMGID --availability-zone \${VAZS[\$VAZN]} --name ${RPRE}RootVol_JH\$no $VOLTP $JHVOLSIZE
 }
 
@@ -2065,7 +2065,7 @@ createVols()
 {
   if test -n "$BOOTFROMIMAGE"; then return 0; fi
   VOLSTIME=()
-  if test -n "$VOLUMETYPE"; then VOLTP="--volume-type=$VOLUMETYPE"; else unset VOLTP; fi
+  if test -n "$VOLUMETYPE"; then VOLTP="--volume-type $VOLUMETYPE"; else unset VOLTP; fi
   createResources $NOVMS VOLSTATS VOLUME NONE NONE VOLSTIME id $CINDERTIMEOUT cinder create --image-id $IMGID --availability-zone \${VAZS[\$VAZN]} --name ${RPRE}RootVol_VM\$no $VOLTP $VOLSIZE
 }
 
