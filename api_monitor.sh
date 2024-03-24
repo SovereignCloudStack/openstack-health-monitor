@@ -3667,9 +3667,9 @@ stats()
   if test -n "$3" -a -z "$MACHINE"; then NAME=$3; else NAME=$1; fi
   DIG=${2:-2}
   PCT=${4:-95}
-  echo -n "$NAME: " | tee -a $LOGFILE
   eval LIST=( \"\${${1}[@]}\" )
   if test ${#LIST[*]} -lt 2; then return; fi
+  echo -n "$NAME: " | tee -a $LOGFILE
   echo "${LIST[*]}" | ./stats.py -d $DIG -p $PCT $MACHINE | tee -a $LOGFILE
 }
 
