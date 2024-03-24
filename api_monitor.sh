@@ -3688,6 +3688,11 @@ allstats()
  if test -n "$IPERF"; then
    stats $1 BANDWIDTH  0 "Bandwidth Stats   " 5
  fi
+ if test -n "$FIOBENCH"; then
+   stats $1 FIOBW      1 "DiskBW    Stats   " 5
+   stats $1 FIOIOPS    0 "DiskIOPS  Stats   " 5
+   stats $1 FIOLAT     2 "DiskLat10mStats   "
+ fi
  stats $1 VMDSTATS   0 "VM Deletion Stats "
  stats $1 VOLSTATS   2 "Cinder CLI Stats  "
  stats $1 VOLCSTATS  0 "Vol Creation Stats"
