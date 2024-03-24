@@ -3310,6 +3310,7 @@ while test \$MAXW -ge 1; do
   sleep 1
   if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 1; fi
 done
+sync
 exit 1
 EOT
     chmod +x ${RPRE}wait
@@ -3345,8 +3346,8 @@ EOT
     if test -n "$LOGFILE"; then echo -n "Disk Benchmark (fio):" >> $LOGFILE; fi
     for JHNO in $(seq 0 $(($NOAZS-1))); do
       if test -n "$LOGFILE"; then echo "ssh -i $DATADIR/${KEYPAIRS[0]} -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@${FLOATS[$JHNO]} fio --rw=randrw --name=test --size=500M --direct=1 --bs=16k --numjobs=4 --group_reporting --runtime=12" >> $LOGFILE; fi
-      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait bc; cd /tmp; fio --rw=randrw --name=test --size=500M --direct=1 --bs=16k --numjobs=4 --group_reporting --runtime=12; rm test.?.? 2>/dev/null")
-      if echo "$BENCH" | grep user >/dev/null 2>&1; then
+      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait fio; cd /tmp; fio --rw=randrw --name=test --size=500M --direct=1 --bs=16k --numjobs=4 --group_reporting --runtime=12; rm test.?.? 2>/dev/null")
+      if echo "$BENCH" | grep 'test:' >/dev/null 2>&1; then
         READ=$(echo "$BENCH" | grep '  read:')
         WRITE=$(echo "$BENCH" | grep '  write:')
         LAT=$(echo "$BENCH" | grep '  lat (msec)' | grep ', 10=' | sed 's/^.*, 10=\([0-9\.]*\)%.*$/\1/')
@@ -3543,6 +3544,7 @@ while test \$MAXW -ge 1; do
   sleep 1
   if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 1; fi
 done
+sync
 exit 1
 EOT
   chmod +x ${RPRE}wait
