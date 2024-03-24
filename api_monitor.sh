@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.104
+VERSION=1.106
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -3297,6 +3297,8 @@ $OSTACKRESP
   else
      echo -e "$RED FAIL $ERR $NORM ($(($(date +%s)-$ST))s)"
   fi
+  # Update end of API/Resource creation performance measurement phase
+  TSTART=$(date +%s)
   if test -n "$BCBENCH" -o -n "$FIOBENCH"; then
     cat >${RPRE}wait <<EOT
 #!/bin/bash
@@ -3366,6 +3368,7 @@ EOT
     done
     echo; if test -n "$LOGFILE"; then echo >> $LOGFILE; fi
   fi
+  BENCHTIME=$(($(date +%s)-$TSTART))
   return $RC
 }
 
@@ -3535,7 +3538,7 @@ iperf3test()
 let MAXW=100
 if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 5; sync; fi
 while test \$MAXW -ge 1; do
-  if type -p "\$1">/dev/null; then exit 0; fi
+  if type -p "\$1">/dev/null; then sync; exit 0; fi
   let MAXW-=1
   sleep 1
   if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 1; fi
@@ -4203,6 +4206,7 @@ declare -i SUCCRUNS=0
 LASTDATE=$(date +%Y-%m-%d)
 LASTTIME=$(date +%H:%M:%S)
 TESTTIME=0
+BENCHTIME=0
 LASTERRITER=-2
 
 # Declare empty router list outside of loop
@@ -4534,8 +4538,8 @@ else # test "$1" = "DEPLOY"; then
                 else
 		 LBACTIVE=0
 		fi
-                TESTTIME=$(($(date +%s)-$MSTOP))
-                echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), TESTS DONE (${TESTTIME}s), DELETE AGAIN $NORM"
+                TESTTIME=$(($(date +%s)-$MSTOP+$BENCHTIME))
+                echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART-$BENCHTIME))s), TESTS DONE (${TESTTIME}s), DELETE AGAIN $NORM"
                 let SUCCRUNS+=1
                 THISRUNSUCCESS=1
 		sleep 1
@@ -4547,7 +4551,7 @@ else # test "$1" = "DEPLOY"; then
                   TOKENSTAMP=$(date +%s)
                 fi
                 # Subtract waiting time (5s here)
-                MSTART=$(($MSTART+$(date +%s)-$MSTOP))
+                MSTART=$(($MSTART+$(date +%s)-$MSTOP+$BENCHTIME))
                 if test -n "$LOADBALANCER" -a "$LBACTIVE" = "1"; then cleanLBs; fi
                fi
                # TODO: Detach and delete disks again
@@ -4588,9 +4592,9 @@ else # test "$1" = "DEPLOY"; then
  fi
  # Raise an alarm if we have not yet sent one and we're very slow despite this
  if test -n "$OPENSTACKTOKEN"; then
-   if test -n "$BOOTALLATONCE"; then CON=400; NFACT=12; FACT=24; else CON=384; NFACT=12; FACT=36; fi
+   if test -n "$BOOTALLATONCE"; then CON=400; NFACT=8; FACT=24; else CON=384; NFACT=8; FACT=36; fi
  else
-   if test -n "$BOOTALLATONCE"; then CON=416; NFACT=16; FACT=24; else CON=400; NFACT=16; FACT=36; fi
+   if test -n "$BOOTALLATONCE"; then CON=416; NFACT=12; FACT=24; else CON=400; NFACT=12; FACT=36; fi
  fi
  if test "$VOLNEEDSTAG" == "1"; then let FACT+=4; fi
  MAXCYC=$(($CON+($FACT+$NFACT/2)*$NOAZS+$NFACT*$NONETS+$FACT*$NOVMS))
@@ -4599,6 +4603,8 @@ else # test "$1" = "DEPLOY"; then
  if test -n "$RESHUFFLE"; then let MAXCYC+=$((2*$NFACT*$NOVMS)); fi
  if test -n "$FULLCONN"; then let MAXCYC+=$(($NOVMS*$NOVMS/10)); fi
  if test -n "$IPERF"; then let MAXCYC+=$((6*$NONETS)); fi
+ if test -n "$BCBENCH"; then let MAXCYC+=$((16*$NOAZS)); fi
+ if test -n "$FIOBENCH"; then let MAXCYC+=$((28*$NOAZS)); fi
  if test -n "$LOADBALANCER"; then let MAXCYC+=$((36+4*$NOVMS+$WAITLB)); fi
  if test -n "$SKIPKILLLB"; then let MAXCYC-=$((20+2*$NOVMS)); fi
  # FIXME: We could check THISRUNSUCCESS instead?
