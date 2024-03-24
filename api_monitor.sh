@@ -3347,6 +3347,7 @@ EOT
     for JHNO in $(seq 0 $(($NOAZS-1))); do
       if test -n "$LOGFILE"; then echo "ssh -i $DATADIR/${KEYPAIRS[0]} -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@${FLOATS[$JHNO]} fio --rw=randrw --name=test --size=500M --direct=1 --bs=16k --numjobs=4 --group_reporting --runtime=12" >> $LOGFILE; fi
       BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait fio; cd /tmp; fio --rw=randrw --name=test --size=500M --direct=1 --bs=16k --numjobs=4 --group_reporting --runtime=12; rm test.?.? 2>/dev/null")
+      if test -n "$LOGFILE"; then echo "$BENCH" >> $LOGFILE; fi
       if echo "$BENCH" | grep 'test:' >/dev/null 2>&1; then
         READ=$(echo "$BENCH" | grep '  read:')
         WRITE=$(echo "$BENCH" | grep '  write:')
@@ -3361,7 +3362,7 @@ EOT
         if test -n "$LOGFILE"; then echo -n " $BW $IOPS ${LAT}%" >> $LOGFILE; fi
         log_grafana "fioBW" "JHVM$JHNO" "$BW" 0
         log_grafana "fiokIOPS" "JHVM$JHNO" $(echo "scale=3; $IOPS/1000" | bc -l) 0
-        log_grafana "fioLat10ms+" "JHVM$JHNO" "$LAT" 0
+        log_grafana "fioLat10ms" "JHVM$JHNO" "$LAT" 0
 	FIOBW+=($BW)
 	FIOIOPS+=($IOPS)
 	FIOLAT+=($LAT)
