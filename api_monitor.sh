@@ -4587,7 +4587,7 @@ else # test "$1" = "DEPLOY"; then
  else
    if test -n "$BOOTALLATONCE"; then CON=416; NFACT=16; FACT=24; else CON=400; NFACT=16; FACT=36; fi
  fi
- if test "$VOLNEEDSTAG" == "1"; then let FACT+=2; fi
+ if test "$VOLNEEDSTAG" == "1"; then let FACT+=4; fi
  MAXCYC=$(($CON+($FACT+$NFACT/2)*$NOAZS+$NFACT*$NONETS+$FACT*$NOVMS))
  MINCYC=$(($MAXCYC/6))
  if test -n "$SECONDNET"; then let MAXCYC+=$(($NFACT*$NONETS+$NFACT*$NOVMS)); fi
