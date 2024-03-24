@@ -3358,7 +3358,7 @@ EOT
         BW=$(echo "scale=1; ($RBW+$WBW)/2" | bc -l)
         IOPS=$(echo "($RIOPS+$WIOPS)/2" | bc)
         echo -en "${BOLD} $BW $IOPS ${LAT}%${NORM}"
-        if test -n "$LOGFILE"; then echo -en " $BW $IOPS ${LAT}%"; fi
+        if test -n "$LOGFILE"; then echo -n " $BW $IOPS ${LAT}%" >> $LOGFILE; fi
         log_grafana "fiobw" "JHVM$JHNO" "$BW" 0
         log_grafana "fioiops" "JHVM$JHNO" "$IOPS" 0
         log_grafana "fiolat10" "JHVM$JHNO" "$LAT" 0
