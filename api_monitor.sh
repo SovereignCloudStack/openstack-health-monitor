@@ -373,8 +373,9 @@ usage()
   echo " -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)"
   echo " -LR    reverse order of LB healthmon and member creation and deletion"
-  echo " -b     run a simple compute benchmark"
-  echo " -B     run iperf3"
+  echo " -b     run a simple compute benchmark (4k pi with bc)"
+  echo " -B     measure TCP BW b/w VMs (iperf3)"
+  echo " -M     measure disk I/O bandwidth & latency (fio)"
   echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
   echo " -T     assign tags to resources; use to clean up floating IPs"
   echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test"
@@ -436,6 +437,7 @@ while test -n "$1"; do
     "-LR") REVERSEHMMEMBER=1 ;;
     "-b") BCBENCH=1;;
     "-B") IPERF=1;;
+    "-M") FIOBENCH=1;;
     "-t") let TIMEOUTFACT+=1;;
     "-T") TAG=1; TAGARG="--tag ${RPRE%_}";;
     "-R2") SECONDRECREATE=1;;
@@ -2297,6 +2299,7 @@ createJHVMs()
 packages:
   - iptables
   - bc
+  - fio
   - $JHIPERF3
 otc:
    internalnet:
@@ -3247,7 +3250,7 @@ testlsandping()
 # Test internet access of JumpHosts (via ssh)
 testjhinet()
 {
-  local RC R JHNO ST TIM
+  local RC R JHNO ST TIM BENCH READ WRITE LAT RBW RIOPS WBW WIOPS BW IOPS
   unset SSH_AUTH_SOCK
   ERR=""
   #echo "Test JH access and outgoing inet ... "
@@ -3294,13 +3297,13 @@ $OSTACKRESP
   else
      echo -e "$RED FAIL $ERR $NORM ($(($(date +%s)-$ST))s)"
   fi
-  if test -n "$BCBENCH"; then
+  if test -n "$BCBENCH" -o -n "$FIOBENCH"; then
     cat >${RPRE}wait <<EOT
 #!/bin/bash
 let MAXW=100
 if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 5; sync; fi
 while test \$MAXW -ge 1; do
-  if type -p "\$1">/dev/null; then exit 0; fi
+  if type -p "\$1">/dev/null; then sync; exit 0; fi
   let MAXW-=1
   sleep 1
   if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 1; fi
@@ -3308,12 +3311,17 @@ done
 exit 1
 EOT
     chmod +x ${RPRE}wait
-    echo -n "Benchmark (4k digits pi):"
-    if test -n "$LOGFILE"; then echo -n "Benchmark (4k digits pi):" >> $LOGFILE; fi
     for JHNO in $(seq 0 $(($NOAZS-1))); do
       scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "StrictHostKeyChecking=no" -o "PasswordAuthentication=no" -i $DATADIR/${KEYPAIRS[0]} -p ${RPRE}wait ${USER}@${FLOATS[$JHNO]}: >/dev/null
+    done
+    rm ${RPRE}wait >/dev/null 2>&1
+  fi
+  if test -n "$BCBENCH"; then
+    echo -n "CPU Benchmark (4k digits pi with bc):"
+    if test -n "$LOGFILE"; then echo -n "CPU Benchmark (4k digits pi with bc):" >> $LOGFILE; fi
+    for JHNO in $(seq 0 $(($NOAZS-1))); do
       if test -n "$LOGFILE"; then echo "ssh -i $DATADIR/${KEYPAIRS[0]} -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@${FLOATS[$JHNO]} time echo 'scale=4000; 4*a(1)'" >> $LOGFILE; fi
-      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait bc; sync; { TIMEFORMAT=%2U; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
+      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait bc; { TIMEFORMAT=%2U; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
       # Handle GNU time output format
       if echo "$BENCH" | grep user >/dev/null 2>&1; then
         BENCH=$(echo "$BENCH" | grep user)
@@ -3329,7 +3337,34 @@ EOT
       PITIME+=($BENCH)
     done
     echo; if test -n "$LOGFILE"; then echo >> $LOGFILE; fi
-    rm ${RPRE}wait
+  fi
+  if test -n "$FIOBENCH"; then
+    echo -n "Disk Benchmark (fio):"
+    if test -n "$LOGFILE"; then echo -n "Disk Benchmark (fio):" >> $LOGFILE; fi
+    for JHNO in $(seq 0 $(($NOAZS-1))); do
+      if test -n "$LOGFILE"; then echo "ssh -i $DATADIR/${KEYPAIRS[0]} -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@${FLOATS[$JHNO]} fio --rw=randrw --name=test --size=500M --direct=1 --bs=16k --numjobs=4 --group_reporting --runtime=12" >> $LOGFILE; fi
+      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait bc; cd /tmp; fio --rw=randrw --name=test --size=500M --direct=1 --bs=16k --numjobs=4 --group_reporting --runtime=12; rm test.?.? 2>/dev/null")
+      if echo "$BENCH" | grep user >/dev/null 2>&1; then
+        READ=$(echo "$BENCH" | grep '  read:')
+        WRITE=$(echo "$BENCH" | grep '  write:')
+        LAT=$(echo "$BENCH" | grep '  lat (msec)' | grep ', 10=' | sed 's/^.*, 10=\([0-9\.]*\)%.*$/\1/')
+        RIOPS=$(echo "$READ" | sed 's/^.*IOPS=\([0-9]*\),.*$/\1/')
+        WIOPS=$(echo "$WRITE" | sed 's/^.*IOPS=\([0-9]*\),.*$/\1/')
+        RBW=$(echo "$READ" | sed 's/^.*BW=\([0-9\.]*\)MiB.*$/\1/')
+        WBW=$(echo "$WRITE" | sed 's/^.*BW=\([0-9\.]*\)MiB.*$/\1/')
+        BW=$(echo "scale=1; ($RBW+$WBW)/2" | bc -l)
+        IOPS=$(echo "($RIOPS+$WIOPS)/2" | bc)
+        echo -en "${BOLD} $BW $IOPS ${LAT}%${NORM}"
+        if test -n "$LOGFILE"; then echo -en " $BW $IOPS ${LAT}%"; fi
+        log_grafana "fiobw" "JHVM$JHNO" "$BW" 0
+        log_grafana "fioiops" "JHVM$JHNO" "$IOPS" 0
+        log_grafana "fiolat10" "JHVM$JHNO" "$LAT" 0
+	FIOBW+=($BW)
+	FIOIOPS+=($IOPS)
+	FIOLAT+=($LAT)
+      fi
+    done
+    echo; if test -n "$LOGFILE"; then echo >> $LOGFILE; fi
   fi
   return $RC
 }
@@ -4142,6 +4177,9 @@ declare -a TOTTIME
 declare -a WAITTIME
 
 declare -a PITIME
+declare -a FIOBW
+declare -a FIOIOPS
+declare -a FIOLAT
 declare -a BANDWIDTH
 
 declare -i CUMPINGRETRIES=0
@@ -4666,6 +4704,9 @@ $(allstats -m)" > $DATADIR/Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv
   TOTTIME=()
   WAITTIME=()
   PITIME=()
+  FIOBW=()
+  FIOIOPS=()
+  FIOLAT=()
   BANDWIDTH=()
   STATSENT=1
 fi
