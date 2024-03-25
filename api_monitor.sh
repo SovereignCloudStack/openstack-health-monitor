@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.104
+VERSION=1.105
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -352,6 +352,7 @@ usage()
   echo " -S [NM] sends stats to grafana via local telegraf http_listener (def for NM=api-monitoring)"
   echo " -q     do not send any alarms"
   echo " -d     boot Directly from image (not via volume)"
+  echo " -vt TP use volumetype TP (overrides env VOLUMETYPE)"
   echo " -z SZ  boots VMs from volume of size SZ"
   echo " -P     do not create Port before VM creation"
   echo " -D     create all VMs with one API call (implies -d -P)"
@@ -388,7 +389,7 @@ usage()
   echo "You need to have the OS_ variables set to allow OpenStack CLI tools to work."
   echo "You can override defaults by exporting the environment variables AZS, VAZS, NAZS, RPRE,"
   echo " PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,"
-  echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES,"
+  echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES, VOLUMETYPE,"
   echo " NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER, FIPWAITPORTDEVOWNER, EXTSEARCH, OS_EXTRA_PARAMS."
   echo "Typically, you should configure OS_CLOUD, [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER."
   exit 0
@@ -407,6 +408,7 @@ while test -n "$1"; do
           if test -n "$2" -a "$2" != "CLEANUP" -a "$2" != "DEPLOY" -a "${2:0:1}" != "-"; then GRAFANANM="$2"; shift; fi;;
     "-P") unset MANUALPORTSETUP;;
     "-d") BOOTFROMIMAGE=1;;
+    "-vt") VOLUMETYPE=$2; shift;;
     "-z") VMVOLSIZE=$2; shift;;
     "-D") BOOTALLATONCE=1; BOOTFROMIMAGE=1; unset MANUALPORTSETUP;;
     "-e") if test -z "$EMAIL"; then EMAIL="$2"; else EMAIL2="$2"; fi; shift;;
@@ -807,7 +809,7 @@ translate()
     shift
     OSTACKCMD=($OPST $DEFCMD $CMD $MYTAG "$@")
     if test "$DEFCMD" == "volume" -a "$CMD" == "create"; then
-      ARGS=$(echo "$@" | sed -e 's/\-\-image\-id/--image/' -e 's/\-\-name \([^ ]*\) *\([0-9]*\) *$/--size \2 \1/')
+      ARGS=$(echo "$@" | sed -e 's/\-\-image\-id/--image/' -e 's/\-\-volume\-type/--type/' -e 's/\-\-name \([^ ]*\) *\([0-9]*\) *$/--size \2 \1/')
       #OSTACKCMD=($OPST $DEFCMD $CMD $ARGS)
       # No token_endpoint auth for volume creation (need to talk to image service as well?)
       OSTACKCMD=(openstack $DEFCMD $CMD $ARGS)
@@ -841,10 +843,11 @@ translate()
         esac
       fi
       # Only handles one SG
-      ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@' -e 's@shutdown=remove@delete_on_termination=true@' -e 's@\-\-block\-device id=@ --block-device uuid=@' -e 's@,source=@,source_type=@' -e 's@,dest=@,destination_type=@' -e 's@,bootindex=@,boot_index=@' -e 's@,size=@,volume_size=@')
+      ARGS=$(echo "$@" | sed -e 's@\-\-boot\-volume@--volume@' -e 's@\-\-security\-groups@--security-group@' -e 's@\-\-min\-count@--min@' -e 's@\-\-max\-count@--max@' -e 's@shutdown=remove@delete_on_termination=true@' -e 's@volumetype=@volume_type=@' -e 's@\-\-block\-device id=@ --block-device uuid=@' -e 's@,source=@,source_type=@' -e 's@,dest=@,destination_type=@' -e 's@,bootindex=@,boot_index=@' -e 's@,size=@,volume_size=@')
       if test "$DEFCMD" == "server" -a "$CMD" == "boot"; then
 	if [[ $ARGS = *delete_on_termination* ]]; then VOLNEEDSTAG=1; else VOLNEEDSTAG=0; fi
         #if test "$TAG" == "1"; then ARGS=$(echo "--os-compute-api-version 2.72 $ARGS" | sed "s/delete_on_termination=true/delete_on_termination=true,tag=${RPRE%_}/g"); fi
+	if [[ $ARGS = *volume_type=* ]]; then ARGS=$(echo "--os-compute-api-version 2.67 $ARGS"); fi
       fi
       #OSTACKCMD=($OPST $DEFCMD create $ARGS)
       # No token_endpoint auth for server creation (need to talk to neutron/cinder/glance as well)
@@ -2044,7 +2047,8 @@ delete2ndPorts()
 createJHVols()
 {
   JVOLSTIME=()
-  createResources $NOAZS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id $CINDERTIMEOUT cinder create --image-id $JHIMGID --availability-zone \${VAZS[\$VAZN]} --name ${RPRE}RootVol_JH\$no $JHVOLSIZE
+  if test -n "$VOLUMETYPE"; then VOLTP="--volume-type $VOLUMETYPE"; else unset VOLTP; fi
+  createResources $NOAZS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id $CINDERTIMEOUT cinder create --image-id $JHIMGID --availability-zone \${VAZS[\$VAZN]} $VOLTP --name ${RPRE}RootVol_JH\$no $JHVOLSIZE
 }
 
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
@@ -2064,7 +2068,8 @@ createVols()
 {
   if test -n "$BOOTFROMIMAGE"; then return 0; fi
   VOLSTIME=()
-  createResources $NOVMS VOLSTATS VOLUME NONE NONE VOLSTIME id $CINDERTIMEOUT cinder create --image-id $IMGID --availability-zone \${VAZS[\$VAZN]} --name ${RPRE}RootVol_VM\$no $VOLSIZE
+  if test -n "$VOLUMETYPE"; then VOLTP="--volume-type $VOLUMETYPE"; else unset VOLTP; fi
+  createResources $NOVMS VOLSTATS VOLUME NONE NONE VOLSTIME id $CINDERTIMEOUT cinder create --image-id $IMGID --availability-zone \${VAZS[\$VAZN]} $VOLTP --name ${RPRE}RootVol_VM\$no $VOLSIZE
 }
 
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
@@ -2817,6 +2822,7 @@ createVMsAll()
   declare -a STMS
   if test -n "$VMVOLSIZE"; then
     IMAGE="--block-device id=$IMGID,source=image,dest=volume,size=$VMVOLSIZE,shutdown=remove,bootindex=0"
+    if test -n "$VOLUMETYPE"; then IMAGE="$IMAGE,volumetype=$VOLUMETYPE"; fi
     ostackcmd_tm_retry3 VOLSTATS $CINDERTIMEOUT cinder list -f value -c ID #-c Name # -c Status -c Size
     OLDVOLS="$OSTACKRESP"
     echo "#DEBUG: $(echo $OLDVOLS | wc -w) OLDVOLS"
@@ -2855,6 +2861,7 @@ createVMs()
   if test -n "$BOOTFROMIMAGE"; then
     if test -n "$VMVOLSIZE"; then
       IMAGE="--block-device id=$IMGID,source=image,dest=volume,size=$VMVOLSIZE,shutdown=remove,bootindex=0"
+      if test -n "$VOLUMETYPE"; then IMAGE="$IMAGE,volumetype=$VOLUMETYPE"; fi
     else
       IMAGE="--image $IMGID"
     fi
@@ -4380,6 +4387,9 @@ else # test "$1" = "DEPLOY"; then
     unset NEED_BLKDEV
     #unset VMVOLSIZE
   fi
+ fi
+ if test "$VOLUMETYPE" == "LUKS" -a -n "$NEED_BLKDEV"; then
+  echo "Warning: volume-type LUKS may be slow and nova may time out waiting for cinder vols for VM boot"
  fi
  echo "Using images JH $JHDEFLTUSER@$JHIMG ($JHVOLSIZE GB), VM $DEFLTUSER@$IMG ($VOLSIZE GB)"
  echo "Deploying on AZs ${AZS[*]} (Volumes: ${VAZS[*]}, Networks: ${NAZS[*]})"
