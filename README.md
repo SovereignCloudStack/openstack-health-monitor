@@ -192,3 +192,10 @@ subdirectory.
 
 The directory docs contains a complete [setup guide](https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/docs/Debian12-Install.md)
  using Debian 12 VMs on an SCS reference deployement.
+
+## Benchmarks
+
+There are three simple benchmarks included, `-b` for  simple compute benchmark (calculating
+4000 digits of pi with `bc`), `-B` for an iperf TCP benchmark between VMs and `-M` to measure
+the bandwidth, IOPS and Latency (the percentage of samples with >10ms latency is output) of
+the root disk. These are meant to detect trends and can help with capacity monitoring.
