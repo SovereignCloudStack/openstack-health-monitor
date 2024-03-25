@@ -111,8 +111,8 @@ I would recommend a larger flavor (4GiB RAM, 20GB disk).
 Use `api_monitor.sh -h` to get a list of the command line options. For reference find the output (from v1.105) here:
 
 ```
-Running api_monitor.sh v1.105 on host kg-gxscs-hm.app-int.gx-scs.sovereignit.tech
-Using APIMonitor_1711038748_ prefix for resrcs on gxscs-hm (nova)
+Running api_monitor.sh v1.106 on host kg-gxscs-hm.app-int.gx-scs.sovereignit.tech
+Using APIMonitor_1711354916_ prefix for resrcs on gxscs-hm (nova)
 Usage: api_monitor.sh [options]
  --debug Use set -x to print every line executed
  -n N   number of VMs to create (beyond #AZ JumpHosts, def: 12)
@@ -151,8 +151,9 @@ Usage: api_monitor.sh [options]
  -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it
  -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)
  -LR    reverse order of LB healthmon and member creation and deletion
- -b     run a simple compute benchmark
- -B     run iperf3
+ -b     run a simple compute benchmark (4k pi with bc)
+ -B     measure TCP BW b/w VMs (iperf3)
+ -M     measure disk I/O bandwidth & latency (fio)
  -t     long Timeouts (2x, multiple times for 3x, 4x, ...)
  -T     assign tags to resources; use to clean up floating IPs
  -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test
@@ -192,3 +193,10 @@ subdirectory.
 
 The directory docs contains a complete [setup guide](https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/docs/Debian12-Install.md)
  using Debian 12 VMs on an SCS reference deployement.
+
+## Benchmarks
+
+There are three simple benchmarks included, `-b` for  simple compute benchmark (calculating
+4000 digits of pi with `bc`), `-B` for an iperf TCP benchmark between VMs and `-M` to measure
+the bandwidth, IOPS and Latency (the percentage of samples with >10ms latency is output) of
+the root disk. These are meant to detect trends and can help with capacity monitoring.

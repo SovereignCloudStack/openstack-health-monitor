@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.105
+VERSION=1.106
 
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
@@ -374,8 +374,9 @@ usage()
   echo " -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)"
   echo " -LR    reverse order of LB healthmon and member creation and deletion"
-  echo " -b     run a simple compute benchmark"
-  echo " -B     run iperf3"
+  echo " -b     run a simple compute benchmark (4k pi with bc)"
+  echo " -B     measure TCP BW b/w VMs (iperf3)"
+  echo " -M     measure disk I/O bandwidth & latency (fio)"
   echo " -t     long Timeouts (2x, multiple times for 3x, 4x, ...)"
   echo " -T     assign tags to resources; use to clean up floating IPs"
   echo " -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test"
@@ -438,6 +439,7 @@ while test -n "$1"; do
     "-LR") REVERSEHMMEMBER=1 ;;
     "-b") BCBENCH=1;;
     "-B") IPERF=1;;
+    "-M") FIOBENCH=1;;
     "-t") let TIMEOUTFACT+=1;;
     "-T") TAG=1; TAGARG="--tag ${RPRE%_}";;
     "-R2") SECONDRECREATE=1;;
@@ -2302,6 +2304,7 @@ createJHVMs()
 packages:
   - iptables
   - bc
+  - fio
   - $JHIPERF3
 otc:
    internalnet:
@@ -3254,7 +3257,7 @@ testlsandping()
 # Test internet access of JumpHosts (via ssh)
 testjhinet()
 {
-  local RC R JHNO ST TIM
+  local RC R JHNO ST TIM BENCH READ WRITE LAT RBW RIOPS WBW WIOPS BW IOPS
   unset SSH_AUTH_SOCK
   ERR=""
   #echo "Test JH access and outgoing inet ... "
@@ -3301,26 +3304,34 @@ $OSTACKRESP
   else
      echo -e "$RED FAIL $ERR $NORM ($(($(date +%s)-$ST))s)"
   fi
-  if test -n "$BCBENCH"; then
+  # Update end of API/Resource creation performance measurement phase
+  TSTART=$(date +%s)
+  if test -n "$BCBENCH" -o -n "$FIOBENCH"; then
     cat >${RPRE}wait <<EOT
 #!/bin/bash
 let MAXW=100
 if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 5; sync; fi
 while test \$MAXW -ge 1; do
-  if type -p "\$1">/dev/null; then exit 0; fi
+  if type -p "\$1">/dev/null; then sync; exit 0; fi
   let MAXW-=1
   sleep 1
   if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 1; fi
 done
+sync
 exit 1
 EOT
     chmod +x ${RPRE}wait
-    echo -n "Benchmark (4k digits pi):"
-    if test -n "$LOGFILE"; then echo -n "Benchmark (4k digits pi):" >> $LOGFILE; fi
     for JHNO in $(seq 0 $(($NOAZS-1))); do
       scp -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" -o "StrictHostKeyChecking=no" -o "PasswordAuthentication=no" -i $DATADIR/${KEYPAIRS[0]} -p ${RPRE}wait ${USER}@${FLOATS[$JHNO]}: >/dev/null
+    done
+    rm ${RPRE}wait >/dev/null 2>&1
+  fi
+  if test -n "$BCBENCH"; then
+    echo -n "CPU Benchmark (4k digits pi with bc):"
+    if test -n "$LOGFILE"; then echo -n "CPU Benchmark (4k digits pi with bc):" >> $LOGFILE; fi
+    for JHNO in $(seq 0 $(($NOAZS-1))); do
       if test -n "$LOGFILE"; then echo "ssh -i $DATADIR/${KEYPAIRS[0]} -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@${FLOATS[$JHNO]} time echo 'scale=4000; 4*a(1)'" >> $LOGFILE; fi
-      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait bc; sync; { TIMEFORMAT=%2U; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
+      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait bc; { TIMEFORMAT=%2U; time echo 'scale=4000; 4*a(1)' | bc -l; } 2>&1 >/dev/null")
       # Handle GNU time output format
       if echo "$BENCH" | grep user >/dev/null 2>&1; then
         BENCH=$(echo "$BENCH" | grep user)
@@ -3336,8 +3347,37 @@ EOT
       PITIME+=($BENCH)
     done
     echo; if test -n "$LOGFILE"; then echo >> $LOGFILE; fi
-    rm ${RPRE}wait
   fi
+  if test -n "$FIOBENCH"; then
+    echo -n "Disk Benchmark (fio):"
+    if test -n "$LOGFILE"; then echo -n "Disk Benchmark (fio):" >> $LOGFILE; fi
+    for JHNO in $(seq 0 $(($NOAZS-1))); do
+      if test -n "$LOGFILE"; then echo "ssh -i $DATADIR/${KEYPAIRS[0]} -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=~/.ssh/known_hosts.$RPRE\" ${USER}@${FLOATS[$JHNO]} fio --rw=randrw --name=test --size=500M --direct=1 --bs=16k --numjobs=4 --group_reporting --runtime=12" >> $LOGFILE; fi
+      BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait fio; cd /tmp; fio --rw=randrw --name=test --size=500M --direct=1 --bs=16k --numjobs=4 --group_reporting --runtime=12; rm test.?.? 2>/dev/null")
+      if test -n "$LOGFILE"; then echo "$BENCH" >> $LOGFILE; fi
+      if echo "$BENCH" | grep 'test:' >/dev/null 2>&1; then
+        READ=$(echo "$BENCH" | grep '  read:')
+        WRITE=$(echo "$BENCH" | grep '  write:')
+        LAT=$(echo "$BENCH" | grep '  lat (msec)' | grep ', 10=' | sed 's/^.*, 10=\([0-9\.]*\)%.*$/\1/')
+        RIOPS=$(echo "$READ" | sed 's/^.*IOPS=\([0-9]*\),.*$/\1/')
+        WIOPS=$(echo "$WRITE" | sed 's/^.*IOPS=\([0-9]*\),.*$/\1/')
+        RBW=$(echo "$READ" | sed 's/^.*BW=\([0-9\.]*\)MiB.*$/\1/')
+        WBW=$(echo "$WRITE" | sed 's/^.*BW=\([0-9\.]*\)MiB.*$/\1/')
+        BW=$(echo "scale=1; ($RBW+$WBW)/2" | bc -l)
+        IOPS=$(echo "($RIOPS+$WIOPS)/2" | bc)
+        echo -en "${BOLD} $BW $IOPS ${LAT}%${NORM}"
+        if test -n "$LOGFILE"; then echo -n " $BW $IOPS ${LAT}%" >> $LOGFILE; fi
+        log_grafana "fioBW" "JHVM$JHNO" "$BW" 0
+        log_grafana "fiokIOPS" "JHVM$JHNO" $(echo "scale=3; $IOPS/1000" | bc -l) 0
+        log_grafana "fioLat10ms" "JHVM$JHNO" "$LAT" 0
+	FIOBW+=($BW)
+	FIOIOPS+=($IOPS)
+	FIOLAT+=($LAT)
+      fi
+    done
+    echo; if test -n "$LOGFILE"; then echo >> $LOGFILE; fi
+  fi
+  BENCHTIME=$(($(date +%s)-$TSTART))
   return $RC
 }
 
@@ -3507,11 +3547,12 @@ iperf3test()
 let MAXW=100
 if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 5; sync; fi
 while test \$MAXW -ge 1; do
-  if type -p "\$1">/dev/null; then exit 0; fi
+  if type -p "\$1">/dev/null; then sync; exit 0; fi
   let MAXW-=1
   sleep 1
   if test ! -f /var/lib/cloud/instance/boot-finished; then sleep 1; fi
 done
+sync
 exit 1
 EOT
   chmod +x ${RPRE}wait
@@ -3634,9 +3675,9 @@ stats()
   if test -n "$3" -a -z "$MACHINE"; then NAME=$3; else NAME=$1; fi
   DIG=${2:-2}
   PCT=${4:-95}
-  echo -n "$NAME: " | tee -a $LOGFILE
   eval LIST=( \"\${${1}[@]}\" )
   if test ${#LIST[*]} -lt 2; then return; fi
+  echo -n "$NAME: " | tee -a $LOGFILE
   echo "${LIST[*]}" | ./stats.py -d $DIG -p $PCT $MACHINE | tee -a $LOGFILE
 }
 
@@ -3659,6 +3700,11 @@ allstats()
  fi
  if test -n "$IPERF"; then
    stats $1 BANDWIDTH  0 "Bandwidth Stats   " 5
+ fi
+ if test -n "$FIOBENCH"; then
+   stats $1 FIOBW      1 "DiskBW    Stats   " 5
+   stats $1 FIOIOPS    0 "DiskIOPS  Stats   " 5
+   stats $1 FIOLAT     2 "DiskLat10mStats   "
  fi
  stats $1 VMDSTATS   0 "VM Deletion Stats "
  stats $1 VOLSTATS   2 "Cinder CLI Stats  "
@@ -4149,6 +4195,9 @@ declare -a TOTTIME
 declare -a WAITTIME
 
 declare -a PITIME
+declare -a FIOBW
+declare -a FIOIOPS
+declare -a FIOLAT
 declare -a BANDWIDTH
 
 declare -i CUMPINGRETRIES=0
@@ -4167,6 +4216,7 @@ declare -i SUCCRUNS=0
 LASTDATE=$(date +%Y-%m-%d)
 LASTTIME=$(date +%H:%M:%S)
 TESTTIME=0
+BENCHTIME=0
 LASTERRITER=-2
 
 # Declare empty router list outside of loop
@@ -4501,8 +4551,8 @@ else # test "$1" = "DEPLOY"; then
                 else
 		 LBACTIVE=0
 		fi
-                TESTTIME=$(($(date +%s)-$MSTOP))
-                echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART))s), TESTS DONE (${TESTTIME}s), DELETE AGAIN $NORM"
+                TESTTIME=$(($(date +%s)-$MSTOP+$BENCHTIME))
+                echo -e "$BOLD *** SETUP DONE ($(($MSTOP-$MSTART-$BENCHTIME))s), TESTS DONE (${TESTTIME}s), DELETE AGAIN $NORM"
                 let SUCCRUNS+=1
                 THISRUNSUCCESS=1
 		sleep 1
@@ -4514,7 +4564,7 @@ else # test "$1" = "DEPLOY"; then
                   TOKENSTAMP=$(date +%s)
                 fi
                 # Subtract waiting time (5s here)
-                MSTART=$(($MSTART+$(date +%s)-$MSTOP))
+                MSTART=$(($MSTART+$(date +%s)-$MSTOP+$BENCHTIME))
                 if test -n "$LOADBALANCER" -a "$LBACTIVE" = "1"; then cleanLBs; fi
                fi
                # TODO: Detach and delete disks again
@@ -4555,17 +4605,19 @@ else # test "$1" = "DEPLOY"; then
  fi
  # Raise an alarm if we have not yet sent one and we're very slow despite this
  if test -n "$OPENSTACKTOKEN"; then
-   if test -n "$BOOTALLATONCE"; then CON=400; NFACT=12; FACT=24; else CON=384; NFACT=12; FACT=36; fi
+   if test -n "$BOOTALLATONCE"; then CON=400; NFACT=8; FACT=24; else CON=384; NFACT=8; FACT=36; fi
  else
-   if test -n "$BOOTALLATONCE"; then CON=416; NFACT=16; FACT=24; else CON=400; NFACT=16; FACT=36; fi
+   if test -n "$BOOTALLATONCE"; then CON=416; NFACT=12; FACT=24; else CON=400; NFACT=12; FACT=36; fi
  fi
- if test "$VOLNEEDSTAG" == "1"; then let FACT+=2; fi
+ if test "$VOLNEEDSTAG" == "1"; then let FACT+=4; fi
  MAXCYC=$(($CON+($FACT+$NFACT/2)*$NOAZS+$NFACT*$NONETS+$FACT*$NOVMS))
  MINCYC=$(($MAXCYC/6))
  if test -n "$SECONDNET"; then let MAXCYC+=$(($NFACT*$NONETS+$NFACT*$NOVMS)); fi
  if test -n "$RESHUFFLE"; then let MAXCYC+=$((2*$NFACT*$NOVMS)); fi
  if test -n "$FULLCONN"; then let MAXCYC+=$(($NOVMS*$NOVMS/10)); fi
  if test -n "$IPERF"; then let MAXCYC+=$((6*$NONETS)); fi
+ if test -n "$BCBENCH"; then let MAXCYC+=$((16*$NOAZS)); fi
+ if test -n "$FIOBENCH"; then let MAXCYC+=$((28*$NOAZS)); fi
  if test -n "$LOADBALANCER"; then let MAXCYC+=$((36+4*$NOVMS+$WAITLB)); fi
  if test -n "$SKIPKILLLB"; then let MAXCYC-=$((20+2*$NOVMS)); fi
  # FIXME: We could check THISRUNSUCCESS instead?
@@ -4676,6 +4728,9 @@ $(allstats -m)" > $DATADIR/Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv
   TOTTIME=()
   WAITTIME=()
   PITIME=()
+  FIOBW=()
+  FIOIOPS=()
+  FIOLAT=()
   BANDWIDTH=()
   STATSENT=1
 fi
