@@ -1468,7 +1468,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -1623,7 +1624,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -1732,6 +1734,8 @@
             "axisColorMode": "text",
             "axisLabel": "s, Gb/s, s, %maxt*10, s*10",
             "axisPlacement": "auto",
+            "axisSoftMax": 512,
+            "axisSoftMin": 0.05,
             "barAlignment": 0,
             "drawStyle": "line",
             "fillOpacity": 10,
@@ -1745,7 +1749,7 @@
             "lineWidth": 1,
             "pointSize": 5,
             "scaleDistribution": {
-              "log": 10,
+              "log": 2,
               "type": "log"
             },
             "showPoints": "never",
@@ -1759,13 +1763,14 @@
             }
           },
           "mappings": [],
-          "max": 32,
-          "min": 0.5,
+          "max": 100,
+          "min": 0.1,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -1966,7 +1971,7 @@
         "options": [],
         "query": "show tag values with key = cmd",
         "refresh": 1,
-        "regex": "/^(4000pi|iperf3|ssh|totDur|LBconn|ping)$/",
+        "regex": "/^(4000pi|iperf3|ssh|totDur|LBconn|ping|fioBW|fiokIOPS|fioLat10ms)$/",
         "skipUrlSync": false,
         "sort": 0,
         "tagValuesQuery": "",
@@ -2070,6 +2075,6 @@
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
   "uid": "9ltTEmlnk",
-  "version": 12,
+  "version": 16,
   "weekStart": "monday"
 }
