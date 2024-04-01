@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.106
+VERSION=1.107
 
 APIMON_ARGS="$@"
 # debugging
@@ -4094,11 +4094,11 @@ createnewprj()
 compress_and_upload()
 {
   local SZ=$(stat -c %s "$1") || return
-  local COMP EXT RESP OLDLF
+  local COMP EXT="" RESP OLDLF
   OLDLF="$LOGFILE"
   if test $SZ -gt 1000; then
     COMP=gzip; EXT=.gz
-    if test $SZ -gt 1000000; then COMP=xz; EXT=.xz; fi
+    if test $SZ -gt 1000000; then COMP=zstd --rm; EXT=.zst; fi
     $COMP "$1"
   fi
   if test -n "$SWIFTCONTAINER"; then
