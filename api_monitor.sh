@@ -517,7 +517,7 @@ if ! openstack router list >/dev/null; then
 fi
 
 if test -n "$LOGFILE"; then
-  echo "Running api_monitor.sh v$VERSION on host $FQDN with arguments $APIMON_ARGS" >> $LOGILFE
+  echo "Running api_monitor.sh v$VERSION on host $FQDN with arguments $APIMON_ARGS" >> $LOGFILE
 fi
 
 if test "$NOCOL" == "1"; then
