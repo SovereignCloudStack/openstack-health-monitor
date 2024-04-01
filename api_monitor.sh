@@ -101,6 +101,7 @@
 
 VERSION=1.106
 
+APIMON_ARGS="$@"
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
 
@@ -266,7 +267,7 @@ SUCCWAIT=${SUCCWAIT:-5}
 DOMAIN=$(grep '^search' /etc/resolv.conf | awk '{ print $2; }'; exit ${PIPESTATUS[0]}) || DOMAIN=otc.t-systems.com
 HOSTNAME=$(hostname)
 FQDN=$(hostname -f 2>/dev/null) || FQDN=$HOSTNAME.$DOMAIN
-echo "Running api_monitor.sh v$VERSION on host $FQDN"
+echo "Running api_monitor.sh v$VERSION on host $FQDN with arguments $APIMON_ARGS"
 if test -z "$OS_PROJECT_NAME"; then
 	TRIPLE="$OS_CLOUD"
 	STRIPLE="$OS_CLOUD"
@@ -513,6 +514,10 @@ fi
 if ! openstack router list >/dev/null; then
   echo "openstack neutron call failed, exit"
   exit 2
+fi
+
+if test -n "$LOGFILE"; then
+  echo "Running api_monitor.sh v$VERSION on host $FQDN with arguments $APIMON_ARGS" >> $LOGILFE
 fi
 
 if test "$NOCOL" == "1"; then
@@ -4234,7 +4239,7 @@ if test -z "$OPENSTACKTOKEN"; then
   let DEFTIMEOUT+=2
 fi
 
-
+echo " api_monitor.sh $APIMON_ARGS"
 echo " Send alarms to ${ALARM_EMAIL_ADDRESSES[@]} ${ALARM_MOBILE_NUMBERS[@]}"
 echo " Send  notes to ${NOTE_EMAIL_ADDRESSES[@]} ${NOTE_MOBILE_NUMBERS[@]}"
 
