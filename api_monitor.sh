@@ -4239,7 +4239,6 @@ if test -z "$OPENSTACKTOKEN"; then
   let DEFTIMEOUT+=2
 fi
 
-echo " api_monitor.sh $APIMON_ARGS"
 echo " Send alarms to ${ALARM_EMAIL_ADDRESSES[@]} ${ALARM_MOBILE_NUMBERS[@]}"
 echo " Send  notes to ${NOTE_EMAIL_ADDRESSES[@]} ${NOTE_MOBILE_NUMBERS[@]}"
 
