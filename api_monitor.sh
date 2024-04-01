@@ -99,8 +99,9 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.106
+VERSION=1.107
 
+APIMON_ARGS="$@"
 # debugging
 if test "$1" == "--debug"; then set -x; shift; fi
 
@@ -266,7 +267,7 @@ SUCCWAIT=${SUCCWAIT:-5}
 DOMAIN=$(grep '^search' /etc/resolv.conf | awk '{ print $2; }'; exit ${PIPESTATUS[0]}) || DOMAIN=otc.t-systems.com
 HOSTNAME=$(hostname)
 FQDN=$(hostname -f 2>/dev/null) || FQDN=$HOSTNAME.$DOMAIN
-echo "Running api_monitor.sh v$VERSION on host $FQDN"
+echo "Running api_monitor.sh v$VERSION on host $FQDN with arguments $APIMON_ARGS"
 if test -z "$OS_PROJECT_NAME"; then
 	TRIPLE="$OS_CLOUD"
 	STRIPLE="$OS_CLOUD"
@@ -513,6 +514,10 @@ fi
 if ! openstack router list >/dev/null; then
   echo "openstack neutron call failed, exit"
   exit 2
+fi
+
+if test -n "$LOGFILE"; then
+  echo "Running api_monitor.sh v$VERSION on host $FQDN with arguments $APIMON_ARGS" >> $LOGFILE
 fi
 
 if test "$NOCOL" == "1"; then
@@ -4089,11 +4094,11 @@ createnewprj()
 compress_and_upload()
 {
   local SZ=$(stat -c %s "$1") || return
-  local COMP EXT RESP OLDLF
+  local COMP EXT="" RESP OLDLF
   OLDLF="$LOGFILE"
   if test $SZ -gt 1000; then
     COMP=gzip; EXT=.gz
-    if test $SZ -gt 1000000; then COMP=xz; EXT=.xz; fi
+    if test $SZ -gt 1000000; then COMP=zstd --rm; EXT=.zst; fi
     $COMP "$1"
   fi
   if test -n "$SWIFTCONTAINER"; then
@@ -4233,7 +4238,6 @@ if test -z "$OPENSTACKTOKEN"; then
   let GLANCETIMEOUT+=2
   let DEFTIMEOUT+=2
 fi
-
 
 echo " Send alarms to ${ALARM_EMAIL_ADDRESSES[@]} ${ALARM_MOBILE_NUMBERS[@]}"
 echo " Send  notes to ${NOTE_EMAIL_ADDRESSES[@]} ${NOTE_MOBILE_NUMBERS[@]}"
