@@ -41,6 +41,7 @@ telegraf, influxdb and grafana: `sudo zypper install telegraf influxdb grafana`.
   that has received significant work. Screenshots from the dashboard can be seen below.
   To set up the dashboard, first create an influxdb datasource via `localhost:8086` connecting to
   the `telegraf` database and then import the JSON as dashboard.
+* `openstack-health-dashboard-10.json` contains the same dashboard exported from Grafana 10.x.
 
 ## Screenshots
 
