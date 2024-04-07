@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.107
+VERSION=1.108
 
 APIMON_ARGS="$@"
 # debugging
@@ -2892,6 +2892,21 @@ createVMs()
   return $RC
 }
 
+# is $1 in space-separated list $2?
+inList()
+{
+  #while read oid onm; do
+  while read oid; do
+    if test "$oid" = "$1"; then return 0; fi
+  done < <(echo "$2")
+  return 1
+}
+
+dbgout()
+{
+  if test -n "$DEBUG"; then echo "$@"; fi
+}
+
 # assign names to volumes
 # $1 => attempt (for reporting)
 # retval => number of names assigned
@@ -2906,15 +2921,22 @@ nameVols()
     id=$(echo "$line" | cut -d "," -f 2)
     nm=$(echo "$line" | cut -d "," -f 3)
     att=$(echo "$line" | cut -d "," -f 6)
+    # Skip vols that existed before
+    if inList $id "$OLDVOLS"; then continue; fi
+    # Skip volumes that are not attached anywhere
     if test -z "$att"; then continue; fi
+    # Skip volumes that already have a name
+    if test -n "$nm"; then continue; fi
+    # Determine name
     NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_\(VM_\|JH\)\([^ ]*\) .*$/\1_RootVol_\3/')
     if [[ "$NM" != APIMonitor* ]]; then
       NM=$(echo "$att" | sed "s/^Attached to \([0-9a-f\-]*\) .*\$/${RPRE}RootVol_\1/")
     fi
     if [[ "$NM" == ${RPRE}* ]]; then
       if test -n "$nm"; then let natt+=1; continue; fi
+    else
+      NM=$(echo "$att" | sed 's/^Attached to \([^ ]*).*$/\1_RootVol/')
     fi
-    if test -n "$nm"; then continue; fi
     COLL="$COLL $id:$NM"
   done < <(echo "$OSTACKRESP")
   COLL="${COLL# }"
@@ -2925,20 +2947,6 @@ nameVols()
     ostackcmd_tm_retry3 VOLSTATS $CINDERTIMEOUT cinder rename $NM $ID && let natt+=1
   done
   return $natt
-}
-
-inList()
-{
-  #while read oid onm; do
-  while read oid; do
-    if test "$oid" = "$1"; then return 0; fi
-  done < <(echo "$2")
-  return 1
-}
-
-dbgout()
-{
-  if test -n "$DEBUG"; then echo "$@"; fi
 }
 
 # Name volumes created by nova but which did not get attached
