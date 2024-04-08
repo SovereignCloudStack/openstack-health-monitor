@@ -428,7 +428,7 @@ In the dashboard, go to Home, Connections, choose InfluxDB and Add new datasourc
 #### Importing the dashboard
 
 Go to Home, Dashboards, New, Import.
-Upload the dashboard [.json file](https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/dashboard/openstack-health-dashboard.json) from the repository.
+Upload the dashboard [.json file](https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/dashboard/openstack-health-dashboard.json) from the repository, user the [Grafana-10 variant](https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/dashboard/openstack-health-dashboard-10.json) if you use Grafana 10 or newer.
 
 In the dashboard, go to the settings gear wheel, variables, mycloud and add CLOUDNAME to the list of clouds that can be displayed. (There are some existing SCS clouds in that list.)
 Save.
