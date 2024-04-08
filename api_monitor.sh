@@ -2982,13 +2982,16 @@ waitVMs()
 {
   nameVols 1
   tagged=$?
-  if test "$tagged" != $((NOVMS+NOAZS)) -a $tagged -gt $NOAZS; then sleep 2; nameVols 2; tagged=$?; fi
+  #if test "$tagged" != $((NOVMS+NOAZS)) -a $tagged -gt $NOAZS; then sleep 2; nameVols 2; tagged=$?; fi
+  if test $tagged != $NOVMS -a $tagged -gt 0; then sleep 2; nameVols 2; tagged=$?; fi
   #waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" $NOVATIMEOUT nova show
   waitlistResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
   handleWaitErr "VMs" NOVASTATS $NOVATIMEOUT nova show
   local VRC=$?
-  if test "$tagged" != $((NOVMS+NOAZS)); then nameVols 3; tagged=$?; fi
-  if test "$tagged" != $((NOVMS+NOAZS)); then echo "#WARN: Tagged volume number incorrect: $tagged != $((NOVMS+NOAZS))" 1>&2; fi
+  #if test "$tagged" != $((NOVMS+NOAZS)); then nameVols 3; tagged=$?; fi
+  if test $tagged != $NOVMS; then nameVols 3; tagged=$?; fi
+  #if test "$tagged" != $((NOVMS+NOAZS)); then echo "#WARN: Tagged volume number incorrect: $tagged != $((NOVMS+NOAZS))" 1>&2; fi
+  if test $tagged != $NOVMS; then echo "#WARN: Tagged volume number incorrect: $tagged != $NOVMS" 1>&2; fi
   if test $VRC != 0 -a -n "$VMVOLSIZE"; then nameUnattachedVols $VRC; fi
   return $VRC
 }
