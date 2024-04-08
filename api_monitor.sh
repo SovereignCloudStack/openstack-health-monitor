@@ -2925,8 +2925,6 @@ nameVols()
     if inList $id "$OLDVOLS"; then continue; fi
     # Skip volumes that are not attached anywhere
     if test -z "$att"; then continue; fi
-    # Skip volumes that already have a name
-    if test -n "$nm"; then continue; fi
     # Determine name
     NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_\(VM_\|JH\)\([^ ]*\) .*$/\1_RootVol_\3/')
     if [[ "$NM" != APIMonitor* ]]; then
@@ -2937,6 +2935,8 @@ nameVols()
     else
       NM=$(echo "$att" | sed 's/^Attached to \([^ ]*).*$/\1_RootVol/')
     fi
+    # Skip volumes that already have a name
+    if test -n "$nm"; then continue; fi
     COLL="$COLL $id:$NM"
   done < <(echo "$OSTACKRESP")
   COLL="${COLL# }"
