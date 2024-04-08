@@ -4109,7 +4109,7 @@ compress_and_upload()
   OLDLF="$LOGFILE"
   if test $SZ -gt 1000; then
     COMP=gzip; EXT=.gz
-    if test $SZ -gt 1000000; then COMP=zstd --rm; EXT=.zst; fi
+    if test $SZ -gt 1000000; then COMP="zstd --rm"; EXT=.zst; fi
     $COMP "$1"
   fi
   if test -n "$SWIFTCONTAINER"; then
