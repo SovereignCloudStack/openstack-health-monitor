@@ -36,19 +36,19 @@ License: CC-BY-SA (2.0)
 - create virtual IP (for outbound SNAT via JumpHosts)
 - create SSH keys
 - create $NOAZS JumpHost VMs by
-   a) creating disks (from image)
-   b) creating ports
-   c) creating VMs
+  a) creating disks (from image)
+  b) creating ports
+  c) creating VMs
 - associating a floating IP to each Jumphost
 - configuring the virtIP as default route
 - JumpHosts do SNAT for outbound traffic and port forwarding for inbound
-   (this requires SUSE images with SFW2-snat package to work)
+  (this requires SUSE images with SFW2-snat package to work)
 - create N internal VMs striped over the nets and AZs by
-   a) creating disks (from image) -- if option `-d` is not used
-   b) creating a port -- if option `-P` is not used
-   c) creating VM (from volume or from image, dep. on `-d`)
-    (Steps a and c take long, so we do many in parallel and poll for progress)
-   d) do some property changes to VMs
+  a) creating disks (from image) -- if option `-d` is not used
+  b) creating a port -- if option `-P` is not used
+  c) creating VM (from volume or from image, dep. on `-d`)
+  (Steps a and c take long, so we do many in parallel and poll for progress)
+  d) do some property changes to VMs
 - after everything is complete, we wait for the VMs to be up
 - we ping them, log in via ssh and see whether they can ping to the outside world (quad9)
 - a full cross connectivity check (can each VM ping each other?) with `-C`
@@ -57,11 +57,11 @@ License: CC-BY-SA (2.0)
   routes the requests to the alive backend members
 - attach additional NICs and test (options `-2`, `-3`, `-4`)
 - NOT YET: attach additional disks to running VMs
- 
+
 - Finally, we clean up ev'thing in reverse order
-   (We have kept track of resources to clean up.
-    We can also identify them by name, which helps if we got interrupted, or
-    some cleanup action failed.)
+  (We have kept track of resources to clean up.
+  We can also identify them by name, which helps if we got interrupted, or
+  some cleanup action failed.)
 
 ## Coverage
 
@@ -86,7 +86,7 @@ or SMN (OTC notifications via SMS and other media) alarms.
 This takes rather long, as typical API calls take b/w 1 and 2s on OpenStack (including the round trip to keystone for the token).
 
 Optimization possibilities:
-Cache token and reuse when creating a large number of resources in a loop. 
+Cache token and reuse when creating a large number of resources in a loop.
 Completed (use option `-O` (not used for volume create)).
 
 ## Prerequisites
@@ -97,6 +97,7 @@ Completed (use option `-O` (not used for volume create)).
 - `sendmail` (only if email notification is requested)
 - `jq` (for JSON processing)
 - `bc` and python3 (or python2) for math used to calc statistics
+- `netcat`
 - Any image for the VMs that allows login as user DEFLTUSER (linux) with injected key
   (If we use `-2`/`-3`/`-4`, we also need a SUSE image to have the `cloud-multiroute` pkg in there.)
 
@@ -192,11 +193,11 @@ subdirectory.
 ## HOWTO Guide
 
 The directory docs contains a complete [setup guide](https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/docs/Debian12-Install.md)
- using Debian 12 VMs on an SCS reference deployement.
+using Debian 12 VMs on an SCS reference deployement.
 
 ## Benchmarks
 
-There are three simple benchmarks included, `-b` for  simple compute benchmark (calculating
+There are three simple benchmarks included, `-b` for simple compute benchmark (calculating
 4000 digits of pi with `bc`), `-B` for an iperf TCP benchmark between VMs and `-M` to measure
 the bandwidth, IOPS and Latency (the percentage of samples with >10ms latency is output) of
 the root disk. These are meant to detect trends and can help with capacity monitoring.
