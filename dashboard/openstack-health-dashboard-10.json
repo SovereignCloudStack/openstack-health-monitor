@@ -25,7 +25,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 2,
+  "id": 1,
   "links": [
     {
       "asDropdown": false,
@@ -43,10 +43,7 @@
   "liveNow": true,
   "panels": [
     {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "bdi1xphz7kpa8f"
-      },
+      "datasource": {},
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -151,7 +148,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "bdi1xphz7kpa8f"
+        "uid": "edi5ib8drqltsd"
       },
       "description": "",
       "fieldConfig": {
@@ -257,10 +254,7 @@
       "type": "stat"
     },
     {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "bdi1xphz7kpa8f"
-      },
+      "datasource": {},
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -370,7 +364,10 @@
       "type": "gauge"
     },
     {
-      "datasource": {},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "edi5ib8drqltsd"
+      },
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -469,7 +466,10 @@
       "type": "stat"
     },
     {
-      "datasource": {},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "edi5ib8drqltsd"
+      },
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -781,7 +781,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "bdi1xphz7kpa8f"
+        "uid": "edi5ib8drqltsd"
       },
       "description": "",
       "fieldConfig": {
@@ -883,10 +883,7 @@
       "type": "stat"
     },
     {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "bdi1xphz7kpa8f"
-      },
+      "datasource": {},
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -1015,7 +1012,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "bdi1xphz7kpa8f"
+        "uid": "edi5ib8drqltsd"
       },
       "description": "",
       "fieldConfig": {
@@ -1093,7 +1090,8 @@
           "placement": "right",
           "showLegend": true,
           "sortBy": "Total",
-          "sortDesc": true
+          "sortDesc": true,
+          "width": 420
         },
         "tooltip": {
           "mode": "single",
@@ -1166,10 +1164,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "bdi1xphz7kpa8f"
-      },
+      "datasource": {},
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -1246,7 +1241,8 @@
           "placement": "right",
           "showLegend": true,
           "sortBy": "Total",
-          "sortDesc": true
+          "sortDesc": true,
+          "width": 420
         },
         "tooltip": {
           "mode": "single",
@@ -1351,6 +1347,7 @@
               "mode": "off"
             }
           },
+          "decimals": 0,
           "mappings": [],
           "max": 2,
           "min": 0,
@@ -1390,7 +1387,8 @@
           "placement": "right",
           "showLegend": true,
           "sortBy": "Total",
-          "sortDesc": true
+          "sortDesc": true,
+          "width": 420
         },
         "tooltip": {
           "mode": "single",
@@ -1476,7 +1474,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "bdi1xphz7kpa8f"
+        "uid": "edi5ib8drqltsd"
       },
       "description": "",
       "fieldConfig": {
@@ -1523,7 +1521,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -1552,7 +1551,8 @@
           "placement": "right",
           "showLegend": true,
           "sortBy": "Mean",
-          "sortDesc": true
+          "sortDesc": true,
+          "width": 420
         },
         "tooltip": {
           "mode": "multi",
@@ -1588,7 +1588,7 @@
             },
             {
               "params": [
-                "none"
+                "null"
               ],
               "type": "fill"
             }
@@ -1636,7 +1636,7 @@
     {
       "datasource": {
         "type": "influxdb",
-        "uid": "bdi1xphz7kpa8f"
+        "uid": "edi5ib8drqltsd"
       },
       "description": "",
       "fieldConfig": {
@@ -1684,7 +1684,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -1715,7 +1716,8 @@
           "placement": "right",
           "showLegend": true,
           "sortBy": "Mean",
-          "sortDesc": true
+          "sortDesc": true,
+          "width": 420
         },
         "tooltip": {
           "mode": "multi",
@@ -1725,7 +1727,7 @@
       "pluginVersion": "8.3.5",
       "targets": [
         {
-          "alias": "$tag_cmd",
+          "alias": "$tag_cmd.A",
           "datasource": {
             "type": "influxdb",
             "uid": "bdi1xphz7kpa8f"
@@ -1739,7 +1741,13 @@
             },
             {
               "params": [
-                "cmd"
+                "cmd::tag"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "method::tag"
               ],
               "type": "tag"
             },
@@ -1753,6 +1761,8 @@
           "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
+          "query": "SELECT mean(\"duration\") FROM /^$mycloud$/ WHERE (\"cmd\"::tag =~ /^$mywait$/ AND (\"method\"::tag = 'act' OR \"method\"::tag = 'ACTIVE')) AND $timeFilter GROUP BY time($__interval), \"cmd\"::tag, \"method\"::tag fill(none)",
+          "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
           "select": [
@@ -1771,21 +1781,290 @@
           ],
           "tags": [
             {
-              "key": "cmd",
+              "key": "cmd::tag",
               "operator": "=~",
               "value": "/^$mywait$/"
+            },
+            {
+              "condition": "AND",
+              "key": "method::tag",
+              "operator": "=",
+              "value": "ACTIVE"
+            }
+          ]
+        },
+        {
+          "alias": "$tag_cmd.X",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "bdi1xphz7kpa8f"
+          },
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "cmd::tag"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "method::tag"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "none"
+              ],
+              "type": "fill"
+            }
+          ],
+          "hide": false,
+          "measurement": "/^$mycloud$/",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "query": "SELECT mean(\"duration\") FROM /^$mycloud$/ WHERE (\"cmd\"::tag =~ /^$mywait$/ AND (\"method\"::tag = 'act' OR \"method\"::tag = 'ACTIVE')) AND $timeFilter GROUP BY time($__interval), \"cmd\"::tag, \"method\"::tag fill(none)",
+          "rawQuery": false,
+          "refId": "B",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "duration"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "cmd::tag",
+              "operator": "=~",
+              "value": "/^$mywait$/"
+            },
+            {
+              "condition": "AND",
+              "key": "method::tag",
+              "operator": "=",
+              "value": "XDELX"
+            }
+          ]
+        },
+        {
+          "alias": "$tag_cmd.a",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "bdi1xphz7kpa8f"
+          },
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "cmd::tag"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "method::tag"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "none"
+              ],
+              "type": "fill"
+            }
+          ],
+          "hide": false,
+          "measurement": "/^$mycloud$/",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "query": "SELECT mean(\"duration\") FROM /^$mycloud$/ WHERE (\"cmd\"::tag =~ /^$mywait$/ AND (\"method\"::tag = 'act' OR \"method\"::tag = 'ACTIVE')) AND $timeFilter GROUP BY time($__interval), \"cmd\"::tag, \"method\"::tag fill(none)",
+          "rawQuery": false,
+          "refId": "C",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "duration"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "cmd::tag",
+              "operator": "=~",
+              "value": "/^$mywait$/"
+            },
+            {
+              "condition": "AND",
+              "key": "method::tag",
+              "operator": "=",
+              "value": "available"
+            }
+          ]
+        },
+        {
+          "alias": "$tag_cmd.$tag_method",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "bdi1xphz7kpa8f"
+          },
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "cmd::tag"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "method::tag"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "none"
+              ],
+              "type": "fill"
+            }
+          ],
+          "hide": false,
+          "measurement": "/^$mycloud$/",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "query": "SELECT mean(\"duration\") FROM /^$mycloud$/ WHERE (\"cmd\"::tag =~ /^$mywait$/ AND \"method\"::tag !~ /^\\(ACTIVE\\|XDELX\\|available\\)^/) AND $timeFilter GROUP BY time($__interval), \"cmd\"::tag, \"method\"::tag fill(none)",
+          "rawQuery": false,
+          "refId": "D",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "duration"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "cmd::tag",
+              "operator": "=~",
+              "value": "/^$mywait$/"
+            },
+            {
+              "condition": "AND",
+              "key": "method::tag",
+              "operator": "!~",
+              "value": "/^(available|ACTIVE|XDELX)$/"
             }
           ]
         }
       ],
       "title": "Resource wait",
+      "transformations": [
+        {
+          "disabled": true,
+          "id": "renameByRegex",
+          "options": {
+            "regex": "ACTIVE",
+            "renamePattern": "act"
+          }
+        },
+        {
+          "disabled": true,
+          "id": "renameByRegex",
+          "options": {
+            "regex": "([^.]*)\\.XDELX",
+            "renamePattern": "$1.del"
+          }
+        },
+        {
+          "disabled": true,
+          "id": "renameByRegex",
+          "options": {
+            "regex": "(available)",
+            "renamePattern": "avl"
+          }
+        },
+        {
+          "disabled": true,
+          "id": "renameByRegex",
+          "options": {
+            "regex": "ava",
+            "renamePattern": "avl"
+          }
+        },
+        {
+          "disabled": true,
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "waitDELLBAAS.$tag_method": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "waitJHVM.$tag_method": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "waitJHVOLUME.$tag_method": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "waitLBAAS.$tag_method": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "waitVM.$tag_method": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        }
+      ],
       "type": "timeseries"
     },
     {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "bdi1xphz7kpa8f"
-      },
+      "datasource": {},
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -1834,7 +2113,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": null
               },
               {
                 "color": "red",
@@ -1865,7 +2145,8 @@
           "placement": "right",
           "showLegend": true,
           "sortBy": "Mean",
-          "sortDesc": true
+          "sortDesc": true,
+          "width": 420
         },
         "tooltip": {
           "mode": "multi",
@@ -1945,13 +2226,13 @@
         },
         "datasource": {
           "type": "influxdb",
-          "uid": "bdi1xphz7kpa8f"
+          "uid": "edi5ib8drqltsd"
         },
         "definition": "show tag values with key = cmd",
         "hide": 0,
         "includeAll": true,
         "label": "cmd",
-        "multi": false,
+        "multi": true,
         "name": "mycmd",
         "options": [],
         "query": "show tag values with key = cmd",
@@ -1969,13 +2250,13 @@
         },
         "datasource": {
           "type": "influxdb",
-          "uid": "bdi1xphz7kpa8f"
+          "uid": "edi5ib8drqltsd"
         },
         "definition": "show tag values with key = method where cmd =~ /$mycmd/",
         "hide": 0,
         "includeAll": true,
         "label": "method",
-        "multi": false,
+        "multi": true,
         "name": "mymethod",
         "options": [],
         "query": "show tag values with key = method where cmd =~ /$mycmd/",
@@ -1993,13 +2274,13 @@
         },
         "datasource": {
           "type": "influxdb",
-          "uid": "bdi1xphz7kpa8f"
+          "uid": "edi5ib8drqltsd"
         },
         "definition": "show tag values with key = cmd",
         "hide": 0,
         "includeAll": true,
         "label": "Resrc",
-        "multi": false,
+        "multi": true,
         "name": "mywait",
         "options": [],
         "query": "show tag values with key = cmd",
@@ -2017,13 +2298,13 @@
         },
         "datasource": {
           "type": "influxdb",
-          "uid": "bdi1xphz7kpa8f"
+          "uid": "edi5ib8drqltsd"
         },
         "definition": "show tag values with key = cmd",
         "hide": 0,
         "includeAll": true,
         "label": "Bench",
-        "multi": false,
+        "multi": true,
         "name": "mybench",
         "options": [],
         "query": "show tag values with key = cmd",
@@ -2109,7 +2390,7 @@
     ]
   },
   "time": {
-    "from": "now-24h",
+    "from": "now-2d",
     "to": "now"
   },
   "timepicker": {
@@ -2128,7 +2409,7 @@
   },
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
-  "uid": "9ltTEmlnk",
-  "version": 8,
+  "uid": "9ltTEmlnl",
+  "version": 14,
   "weekStart": "monday"
 }
