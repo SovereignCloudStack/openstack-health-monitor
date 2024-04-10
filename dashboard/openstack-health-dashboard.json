@@ -44,8 +44,7 @@
   "panels": [
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -144,8 +143,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -246,8 +244,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -352,8 +349,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -448,8 +444,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -546,8 +541,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -652,8 +646,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -748,8 +741,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -899,10 +891,9 @@
       "pluginVersion": "9.5.8",
       "targets": [
         {
-          "alias": "API falis",
+          "alias": "API fails",
           "datasource": {
-            "type": "influxdb",
-            "uid": "jS735JXnz"
+            "type": "influxdb"
           },
           "groupBy": [
             {
@@ -954,8 +945,7 @@
     {
       "collapsed": false,
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "gridPos": {
         "h": 1,
@@ -970,8 +960,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -1047,7 +1036,8 @@
           "placement": "right",
           "showLegend": true,
           "sortBy": "Total",
-          "sortDesc": true
+          "sortDesc": true,
+          "width": 370
         },
         "tooltip": {
           "mode": "single",
@@ -1059,8 +1049,7 @@
         {
           "alias": "$tag_cmd $tag_method",
           "datasource": {
-            "type": "influxdb",
-            "uid": "fs4rnsd4z"
+            "type": "influxdb"
           },
           "groupBy": [
             {
@@ -1195,7 +1184,8 @@
           "placement": "right",
           "showLegend": true,
           "sortBy": "Total",
-          "sortDesc": true
+          "sortDesc": true,
+          "width": 370
         },
         "tooltip": {
           "mode": "single",
@@ -1206,8 +1196,7 @@
         {
           "alias": "$tag_cmd",
           "datasource": {
-            "type": "influxdb",
-            "uid": "HtMu18WVk"
+            "type": "influxdb"
           },
           "groupBy": [
             {
@@ -1337,7 +1326,8 @@
           "placement": "right",
           "showLegend": true,
           "sortBy": "Total",
-          "sortDesc": true
+          "sortDesc": true,
+          "width": 370
         },
         "tooltip": {
           "mode": "single",
@@ -1349,8 +1339,7 @@
         {
           "alias": "ERR($tag_cmd)",
           "datasource": {
-            "type": "influxdb",
-            "uid": "kOQ-cJwnk"
+            "type": "influxdb"
           },
           "groupBy": [
             {
@@ -1406,8 +1395,7 @@
     {
       "collapsed": false,
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "gridPos": {
         "h": 1,
@@ -1422,8 +1410,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -1498,7 +1485,8 @@
           "placement": "right",
           "showLegend": true,
           "sortBy": "Mean",
-          "sortDesc": true
+          "sortDesc": true,
+          "width": 370
         },
         "tooltip": {
           "mode": "multi",
@@ -1577,8 +1565,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -1656,7 +1643,8 @@
           "placement": "right",
           "showLegend": true,
           "sortBy": "Mean",
-          "sortDesc": true
+          "sortDesc": true,
+          "width": 370
         },
         "tooltip": {
           "mode": "multi",
@@ -1666,7 +1654,10 @@
       "pluginVersion": "8.3.5",
       "targets": [
         {
-          "alias": "$tag_cmd",
+          "alias": "$tag_cmd.A",
+          "datasource": {
+            "type": "influxdb"
+          },
           "groupBy": [
             {
               "params": [
@@ -1708,9 +1699,198 @@
           ],
           "tags": [
             {
-              "key": "cmd",
+              "key": "cmd::tag",
               "operator": "=~",
               "value": "/^$mywait$/"
+            },
+            {
+              "condition": "AND",
+              "key": "method::tag",
+              "operator": "=",
+              "value": "ACTIVE"
+            }
+          ]
+        },
+        {
+          "alias": "$tag_cmd.a",
+          "datasource": {
+            "type": "influxdb"
+          },
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "cmd"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "none"
+              ],
+              "type": "fill"
+            }
+          ],
+          "hide": false,
+          "measurement": "/^$mycloud$/",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "refId": "B",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "duration"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "cmd::tag",
+              "operator": "=~",
+              "value": "/^$mywait$/"
+            },
+            {
+              "condition": "AND",
+              "key": "method::tag",
+              "operator": "=",
+              "value": "available"
+            }
+          ]
+        },
+        {
+          "alias": "$tag_cmd.X",
+          "datasource": {
+            "type": "influxdb"
+          },
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "cmd"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "none"
+              ],
+              "type": "fill"
+            }
+          ],
+          "hide": false,
+          "measurement": "/^$mycloud$/",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "refId": "C",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "duration"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "cmd::tag",
+              "operator": "=~",
+              "value": "/^$mywait$/"
+            },
+            {
+              "condition": "AND",
+              "key": "method::tag",
+              "operator": "=",
+              "value": "XDELX"
+            }
+          ]
+        },
+        {
+          "alias": "$tag_cmd.$tag_method",
+          "datasource": {
+            "type": "influxdb"
+          },
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "cmd::tag"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "method::tag"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "none"
+              ],
+              "type": "fill"
+            }
+          ],
+          "hide": false,
+          "measurement": "/^$mycloud$/",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "refId": "D",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "duration"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "cmd::tag",
+              "operator": "=~",
+              "value": "/^$mywait$/"
+            },
+            {
+              "condition": "AND",
+              "key": "method::tag",
+              "operator": "!~",
+              "value": "/^(ACTIVE|available|XDELX)$/"
             }
           ]
         }
@@ -1720,8 +1900,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -1732,10 +1911,8 @@
           "custom": {
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "s, Gb/s, s, %maxt*10, s*10",
+            "axisLabel": "s, Gb/s, s, %maxt*10, s*10, MB/s, IO/s, %",
             "axisPlacement": "auto",
-            "axisSoftMax": 512,
-            "axisSoftMin": 0.05,
             "barAlignment": 0,
             "drawStyle": "line",
             "fillOpacity": 10,
@@ -1749,7 +1926,7 @@
             "lineWidth": 1,
             "pointSize": 5,
             "scaleDistribution": {
-              "log": 2,
+              "log": 10,
               "type": "log"
             },
             "showPoints": "never",
@@ -1802,7 +1979,8 @@
           "placement": "right",
           "showLegend": true,
           "sortBy": "Mean",
-          "sortDesc": true
+          "sortDesc": true,
+          "width": 370
         },
         "tooltip": {
           "mode": "multi",
@@ -1873,19 +2051,22 @@
     "list": [
       {
         "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "datasource": {
-          "type": "influxdb",
-          "uid": "fs4rnsd4z"
+          "type": "influxdb"
         },
         "definition": "show tag values with key = cmd",
         "hide": 0,
         "includeAll": true,
         "label": "cmd",
-        "multi": false,
+        "multi": true,
         "name": "mycmd",
         "options": [],
         "query": "show tag values with key = cmd",
@@ -1900,19 +2081,22 @@
       },
       {
         "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "datasource": {
-          "type": "influxdb",
-          "uid": "fs4rnsd4z"
+          "type": "influxdb"
         },
         "definition": "show tag values with key = method where cmd =~ /$mycmd/",
         "hide": 0,
         "includeAll": true,
         "label": "method",
-        "multi": false,
+        "multi": true,
         "name": "mymethod",
         "options": [],
         "query": "show tag values with key = method where cmd =~ /$mycmd/",
@@ -1927,19 +2111,22 @@
       },
       {
         "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "datasource": {
-          "type": "influxdb",
-          "uid": "fs4rnsd4z"
+          "type": "influxdb"
         },
         "definition": "show tag values with key = cmd",
         "hide": 0,
         "includeAll": true,
         "label": "Resrc",
-        "multi": false,
+        "multi": true,
         "name": "mywait",
         "options": [],
         "query": "show tag values with key = cmd",
@@ -1955,18 +2142,21 @@
       {
         "current": {
           "selected": false,
-          "text": "All",
-          "value": "$__all"
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "datasource": {
-          "type": "influxdb",
-          "uid": "fs4rnsd4z"
+          "type": "influxdb"
         },
         "definition": "show tag values with key = cmd",
         "hide": 0,
         "includeAll": true,
         "label": "Bench",
-        "multi": false,
+        "multi": true,
         "name": "mybench",
         "options": [],
         "query": "show tag values with key = cmd",
@@ -2055,7 +2245,7 @@
     ]
   },
   "time": {
-    "from": "now-24h",
+    "from": "now-2d",
     "to": "now"
   },
   "timepicker": {
@@ -2075,6 +2265,6 @@
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
   "uid": "9ltTEmlnk",
-  "version": 16,
+  "version": 19,
   "weekStart": "monday"
 }
