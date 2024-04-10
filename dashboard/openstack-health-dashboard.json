@@ -44,8 +44,7 @@
   "panels": [
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -144,8 +143,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -246,8 +244,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -352,8 +349,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -448,8 +444,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -546,8 +541,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -652,8 +646,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -748,8 +741,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -899,10 +891,9 @@
       "pluginVersion": "9.5.8",
       "targets": [
         {
-          "alias": "API falis",
+          "alias": "API fails",
           "datasource": {
-            "type": "influxdb",
-            "uid": "jS735JXnz"
+            "type": "influxdb"
           },
           "groupBy": [
             {
@@ -954,8 +945,7 @@
     {
       "collapsed": false,
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "gridPos": {
         "h": 1,
@@ -970,8 +960,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -1060,8 +1049,7 @@
         {
           "alias": "$tag_cmd $tag_method",
           "datasource": {
-            "type": "influxdb",
-            "uid": "fs4rnsd4z"
+            "type": "influxdb"
           },
           "groupBy": [
             {
@@ -1208,8 +1196,7 @@
         {
           "alias": "$tag_cmd",
           "datasource": {
-            "type": "influxdb",
-            "uid": "HtMu18WVk"
+            "type": "influxdb"
           },
           "groupBy": [
             {
@@ -1352,8 +1339,7 @@
         {
           "alias": "ERR($tag_cmd)",
           "datasource": {
-            "type": "influxdb",
-            "uid": "kOQ-cJwnk"
+            "type": "influxdb"
           },
           "groupBy": [
             {
@@ -1409,8 +1395,7 @@
     {
       "collapsed": false,
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "gridPos": {
         "h": 1,
@@ -1425,8 +1410,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -1581,8 +1565,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -1673,8 +1656,7 @@
         {
           "alias": "$tag_cmd.A",
           "datasource": {
-            "type": "influxdb",
-            "uid": "fs4rnsd4z"
+            "type": "influxdb"
           },
           "groupBy": [
             {
@@ -1732,8 +1714,7 @@
         {
           "alias": "$tag_cmd.a",
           "datasource": {
-            "type": "influxdb",
-            "uid": "fs4rnsd4z"
+            "type": "influxdb"
           },
           "groupBy": [
             {
@@ -1792,8 +1773,7 @@
         {
           "alias": "$tag_cmd.X",
           "datasource": {
-            "type": "influxdb",
-            "uid": "fs4rnsd4z"
+            "type": "influxdb"
           },
           "groupBy": [
             {
@@ -1852,8 +1832,7 @@
         {
           "alias": "$tag_cmd.$tag_method",
           "datasource": {
-            "type": "influxdb",
-            "uid": "fs4rnsd4z"
+            "type": "influxdb"
           },
           "groupBy": [
             {
@@ -1921,8 +1900,7 @@
     },
     {
       "datasource": {
-        "type": "influxdb",
-        "uid": "fs4rnsd4z"
+        "type": "influxdb"
       },
       "description": "",
       "fieldConfig": {
@@ -2082,8 +2060,7 @@
           ]
         },
         "datasource": {
-          "type": "influxdb",
-          "uid": "fs4rnsd4z"
+          "type": "influxdb"
         },
         "definition": "show tag values with key = cmd",
         "hide": 0,
@@ -2113,8 +2090,7 @@
           ]
         },
         "datasource": {
-          "type": "influxdb",
-          "uid": "fs4rnsd4z"
+          "type": "influxdb"
         },
         "definition": "show tag values with key = method where cmd =~ /$mycmd/",
         "hide": 0,
@@ -2144,8 +2120,7 @@
           ]
         },
         "datasource": {
-          "type": "influxdb",
-          "uid": "fs4rnsd4z"
+          "type": "influxdb"
         },
         "definition": "show tag values with key = cmd",
         "hide": 0,
@@ -2175,8 +2150,7 @@
           ]
         },
         "datasource": {
-          "type": "influxdb",
-          "uid": "fs4rnsd4z"
+          "type": "influxdb"
         },
         "definition": "show tag values with key = cmd",
         "hide": 0,
