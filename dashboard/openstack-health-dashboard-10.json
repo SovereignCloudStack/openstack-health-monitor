@@ -2193,9 +2193,13 @@
     "list": [
       {
         "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "datasource": {
           "type": "influxdb"
@@ -2245,6 +2249,7 @@
         },
         "datasource": {
           "type": "influxdb"
+
         },
         "definition": "show tag values with key = cmd",
         "hide": 0,
