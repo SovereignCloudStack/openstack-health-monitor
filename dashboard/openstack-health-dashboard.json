@@ -1933,7 +1933,7 @@
           "custom": {
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "s, Gb/s, s, %maxt*10, s*10",
+            "axisLabel": "s, Gb/s, s, %maxt*10, s*10, MB/s, IO/s, %",
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
