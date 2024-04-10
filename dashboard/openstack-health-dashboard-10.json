@@ -1936,9 +1936,13 @@
     "list": [
       {
         "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "datasource": {
           "type": "influxdb",
@@ -1948,7 +1952,7 @@
         "hide": 0,
         "includeAll": true,
         "label": "cmd",
-        "multi": false,
+        "multi": true,
         "name": "mycmd",
         "options": [],
         "query": "show tag values with key = cmd",
@@ -1972,7 +1976,7 @@
         "hide": 0,
         "includeAll": true,
         "label": "method",
-        "multi": false,
+        "multi": true,
         "name": "mymethod",
         "options": [],
         "query": "show tag values with key = method where cmd =~ /$mycmd/",
@@ -1996,7 +2000,7 @@
         "hide": 0,
         "includeAll": true,
         "label": "Resrc",
-        "multi": false,
+        "multi": true,
         "name": "mywait",
         "options": [],
         "query": "show tag values with key = cmd",
@@ -2020,7 +2024,7 @@
         "hide": 0,
         "includeAll": true,
         "label": "Bench",
-        "multi": false,
+        "multi": true,
         "name": "mybench",
         "options": [],
         "query": "show tag values with key = cmd",
@@ -2033,8 +2037,8 @@
       {
         "current": {
           "selected": true,
-          "text": "plus-prod4",
-          "value": "plus-prod4"
+          "text": "plus-pco",
+          "value": "plus-pco"
         },
         "hide": 0,
         "includeAll": false,
@@ -2043,7 +2047,7 @@
         "name": "mycloud",
         "options": [
           {
-            "selected": false,
+            "selected": true,
             "text": "plus-pco",
             "value": "plus-pco"
           },
@@ -2058,7 +2062,7 @@
             "value": "plus-prod3"
           },
           {
-            "selected": true,
+            "selected": false,
             "text": "plus-prod4",
             "value": "plus-prod4"
           },
@@ -2126,6 +2130,6 @@
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
   "uid": "9ltTEmlnl",
-  "version": 8,
+  "version": 9,
   "weekStart": "monday"
 }
