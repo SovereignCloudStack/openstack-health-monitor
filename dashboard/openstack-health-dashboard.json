@@ -1591,7 +1591,7 @@
             "lineWidth": 1,
             "pointSize": 5,
             "scaleDistribution": {
-              "log": 10,
+              "log": 2,
               "type": "log"
             },
             "showPoints": "never",
@@ -1605,8 +1605,8 @@
             }
           },
           "mappings": [],
-          "max": 384,
-          "min": 6,
+          "max": 256,
+          "min": 4,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1926,7 +1926,7 @@
             "lineWidth": 1,
             "pointSize": 5,
             "scaleDistribution": {
-              "log": 10,
+              "log": 2,
               "type": "log"
             },
             "showPoints": "never",
@@ -1940,8 +1940,8 @@
             }
           },
           "mappings": [],
-          "max": 100,
-          "min": 0.1,
+          "max": 128,
+          "min": 0.0625,
           "thresholds": {
             "mode": "absolute",
             "steps": [
