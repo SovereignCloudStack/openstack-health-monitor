@@ -2779,7 +2779,20 @@ waitJHVMs()
   #waitResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NA" "status" $NOVATIMEOUT nova show
   waitlistResources NOVASTATS JHVM VMCSTATS JVMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
   handleWaitErr "JH VMs" NOVASTATS $NOVATIMEOUT nova show
-  # TODO: Name Volumes created by Nova for JHs with diskless flavor
+}
+
+nameJHVols()
+{
+  # Name Volumes created by Nova for JHs with diskless flavor
+  if test -n "$NEED_JHVOL"; then
+    nameVols 1; tagged=$?
+    if test $tagged != $NONETS; then sleep 5; nameVols 2; tagged=$?; fi
+    if test $tagged != $NONETS; then sleep 10; nameVols 3; tagged=$?; fi
+    # Note: We don't handle the leak that can emerge by the volume not attaching
+    #  This is not a typical use case; we handle volumes explicitly for JHs,
+    #  unless -Z is specified -- normally to use a JH flavor with a local disk
+    #  where this naming is not relevant.
+  fi
 }
 
 deleteJHVMs()
@@ -2935,6 +2948,7 @@ nameVols()
   if test "$VOLNEEDSTAG" != "1"; then return $((NOVMS+NOAZS)); fi
   ostackcmd_tm_retry3 VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder list -c Attached || return 0
   OSTACKRESP=$(echo "$OSTACKRESP" | grep -v '^+' | grep -v '| ID' | sed -e 's/|$//' -e 's/ *| */,/g')
+  #echo "#DEBUG: nameVols $1 old: $OLDVOLS"
   local COLL=""
   local natt=0
   while read line; do
@@ -4516,6 +4530,7 @@ else # test "$1" = "DEPLOY"; then
             let ROUNDVMS=$NOAZS
             if createFIPs; then
              waitVols  # TODO: Error handling
+             nameJHVols
              if createVMs; then
               let ROUNDVMS+=$NOVMS
               waitJHVMs
