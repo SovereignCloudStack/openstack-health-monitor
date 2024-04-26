@@ -461,7 +461,7 @@ Install influxdb via apt: https://docs.influxdata.com/influxdb/v1/introduction/i
 Install telegraf (same apt repo as influxdb): `sudo apt update && sudo apt install telegraf`
 Install grafana: https://grafana.com/docs/grafana/latest/setup-grafana/installation/debian/#install-from-apt-repository
 
-Prepare configuration by using the config files from the repository as an alternatives to doing the changes manually (as described above):
+Prepare configuration by using the config files from the repository as an alternative to doing the changes manually (as described above):
 ```
 sudo cp dashboard/telegraf.conf /etc/telegraf && sudo chown root:root /etc/telegraf/telegraf.conf && sudo chmod 0644 /etc/telegraf/telegraf.conf
 sudo cp dashboard/config.toml /etc/influxdb && sudo chown root:influxdb /etc/influxdb/config.toml && sudo chmod 0640 /etc/influxdb/config.toml
