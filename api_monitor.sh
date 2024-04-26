@@ -2785,13 +2785,17 @@ nameJHVols()
 {
   # Name Volumes created by Nova for JHs with diskless flavor
   if test -n "$NEED_JHVOL"; then
-    nameVols 1; tagged=$?
-    if test $tagged != $NOAZS; then sleep  5; nameVols 2; tagged=$?; fi
-    if test $tagged != $NOAZS; then sleep 10; nameVols 3; tagged=$?; fi
-    # Note: We don't handle the leak that can emerge by the volume not attaching
-    #  This is not a typical use case; we handle volumes explicitly for JHs,
-    #  unless -Z is specified -- normally to use a JH flavor with a local disk
-    #  where this naming is not relevant.
+    VOLNEEDSTAG=1
+    declare -i attempt=1
+    while test $attempt -lt 10; do
+      nameVols $attempt
+      if test $? = $NOAZS; then return 0; fi
+      sleep 4
+      let attempt+=1
+    done
+    nameVols $attempt
+    if test $? = $NOAZS; then return 0; fi
+    return 1
   fi
 }
 
