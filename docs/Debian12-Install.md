@@ -69,9 +69,10 @@ Rather than creating a new key (and storing and protecting the private key), we 
 
 5. Look up Debian 12 image UUID.
 ```
-IMGUUID=$(openstack image list --name "Debian 12" -f value -c ID)
+IMGUUID=$(openstack image list --name "Debian 12" -f value -c ID | tr -d '\r')
 echo $IMGUUID
 ```
+Sidenote: The `tr` command is there to handle broken tooling that embeds a trailing `\r` in the output.
 
 6. Boot the driver VM
 ```
@@ -171,7 +172,7 @@ openstack catalog list
 openstack server list
 ```
 
-You can use the same project as you use for your driver VM (and possibly other workloads). The openstack-health-monitor is carefully designed to not clean up anything that it has not created. There is however some trickiness, as not all resources have names (floating IPs for example do not) and sometimes names need to be assigned after creation of a ressource (volumes of diskless flavors), so in case there are API errors, some heuristics is used to identify resources which may not be safe under all circumstances. So ideally, you have an extra project created just for the health-monitor and configure the credentials for it here, so you can not possibly hit any wrong ressource in the script's extensive efforts to clean up in error cases.
+You can use the same project as you use for your driver VM (and possibly other workloads). The openstack-health-monitor is carefully designed to not clean up anything that it has not created. There is however some trickiness, as not all resources have names (floating IPs for example do not) and sometimes names need to be assigned after creation of a resource (volumes of diskless flavors), so in case there are API errors, some heuristics is used to identify resources which may not be safe under all circumstances. So ideally, you have an extra project created just for the health-monitor and configure the credentials for it here, so you can not possibly hit any wrong resource in the script's extensive efforts to clean up in error cases.
 
 ### Custom CA
 
@@ -185,7 +186,7 @@ clouds:
     [...]
 ```
 
-If you want to allow `api_monitor.sh` to be able to talk to the service endpoints directly to avoid getting a fresh token from keystone for each call, you also need to export it to your encironment:
+If you want to allow `api_monitor.sh` to be able to talk to the service endpoints directly to avoid getting a fresh token from keystone for each call, you also need to export it to your environment:
 ```bash
 export OS_CACERT=/PATH/TO/CACERT.CRT
 ```
@@ -195,7 +196,7 @@ Consider adding this to your `~/.bashrc` as well.
 
 Checkout openstack-health-monitor:
 ```bash
-sudo apt-get install git bc jq netcat-traditional tmux xz-utils
+sudo apt-get install git bc jq netcat-traditional tmux zstd
 git clone https://github.com/SovereignCloudStack/openstack-health-monitor
 cd openstack-health-monitor
 ```
@@ -229,7 +230,7 @@ Note that `api_monitor.sh` uses small flavors (`SCS-1V-2` for the N jump hosts a
 
 If you have to pay for this, also consider that some clouds are not charging by the minute but may count by the started hour. So when you run `api_monitor.sh` in a loop (which you will) with say 10 VMs (e.g. `-N 2 -n 8`) in each iteration and run this for an hour with 8 iterations, you will never have more than 10 VMs in parallel and they only are alive a bit more than half of the time, but rather than being charged for ~6 VM hours, you end up being charged for ~80 VM hours. Similar for volumes, routers, floating IPs. This makes a huge difference.
 
-Sometimes the cloud under test has issues. That's why we do monitoring ... One thing that might happen is that loadbalancers and volumes (and other resources, but those two are the most prone to this) end up in a broken state that can not be cleaned up by the user any more. Bad providers may charge for these anyhow, although this will never stand a legal dispute. (IANAL, but charging for provding something that is not working is not typically supported by civil law in most jurisdictions and T&Cs that would say so would not normally be legally enforceable.) If this happens, I recommend to keep records of the broken state (store the output of `openstack volume list`, `openstack volume show BROKEN_VOLUME`, `openstack loadbalancer list`, `openstack loadbalancer show BROKEN_LB`.)
+Sometimes the cloud under test has issues. That's why we do monitoring ... One thing that might happen is that loadbalancers and volumes (and other resources, but those two are the most prone to this) end up in a broken state that can not be cleaned up by the user any more. Bad providers may charge for these anyhow, although this will never stand a legal dispute. (IANAL, but charging for providing something that is not working is not typically supported by civil law in most jurisdictions and T&Cs that would say so would not normally be legally enforceable.) If this happens, I recommend to keep records of the broken state (store the output of `openstack volume list`, `openstack volume show BROKEN_VOLUME`, `openstack loadbalancer list`, `openstack loadbalancer show BROKEN_LB`.)
 
 Using `-w -1` makes `api_monitor.sh` wait for interactive input whenever an error occurs; this can be convenient for debugging.
 
@@ -252,6 +253,7 @@ export JHIMG="Debian 12"
 openstack server list >/dev/null || exit 1
 
 # CLEANUP
+echo "Finding resources from previous runs to clean up ..."
 # Find Floating IPs
 FIPLIST=""
 FIPS=$(openstack floating ip list -f value -c ID)
@@ -295,7 +297,7 @@ done
 #exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -LO -b -B -a 2 -t -T -R -S ciab "$@"
 exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -LO -b -B -T "$@"
 ```
-Compared to the previous run, we have explicitly set two networks here `-N 2` and rely on the iterations being passed in as command line arguments. Add paramter `-t` if your cloud is slow to increase timeouts.
+Compared to the previous run, we have explicitly set two networks here `-N 2` and rely on the iterations being passed in as command line arguments. Add parameter `-t` if your cloud is slow to increase timeouts.
 
 You may use one of the existing `run_XXXX.sh` scripts as example. Beware: eMail alerting with `ALARM_EMAIL_ADDRESS` and `NOTE_EMAIL_ADDRESS` (and limiting with `-a` and `-R` ) and reporting data to telegraf (option `-S`) may be present in the samples. Make this script executable (`chmod +x run_CLOUDNAME.sh`).
 
@@ -342,11 +344,11 @@ After waiting for that to complete, you can start it again with `systemctl --use
 
 You can run multiple instances of `api_monitor.sh` on the same driver VM. In this case, you should rename `run_in_loop.sh` to e.g. `run_in_loop_CLOUDNAME1.sh` and call `run_CLOUDNAME1.sh` from there. Don't forget to adjust `startup/run-apimon-in-tmux.sh` and `startup/kill-apimon-in-tmux.sh` to start more windows. 
 
-It is not recommended to run multiple instances against the same OpenStack project however. While the `api_monitor.sh` script carefully keeps track of its own ressources and avoids to delete things it has not created, this is not the case for the `run_CLOUDNAME.sh` script, which is explicitly meant to identify anything in the target project that was created by a health monitor and clean it up. If it hits the resources that are currently in use by another health mon instance, this will create spurious errors. This will happen every ~200 iterations, so you could still have some short-term coexistence when you are performing debug operations.
+It is not recommended to run multiple instances against the same OpenStack project however. While the `api_monitor.sh` script carefully keeps track of its own resources and avoids to delete things it has not created, this is not the case for the `run_CLOUDNAME.sh` script, which is explicitly meant to identify anything in the target project that was created by a health monitor and clean it up. If it hits the resources that are currently in use by another health mon instance, this will create spurious errors. This will happen every ~200 iterations, so you could still have some short-term coexistence when you are performing debug operations.
 
 ## Alarming and Logs
 ### eMail
-If wanted, the `api_monitor.sh` can send statistics and error messages via email, so operator personell is informed about the state of the monitoring. This email notification service potentially results in many emails; one error may produce several mails. So in case of a systematic problem, expect to receive dozens of mails per hour. This can be reduced a bit using the `-a N` and `-R` options. In order to enable sending emails from the driver VM, it needs to have `postfix` (or another MTA) installed and configured and outgoing connections for eMail need to be allowed. Note that many operators prefer not to use the eMail notifications but rather rely on looking at the dashboards (see further down) regularly.
+If wanted, the `api_monitor.sh` can send statistics and error messages via email, so operator personnel is informed about the state of the monitoring. This email notification service potentially results in many emails; one error may produce several mails. So in case of a systematic problem, expect to receive dozens of mails per hour. This can be reduced a bit using the `-a N` and `-R` options. In order to enable sending emails from the driver VM, it needs to have `postfix` (or another MTA) installed and configured and outgoing connections for eMail need to be allowed. Note that many operators prefer not to use the eMail notifications but rather rely on looking at the dashboards (see further down) regularly.
 
 Once you have configured `postfix`, you can enable eMail notifications using the option `-e`. Using it twice allows you to differentiate between notes (statistical summaries) and errors. If you want to send mails to more than one recipient, you can do so by passing `ALARM_EMAIL_ADDRESSES` and `NOTE_EMAIL_ADDRESSES` environment variables to `api_monitor.sh`, e.g. by setting it in the `run_CLOUDNAME.sh`.
 
@@ -411,7 +413,7 @@ sudo apt -y install grafana
 The config file `/etc/grafana/grafana.ini` needs some adjustments:
 * Set the hostname in `[server]` section: `domain = health.YOURCLOUD.sovereignit.cloud`. Set the `protocol = https` if not enabled by default.
 You can use a hostname of your liking, but we will need to create TLS certificates for this host. So we should have control over DNS TXT records for this domain if we want to use Let's Encrypt with DNSAUTH. The `sovereignit.cloud` domain is controlled by the SCS project team and has been used for a number of health mon instances.
-In this same section, set `cert_file = /etc/grafana/health-fullchain.pem` and `cert_key = /etc/grafana/health-key.pem`. Ensure that both files are readable by `root:grafana` and that the keyfile is *not* world-readable.
+In this same section, set `cert_file = /etc/grafana/health-fullchain.pem` and `cert_key = /etc/grafana/health-key.pem`. Ensure that both files are readable by `root:grafana` and that the key file is *not* world-readable.
 * Configure the admin access. In section `[security]`, set the `admin_user = admin` and `admin_password = SOME_SECRET_PASS` which you keep private.
 * Allow local data sources (same section): `data_source_proxy_whitelist = localhost:8088 localhost:8086`
 * Let's disallow user signup (in section `[users]`): `allow_sign_up = false` and `allow_org_create = false`.
@@ -451,7 +453,7 @@ You can change the time interval and zoom in also by marking an interval with th
 
 #### github OIDC integration
 
-The SCS providers do allow all github users that belong to the SovereignCloudStack organziation to get Viewer access to the dashboards by adding a `client_id` and `client_secret` in the ``[github.auth]`` section that you request from the SCS github admins (github's oauth auth). This allows to exchange experience and to get a feeling for the achievable stability. (Hint: A single digit number of API call fails per week and no other failures is achievable on loaded clouds.)
+The SCS providers do allow all github users that belong to the SovereignCloudStack organization to get Viewer access to the dashboards by adding a `client_id` and `client_secret` in the ``[github.auth]`` section that you request from the SCS github admins (github's oauth auth). This allows to exchange experience and to get a feeling for the achievable stability. (Hint: A single digit number of API call fails per week and no other failures is achievable on loaded clouds.)
 
 ## Alternative approach to install and configure the dashboard behind a reverse proxy
 
@@ -459,7 +461,7 @@ Install influxdb via apt: https://docs.influxdata.com/influxdb/v1/introduction/i
 Install telegraf (same apt repo as influxdb): `sudo apt update && sudo apt install telegraf`
 Install grafana: https://grafana.com/docs/grafana/latest/setup-grafana/installation/debian/#install-from-apt-repository
 
-Prepare configuration by using the config files from the repository as an alternativ to doing the changes manually (as described above):
+Prepare configuration by using the config files from the repository as an alternative to doing the changes manually (as described above):
 ```
 sudo cp dashboard/telegraf.conf /etc/telegraf && sudo chown root:root /etc/telegraf/telegraf.conf && sudo chmod 0644 /etc/telegraf/telegraf.conf
 sudo cp dashboard/config.toml /etc/influxdb && sudo chown root:influxdb /etc/influxdb/config.toml && sudo chmod 0640 /etc/influxdb/config.toml
@@ -502,7 +504,7 @@ You can just do a `git update` in the `openstack-health-monitor` directory to ge
 
 ### Backup
 
-The system holds two things that you might consider valueable for long-term storage:
+The system holds two things that you might consider valuable for long-term storage:
 (1) The log files. These are compressed and uploaded to object storage if you enable the `SWIFTCONTAINER` setting, which probably means that these do not need any additional backing up then.
 (2) The influx time series data. Back up the data in `/var/lib/influxdb`.
 
