@@ -54,6 +54,7 @@ export ALARM_EMAIL_ADDRESSES NOTE_EMAIL_ADDRESSES
 # Terminate early on auth error
 openstack server list >/dev/null || exit 1
 
+echo "Finding resources from previous runs to clean up ..."
 # Find Floating IPs
 FIPLIST=""
 FIPS=$(openstack floating ip list -f value -c ID)
