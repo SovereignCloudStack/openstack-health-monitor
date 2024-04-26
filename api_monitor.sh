@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.108
+VERSION=1.109
 
 APIMON_ARGS="$@"
 # debugging
@@ -4140,7 +4140,7 @@ getFlvInfo()
 }
 
 
-Clean/Delete old OpenStack project
+#Clean/Delete old OpenStack project
 cleanprj()
 {
   if test ${#OS_PROJECT_NAME} -le 5; then echo -e "${YELLOW}ERROR: Won't delete $OS_PROJECT_NAME$NORM" 1>&2; return 1; fi
@@ -4493,7 +4493,7 @@ else # test "$1" = "DEPLOY"; then
  # Check VM flavor
  if test -n "$BOOTFROMIMAGE"; then RVSIZE=$VOLSIZE; else RVSIZE=0; fi
  getFlvInfo $FLAVOR $RVSIZE || exit 1
- VM_VOLSIZE=$NEED_VSIZE
+ VMVOLSIZE=$NEED_VSIZE
  if test "$VOLUMETYPE" == "LUKS" -a -n "$VM_VOLSIZE"; then
   echo "Warning: volume-type LUKS may be slow and nova may time out waiting for cinder vols for VM boot"
  fi
