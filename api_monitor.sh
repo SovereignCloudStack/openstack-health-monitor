@@ -3410,20 +3410,28 @@ EOT
       BENCH=$(ssh -i $DATADIR/${KEYPAIRS[0]} -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=~/.ssh/known_hosts.$RPRE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait fio; cd /tmp; fio --rw=randrw --name=test --size=500M --direct=1 --bs=16k --numjobs=4 --group_reporting --runtime=12; rm test.?.? 2>/dev/null")
       if test -n "$LOGFILE"; then echo "$BENCH" >> $LOGFILE; fi
       if echo "$BENCH" | grep 'test:' >/dev/null 2>&1; then
-        READ=$(echo "$BENCH" | grep '  read:')
-        WRITE=$(echo "$BENCH" | grep '  write:')
-        LAT=$(echo "$BENCH" | grep '  lat (msec)' | grep ', 10=' | sed 's/^.*, 10=\([0-9\.]*\)%.*$/\1/')
-        RIOPS=$(echo "$READ" | sed 's/^.*IOPS=\([0-9]*\),.*$/\1/')
-        WIOPS=$(echo "$WRITE" | sed 's/^.*IOPS=\([0-9]*\),.*$/\1/')
-        RBW=$(echo "$READ" | sed 's/^.*BW=\([0-9\.]*\)MiB.*$/\1/')
-        WBW=$(echo "$WRITE" | sed 's/^.*BW=\([0-9\.]*\)MiB.*$/\1/')
-        BW=$(echo "scale=1; ($RBW+$WBW)/2" | bc -l)
-        IOPS=$(echo "($RIOPS+$WIOPS)/2" | bc)
-        echo -en "${BOLD} $BW $IOPS ${LAT}%${NORM}"
-        if test -n "$LOGFILE"; then echo -n " $BW $IOPS ${LAT}%" >> $LOGFILE; fi
-        log_grafana "fioBW" "JHVM$JHNO" "$BW" 0
-        log_grafana "fiokIOPS" "JHVM$JHNO" $(echo "scale=3; $IOPS/1000" | bc -l) 0
-        log_grafana "fioLat10ms" "JHVM$JHNO" "$LAT" 0
+	READ=$(echo "$BENCH" | grep '  read:')
+	WRITE=$(echo "$BENCH" | grep '  write:')
+	LAT=$(echo "$BENCH" | grep '  lat (msec)' | grep ', 10=' | sed 's/^.*, 10=\([0-9\.]*\)%.*$/\1/')
+	RIOPS=$(echo "$READ" | sed 's/^.*IOPS=\([0-9]*\),.*$/\1/')
+	WIOPS=$(echo "$WRITE" | sed 's/^.*IOPS=\([0-9]*\),.*$/\1/')
+	RBW=$(echo "$READ" | sed 's/^.*BW=\([0-9\.]*\)MiB.*$/\1/')
+	if test "$READ" = "$RBW"; then
+		RBW=$(echo "$READ" | sed 's/^.*BW=\([0-9\.]*\)KiB.*$/\1/')
+		RBW=$(echo "scale=2; $RBW/1024" | bc -l)
+	fi
+	WBW=$(echo "$WRITE" | sed 's/^.*BW=\([0-9\.]*\)MiB.*$/\1/')
+	if test "$WRITE" = "$WBW"; then
+		WBW=$(echo "$WRITE" | sed 's/^.*BW=\([0-9\.]*\)KiB.*$/\1/')
+		WBW=$(echo "scale=2; $WBW/1024" | bc -l)
+	fi
+	BW=$(echo "scale=1; ($RBW+$WBW)/2" | bc -l)
+	IOPS=$(echo "($RIOPS+$WIOPS)/2" | bc)
+	echo -en "${BOLD} $BW $IOPS ${LAT}%${NORM}"
+	if test -n "$LOGFILE"; then echo -n " $BW $IOPS ${LAT}%" >> $LOGFILE; fi
+	log_grafana "fioBW" "JHVM$JHNO" "$BW" 0
+	log_grafana "fiokIOPS" "JHVM$JHNO" $(echo "scale=3; $IOPS/1000" | bc -l) 0
+	log_grafana "fioLat10ms" "JHVM$JHNO" "$LAT" 0
 	FIOBW+=($BW)
 	FIOIOPS+=($IOPS)
 	FIOLAT+=($LAT)
