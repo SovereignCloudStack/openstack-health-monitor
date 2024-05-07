@@ -2288,8 +2288,8 @@
       {
         "current": {
           "selected": false,
-          "text": "l1.cloudandheat.com",
-          "value": "l1.cloudandheat.com"
+          "text": "plus-pco",
+          "value": "plus-pco"
         },
         "hide": 0,
         "includeAll": false,
@@ -2299,11 +2299,6 @@
         "options": [
           {
             "selected": true,
-            "text": "l1.cloudandheat.com",
-            "value": "l1.cloudandheat.com"
-          },
-          {
-            "selected": false,
             "text": "plus-pco",
             "value": "plus-pco"
           },
@@ -2356,9 +2351,14 @@
             "selected": false,
             "text": "ciab",
             "value": "ciab"
+          },
+          {
+            "selected": false,
+            "text": "l1.cloudandheat.com",
+            "value": "l1.cloudandheat.com"
           }
         ],
-        "query": "l1.cloudandheat.com, plus-pco, plus-prod2, plus-prod3, plus-prod4, gx-scs, stackit, wavestack1, cnds, aov, datapoc, ciab",
+        "query": "plus-pco, plus-prod2, plus-prod3, plus-prod4, gx-scs, stackit, wavestack1, cnds, aov, datapoc, ciab, l1.cloudandheat.com",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"
