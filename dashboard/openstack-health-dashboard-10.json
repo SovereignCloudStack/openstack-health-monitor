@@ -1,4 +1,47 @@
 {
+  "__inputs": [
+    {
+      "name": "DS_INFLUXDB",
+      "label": "influxdb",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "influxdb",
+      "pluginName": "InfluxDB"
+    }
+  ],
+  "__elements": {},
+  "__requires": [
+    {
+      "type": "panel",
+      "id": "gauge",
+      "name": "Gauge",
+      "version": ""
+    },
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.4.2"
+    },
+    {
+      "type": "datasource",
+      "id": "influxdb",
+      "name": "InfluxDB",
+      "version": "1.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "timeseries",
+      "name": "Time series",
+      "version": ""
+    }
+  ],
   "annotations": {
     "list": [
       {
@@ -25,7 +68,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 1,
+  "id": null,
   "links": [
     {
       "asDropdown": false,
@@ -43,7 +86,10 @@
   "liveNow": true,
   "panels": [
     {
-      "datasource": {},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_INFLUXDB}"
+      },
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -87,12 +133,9 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "10.4.1",
+      "pluginVersion": "10.4.2",
       "targets": [
         {
-          "datasource": {
-            "type": "influxdb"
-          },
           "groupBy": [
             {
               "params": [
@@ -138,7 +181,11 @@
               "operator": "=~",
               "value": "/^$mymethod$/"
             }
-          ]
+          ],
+          "datasource": {
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
+          }
         }
       ],
       "title": "API calls",
@@ -146,7 +193,8 @@
     },
     {
       "datasource": {
-        "type": "influxdb"
+        "type": "influxdb",
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "",
       "fieldConfig": {
@@ -199,12 +247,9 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "10.4.1",
+      "pluginVersion": "10.4.2",
       "targets": [
         {
-          "datasource": {
-            "type": "influxdb"
-          },
           "groupBy": [
             {
               "params": [
@@ -244,14 +289,21 @@
               "operator": "=~",
               "value": "/^$mymethod$/"
             }
-          ]
+          ],
+          "datasource": {
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
+          }
         }
       ],
       "title": "API errors",
       "type": "stat"
     },
     {
-      "datasource": {},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_INFLUXDB}"
+      },
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -305,12 +357,13 @@
         "sizing": "auto",
         "text": {}
       },
-      "pluginVersion": "10.4.1",
+      "pluginVersion": "10.4.2",
       "targets": [
         {
           "alias": "API falis",
           "datasource": {
-            "type": "influxdb"
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -323,7 +376,7 @@
           "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"$mycloud\" WHERE (\"cmd\" =~ /^$mycmd$/ AND \"method\" =~ /^$mymethod$/) AND $timeFilter",
+          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"${mycloud}\" WHERE (\"cmd\" =~ /^$mycmd$/ AND \"method\" =~ /^$mymethod$/) AND $timeFilter",
           "rawQuery": true,
           "refId": "A",
           "resultFormat": "time_series",
@@ -361,7 +414,8 @@
     },
     {
       "datasource": {
-        "type": "influxdb"
+        "type": "influxdb",
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "",
       "fieldConfig": {
@@ -406,11 +460,12 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "10.4.1",
+      "pluginVersion": "10.4.2",
       "targets": [
         {
           "datasource": {
-            "type": "influxdb"
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -461,7 +516,8 @@
     },
     {
       "datasource": {
-        "type": "influxdb"
+        "type": "influxdb",
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "",
       "fieldConfig": {
@@ -514,11 +570,12 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "10.4.1",
+      "pluginVersion": "10.4.2",
       "targets": [
         {
           "datasource": {
-            "type": "influxdb"
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -562,7 +619,10 @@
       "type": "stat"
     },
     {
-      "datasource": {},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_INFLUXDB}"
+      },
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -616,12 +676,13 @@
         "sizing": "auto",
         "text": {}
       },
-      "pluginVersion": "10.4.1",
+      "pluginVersion": "10.4.2",
       "targets": [
         {
           "alias": "API falis",
           "datasource": {
-            "type": "influxdb"
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -634,7 +695,7 @@
           "measurement": "$mycloud",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"$mycloud\" WHERE (\"cmd\" = 'ssh') AND $timeFilter",
+          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"${mycloud}\" WHERE (\"cmd\" = 'ssh') AND $timeFilter",
           "rawQuery": true,
           "refId": "A",
           "resultFormat": "time_series",
@@ -671,7 +732,10 @@
       "type": "gauge"
     },
     {
-      "datasource": {},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_INFLUXDB}"
+      },
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -715,12 +779,9 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "10.4.1",
+      "pluginVersion": "10.4.2",
       "targets": [
         {
-          "datasource": {
-            "type": "influxdb"
-          },
           "groupBy": [
             {
               "params": [
@@ -762,7 +823,11 @@
               "operator": "=~",
               "value": "/^$mywait$/"
             }
-          ]
+          ],
+          "datasource": {
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
+          }
         }
       ],
       "title": "Resrcs",
@@ -770,7 +835,8 @@
     },
     {
       "datasource": {
-        "type": "influxdb"
+        "type": "influxdb",
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "",
       "fieldConfig": {
@@ -823,12 +889,9 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "10.4.1",
+      "pluginVersion": "10.4.2",
       "targets": [
         {
-          "datasource": {
-            "type": "influxdb"
-          },
           "groupBy": [
             {
               "params": [
@@ -864,14 +927,21 @@
               "operator": "=~",
               "value": "/^$mywait$/"
             }
-          ]
+          ],
+          "datasource": {
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
+          }
         }
       ],
       "title": "Resrc errors",
       "type": "stat"
     },
     {
-      "datasource": {},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_INFLUXDB}"
+      },
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -925,12 +995,13 @@
         "sizing": "auto",
         "text": {}
       },
-      "pluginVersion": "10.4.1",
+      "pluginVersion": "10.4.2",
       "targets": [
         {
-          "alias": "API falis",
+          "alias": "API fails",
           "datasource": {
-            "type": "influxdb"
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -943,7 +1014,7 @@
           "measurement": "$mycloud",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"$mycloud\" WHERE (\"cmd\" = 'iperf3') AND $timeFilter",
+          "query": "SELECT ((count(\"return_code\")-sum(\"return_code\"))/count(\"return_code\")) FROM \"${mycloud}\" WHERE (\"cmd\" = 'iperf3') AND $timeFilter",
           "rawQuery": true,
           "refId": "A",
           "resultFormat": "time_series",
@@ -997,7 +1068,8 @@
     },
     {
       "datasource": {
-        "type": "influxdb"
+        "type": "influxdb",
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "",
       "fieldConfig": {
@@ -1076,7 +1148,7 @@
           "showLegend": true,
           "sortBy": "Total",
           "sortDesc": true,
-          "width": 420
+          "width": 370
         },
         "tooltip": {
           "mode": "single",
@@ -1088,7 +1160,8 @@
         {
           "alias": "$tag_cmd $tag_method",
           "datasource": {
-            "type": "influxdb"
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -1148,7 +1221,10 @@
       "type": "timeseries"
     },
     {
-      "datasource": {},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_INFLUXDB}"
+      },
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -1226,7 +1302,7 @@
           "showLegend": true,
           "sortBy": "Total",
           "sortDesc": true,
-          "width": 420
+          "width": 370
         },
         "tooltip": {
           "mode": "single",
@@ -1237,7 +1313,8 @@
         {
           "alias": "$tag_cmd",
           "datasource": {
-            "type": "influxdb"
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -1254,7 +1331,7 @@
             },
             {
               "params": [
-                "null"
+                "none"
               ],
               "type": "fill"
             }
@@ -1291,7 +1368,10 @@
       "type": "timeseries"
     },
     {
-      "datasource": {},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_INFLUXDB}"
+      },
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -1330,7 +1410,6 @@
               "mode": "off"
             }
           },
-          "decimals": 0,
           "mappings": [],
           "max": 2,
           "min": 0,
@@ -1361,17 +1440,17 @@
       "options": {
         "legend": {
           "calcs": [
-            "max",
             "mean",
             "count",
-            "sum"
+            "sum",
+            "max"
           ],
           "displayMode": "table",
           "placement": "right",
           "showLegend": true,
           "sortBy": "Total",
           "sortDesc": true,
-          "width": 420
+          "width": 370
         },
         "tooltip": {
           "mode": "single",
@@ -1383,7 +1462,8 @@
         {
           "alias": "ERR($tag_cmd)",
           "datasource": {
-            "type": "influxdb"
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -1454,7 +1534,8 @@
     },
     {
       "datasource": {
-        "type": "influxdb"
+        "type": "influxdb",
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "",
       "fieldConfig": {
@@ -1532,7 +1613,7 @@
           "showLegend": true,
           "sortBy": "Mean",
           "sortDesc": true,
-          "width": 420
+          "width": 370
         },
         "tooltip": {
           "mode": "multi",
@@ -1543,9 +1624,6 @@
       "targets": [
         {
           "alias": "$tag_cmd $tag_method",
-          "datasource": {
-            "type": "influxdb"
-          },
           "groupBy": [
             {
               "params": [
@@ -1567,7 +1645,7 @@
             },
             {
               "params": [
-                "null"
+                "none"
               ],
               "type": "fill"
             }
@@ -1606,7 +1684,11 @@
               "operator": "=~",
               "value": "/^$mymethod$/"
             }
-          ]
+          ],
+          "datasource": {
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
+          }
         }
       ],
       "title": "API response times",
@@ -1614,7 +1696,8 @@
     },
     {
       "datasource": {
-        "type": "influxdb"
+        "type": "influxdb",
+        "uid": "${DS_INFLUXDB}"
       },
       "description": "",
       "fieldConfig": {
@@ -1695,7 +1778,7 @@
           "showLegend": true,
           "sortBy": "Mean",
           "sortDesc": true,
-          "width": 420
+          "width": 370
         },
         "tooltip": {
           "mode": "multi",
@@ -1707,7 +1790,8 @@
         {
           "alias": "$tag_cmd.A",
           "datasource": {
-            "type": "influxdb"
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -1718,13 +1802,7 @@
             },
             {
               "params": [
-                "cmd::tag"
-              ],
-              "type": "tag"
-            },
-            {
-              "params": [
-                "method::tag"
+                "cmd"
               ],
               "type": "tag"
             },
@@ -1738,8 +1816,6 @@
           "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT mean(\"duration\") FROM /^$mycloud$/ WHERE (\"cmd\"::tag =~ /^$mywait$/ AND (\"method\"::tag = 'act' OR \"method\"::tag = 'ACTIVE')) AND $timeFilter GROUP BY time($__interval), \"cmd\"::tag, \"method\"::tag fill(none)",
-          "rawQuery": false,
           "refId": "A",
           "resultFormat": "time_series",
           "select": [
@@ -1771,76 +1847,10 @@
           ]
         },
         {
-          "alias": "$tag_cmd.X",
-          "datasource": {
-            "type": "influxdb"
-          },
-          "groupBy": [
-            {
-              "params": [
-                "$__interval"
-              ],
-              "type": "time"
-            },
-            {
-              "params": [
-                "cmd::tag"
-              ],
-              "type": "tag"
-            },
-            {
-              "params": [
-                "method::tag"
-              ],
-              "type": "tag"
-            },
-            {
-              "params": [
-                "none"
-              ],
-              "type": "fill"
-            }
-          ],
-          "hide": false,
-          "measurement": "/^$mycloud$/",
-          "orderByTime": "ASC",
-          "policy": "default",
-          "query": "SELECT mean(\"duration\") FROM /^$mycloud$/ WHERE (\"cmd\"::tag =~ /^$mywait$/ AND (\"method\"::tag = 'act' OR \"method\"::tag = 'ACTIVE')) AND $timeFilter GROUP BY time($__interval), \"cmd\"::tag, \"method\"::tag fill(none)",
-          "rawQuery": false,
-          "refId": "B",
-          "resultFormat": "time_series",
-          "select": [
-            [
-              {
-                "params": [
-                  "duration"
-                ],
-                "type": "field"
-              },
-              {
-                "params": [],
-                "type": "mean"
-              }
-            ]
-          ],
-          "tags": [
-            {
-              "key": "cmd::tag",
-              "operator": "=~",
-              "value": "/^$mywait$/"
-            },
-            {
-              "condition": "AND",
-              "key": "method::tag",
-              "operator": "=",
-              "value": "XDELX"
-            }
-          ]
-        },
-        {
           "alias": "$tag_cmd.a",
           "datasource": {
-            "type": "influxdb"
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -1851,13 +1861,7 @@
             },
             {
               "params": [
-                "cmd::tag"
-              ],
-              "type": "tag"
-            },
-            {
-              "params": [
-                "method::tag"
+                "cmd"
               ],
               "type": "tag"
             },
@@ -1872,9 +1876,7 @@
           "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT mean(\"duration\") FROM /^$mycloud$/ WHERE (\"cmd\"::tag =~ /^$mywait$/ AND (\"method\"::tag = 'act' OR \"method\"::tag = 'ACTIVE')) AND $timeFilter GROUP BY time($__interval), \"cmd\"::tag, \"method\"::tag fill(none)",
-          "rawQuery": false,
-          "refId": "C",
+          "refId": "B",
           "resultFormat": "time_series",
           "select": [
             [
@@ -1905,9 +1907,70 @@
           ]
         },
         {
+          "alias": "$tag_cmd.X",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
+          },
+          "groupBy": [
+            {
+              "params": [
+                "$__interval"
+              ],
+              "type": "time"
+            },
+            {
+              "params": [
+                "cmd"
+              ],
+              "type": "tag"
+            },
+            {
+              "params": [
+                "none"
+              ],
+              "type": "fill"
+            }
+          ],
+          "hide": false,
+          "measurement": "/^$mycloud$/",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "refId": "C",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "duration"
+                ],
+                "type": "field"
+              },
+              {
+                "params": [],
+                "type": "mean"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "cmd::tag",
+              "operator": "=~",
+              "value": "/^$mywait$/"
+            },
+            {
+              "condition": "AND",
+              "key": "method::tag",
+              "operator": "=",
+              "value": "XDELX"
+            }
+          ]
+        },
+        {
           "alias": "$tag_cmd.$tag_method",
           "datasource": {
-            "type": "influxdb"
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
           },
           "groupBy": [
             {
@@ -1939,8 +2002,6 @@
           "measurement": "/^$mycloud$/",
           "orderByTime": "ASC",
           "policy": "default",
-          "query": "SELECT mean(\"duration\") FROM /^$mycloud$/ WHERE (\"cmd\"::tag =~ /^$mywait$/ AND \"method\"::tag !~ /^\\(ACTIVE\\|XDELX\\|available\\)^/) AND $timeFilter GROUP BY time($__interval), \"cmd\"::tag, \"method\"::tag fill(none)",
-          "rawQuery": false,
           "refId": "D",
           "resultFormat": "time_series",
           "select": [
@@ -1967,78 +2028,19 @@
               "condition": "AND",
               "key": "method::tag",
               "operator": "!~",
-              "value": "/^(available|ACTIVE|XDELX)$/"
+              "value": "/^(ACTIVE|available|XDELX)$/"
             }
           ]
         }
       ],
       "title": "Resource wait",
-      "transformations": [
-        {
-          "disabled": true,
-          "id": "renameByRegex",
-          "options": {
-            "regex": "ACTIVE",
-            "renamePattern": "act"
-          }
-        },
-        {
-          "disabled": true,
-          "id": "renameByRegex",
-          "options": {
-            "regex": "([^.]*)\\.XDELX",
-            "renamePattern": "$1.del"
-          }
-        },
-        {
-          "disabled": true,
-          "id": "renameByRegex",
-          "options": {
-            "regex": "(available)",
-            "renamePattern": "avl"
-          }
-        },
-        {
-          "disabled": true,
-          "id": "renameByRegex",
-          "options": {
-            "regex": "ava",
-            "renamePattern": "avl"
-          }
-        },
-        {
-          "disabled": true,
-          "id": "groupBy",
-          "options": {
-            "fields": {
-              "waitDELLBAAS.$tag_method": {
-                "aggregations": [],
-                "operation": "groupby"
-              },
-              "waitJHVM.$tag_method": {
-                "aggregations": [],
-                "operation": "groupby"
-              },
-              "waitJHVOLUME.$tag_method": {
-                "aggregations": [],
-                "operation": "groupby"
-              },
-              "waitLBAAS.$tag_method": {
-                "aggregations": [],
-                "operation": "groupby"
-              },
-              "waitVM.$tag_method": {
-                "aggregations": [],
-                "operation": "groupby"
-              }
-            }
-          }
-        }
-      ],
       "type": "timeseries"
     },
     {
-      "datasource": {},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_INFLUXDB}"
+      },
       "description": "",
       "fieldConfig": {
         "defaults": {
@@ -2051,8 +2053,6 @@
             "axisColorMode": "text",
             "axisLabel": "s, Gb/s, s, %maxt*10, s*10, MB/s, IO/s, %",
             "axisPlacement": "auto",
-            "axisSoftMax": 512,
-            "axisSoftMin": 0.05,
             "barAlignment": 0,
             "drawStyle": "line",
             "fillOpacity": 10,
@@ -2113,14 +2113,15 @@
             "mean",
             "max",
             "min",
-            "count"
+            "count",
+            "lastNotNull"
           ],
           "displayMode": "table",
           "placement": "right",
           "showLegend": true,
           "sortBy": "Mean",
           "sortDesc": true,
-          "width": 420
+          "width": 370
         },
         "tooltip": {
           "mode": "multi",
@@ -2131,9 +2132,6 @@
       "targets": [
         {
           "alias": "$tag_cmd",
-          "datasource": {
-            "type": "influxdb"
-          },
           "groupBy": [
             {
               "params": [
@@ -2179,7 +2177,11 @@
               "operator": "=~",
               "value": "/^$mybench$/"
             }
-          ]
+          ],
+          "datasource": {
+            "type": "influxdb",
+            "uid": "${DS_INFLUXDB}"
+          }
         }
       ],
       "title": "Bench",
@@ -2192,17 +2194,10 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        },
+        "current": {},
         "datasource": {
-          "type": "influxdb"
+          "type": "influxdb",
+          "uid": "${DS_INFLUXDB}"
         },
         "definition": "show tag values with key = cmd",
         "hide": 0,
@@ -2212,20 +2207,20 @@
         "name": "mycmd",
         "options": [],
         "query": "show tag values with key = cmd",
-        "refresh": 1,
+        "refresh": 2,
         "regex": "/^(nova|neutron|glance|cinder|token|catalog|swift|octavia)$/",
         "skipUrlSync": false,
-        "sort": 0,
-        "type": "query"
+        "sort": 1,
+        "tagValuesQuery": "",
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
       },
       {
-        "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
-        },
+        "current": {},
         "datasource": {
-          "type": "influxdb"
+          "type": "influxdb",
+          "uid": "${DS_INFLUXDB}"
         },
         "definition": "show tag values with key = method where cmd =~ /$mycmd/",
         "hide": 0,
@@ -2239,17 +2234,16 @@
         "regex": "",
         "skipUrlSync": false,
         "sort": 0,
-        "type": "query"
+        "tagValuesQuery": "",
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
       },
       {
-        "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
-        },
+        "current": {},
         "datasource": {
-          "type": "influxdb"
-
+          "type": "influxdb",
+          "uid": "${DS_INFLUXDB}"
         },
         "definition": "show tag values with key = cmd",
         "hide": 0,
@@ -2263,16 +2257,16 @@
         "regex": "/^wait/",
         "skipUrlSync": false,
         "sort": 0,
-        "type": "query"
+        "tagValuesQuery": "",
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
       },
       {
-        "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
-        },
+        "current": {},
         "datasource": {
-          "type": "influxdb"
+          "type": "influxdb",
+          "uid": "${DS_INFLUXDB}"
         },
         "definition": "show tag values with key = cmd",
         "hide": 0,
@@ -2286,7 +2280,10 @@
         "regex": "/^(4000pi|iperf3|ssh|totDur|LBconn|ping|fioBW|fiokIOPS|fioLat10ms)$/",
         "skipUrlSync": false,
         "sort": 0,
-        "type": "query"
+        "tagValuesQuery": "",
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
       },
       {
         "current": {
@@ -2354,9 +2351,14 @@
             "selected": false,
             "text": "ciab",
             "value": "ciab"
+          },
+          {
+            "selected": false,
+            "text": "poc-wgcloud",
+            "value": "poc-wgcloud"
           }
         ],
-        "query": "plus-pco, plus-prod2, plus-prod3, plus-prod4, gx-scs, stackit, wavestack1, cnds, aov, datapoc, ciab",
+        "query": "plus-pco, plus-prod2, plus-prod3, plus-prod4, gx-scs, stackit, wavestack1, cnds, aov, datapoc, ciab, poc-wgcloud",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"
@@ -2383,7 +2385,7 @@
   },
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
-  "uid": "9ltTEmlnl",
-  "version": 14,
+  "uid": "9ltTEmlnk",
+  "version": 7,
   "weekStart": "monday"
 }
