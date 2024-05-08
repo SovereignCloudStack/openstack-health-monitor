@@ -208,10 +208,10 @@ The script `api_monitor.sh` is the main worker of openstack-health-monitor and r
 It is good practice to use `tmux`. This allows you to return (reattach) to console sessions and to open new windows to investigate things. Traditional people may prefer to `screen` over `tmux`.
 
 You should be ready to run one iteration of the openstack-health-monitor now. Run it like this:
-```bash\
+```bash
 export IMG="Debian 12"
 export JHIMG="Debian 12"
-./api_monitor.sh -O -C -D -n 6 -s -b -B -T -LL -i 1
+./api_monitor.sh -O -C -D -n 6 -s -b -B -M -T -LL -i 1
 ```
 Leave out the `-LL` if you don't have a working loadbalancer service or replace `-LL` with `-LO` if you want to test the ovn loadbalancer instead of amphorae (saving quite some resources).
 
@@ -251,6 +251,8 @@ export JHIMG="Debian 12"
 
 # Does openstack CLI work?
 openstack server list >/dev/null || exit 1
+# Upload log files to this swift container (which you need to create)
+#export SWIFTCONTAINER=OS-HM-Logfiles
 
 # CLEANUP
 echo "Finding resources from previous runs to clean up ..."
@@ -294,10 +296,10 @@ for ENV in $TOCLEAN; do
 done
 
 # Now run the monitor
-#exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -LO -b -B -a 2 -t -T -R -S ciab "$@"
-exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -LO -b -B -T "$@"
+#exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -M -LO -b -B -a 2 -t -T -R -S ciab "$@"
+exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -M -LO -b -B -T "$@"
 ```
-Compared to the previous run, we have explicitly set two networks here `-N 2` and rely on the iterations being passed in as command line arguments. Add parameter `-t` if your cloud is slow to increase timeouts.
+Compared to the previous run, we have explicitly set two networks here `-N 2` and rely on the iterations being passed in as command line arguments. Add parameter `-t` if your cloud is slow to increase timeouts. We have enabled the ovtavia loadbalancer (`-LO`) in this example rather than the amphora based one (`-LL`).
 
 You may use one of the existing `run_XXXX.sh` scripts as example. Beware: eMail alerting with `ALARM_EMAIL_ADDRESS` and `NOTE_EMAIL_ADDRESS` (and limiting with `-a` and `-R` ) and reporting data to telegraf (option `-S`) may be present in the samples. Make this script executable (`chmod +x run_CLOUDNAME.sh`).
 
@@ -385,6 +387,7 @@ In the config file `/etc/telegraf/telegraf.conf`, we enable
   urls = ["http://127.0.0.1:8086"]
 ```
 and restart the service (`sudo systemctl restart telegraf`).
+Enable it on system startup: `sudo systemctl enable telegraf`.
 
 ### influxdb
 
@@ -392,7 +395,14 @@ We proceed to influxdb:
 ```
 sudo apt-get install influxdb
 ```
-No configuration beyond the defaults is necessary.
+In the configuration file `/etc/influxdb/influxdb.conf`, ensure that the http interface on port 8086 is enabled.
+```
+[http]
+  enabled = true
+  bind-address = ":8086"
+```
+Restart influxdb as needed with `sudo systemctl restart influxdb`.
+Also enable it on system startup: `sudo systemctl enable influxdb`.
 
 ### Add `-S CLOUDNAME` to your `run_CLOUDNAME.sh` script
 
@@ -419,7 +429,8 @@ In this same section, set `cert_file = /etc/grafana/health-fullchain.pem` and `c
 * Let's disallow user signup (in section `[users]`): `allow_sign_up = false` and `allow_org_create = false`.
 * We do the OIDC connection with `[auth.github]` later.
 
-We can now restart the service: `systemctl restart grafana-server`.
+We can now restart the service: `sudo systemctl restart grafana-server`.
+Being at it, also enable it on system startup: `sudo systemctl enable grafana-server`.
 
 You should now be able to access your dashboard on `https://health.YOURCLOUD.sovereignit.de:3000` and log in via the configured username `admin` and your `SOME_SECRET_PASS` password.
 
