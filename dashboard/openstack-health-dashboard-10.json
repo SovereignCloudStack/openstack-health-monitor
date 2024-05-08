@@ -2354,11 +2354,11 @@
           },
           {
             "selected": false,
-            "text": "fitko1",
-            "value": "fitko1"
+            "text": "poc-wgcloud",
+            "value": "poc-wgcloud"
           }
         ],
-        "query": "plus-pco, plus-prod2, plus-prod3, plus-prod4, gx-scs, stackit, wavestack1, cnds, aov, datapoc, ciab, fitko1",
+        "query": "plus-pco, plus-prod2, plus-prod3, plus-prod4, gx-scs, stackit, wavestack1, cnds, aov, datapoc, ciab, poc-wgcloud",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"
@@ -2386,6 +2386,6 @@
   "timezone": "",
   "title": "OpenStack-Health-Monitor2",
   "uid": "9ltTEmlnk",
-  "version": 6,
+  "version": 7,
   "weekStart": "monday"
 }
