@@ -109,11 +109,11 @@ I would recommend a larger flavor (4GiB RAM, 20GB disk).
 
 ## Usage
 
-Use `api_monitor.sh -h` to get a list of the command line options. For reference find the output (from v1.105) here:
+Use `api_monitor.sh -h` to get a list of the command line options. For reference find the output (from v1.109) here:
 
 ```
-Running api_monitor.sh v1.106 on host kg-gxscs-hm.app-int.gx-scs.sovereignit.tech
-Using APIMonitor_1711354916_ prefix for resrcs on gxscs-hm (nova)
+Running api_monitor.sh v1.109 on host oshm-driver5 with arguments -h
+Using APIMonitor_1714160976_ prefix for resrcs on ciab (nova)
 Usage: api_monitor.sh [options]
  --debug Use set -x to print every line executed
  -n N   number of VMs to create (beyond #AZ JumpHosts, def: 12)
@@ -132,6 +132,7 @@ Usage: api_monitor.sh [options]
  -d     boot Directly from image (not via volume)
  -vt TP use volumetype TP (overrides env VOLUMETYPE)
  -z SZ  boots VMs from volume of size SZ
+ -Z     do not create volume for JHs separately
  -P     do not create Port before VM creation
  -D     create all VMs with one API call (implies -d -P)
  -i N   sets max number of iterations (def = -1 = inf)

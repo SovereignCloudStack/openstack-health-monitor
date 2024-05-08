@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.108
+VERSION=1.109
 
 APIMON_ARGS="$@"
 # debugging
@@ -355,6 +355,7 @@ usage()
   echo " -d     boot Directly from image (not via volume)"
   echo " -vt TP use volumetype TP (overrides env VOLUMETYPE)"
   echo " -z SZ  boots VMs from volume of size SZ"
+  echo " -Z     do not create volume for JHs separately"
   echo " -P     do not create Port before VM creation"
   echo " -D     create all VMs with one API call (implies -d -P)"
   echo " -i N   sets max number of iterations (def = -1 = inf)"
@@ -412,6 +413,7 @@ while test -n "$1"; do
     "-d") BOOTFROMIMAGE=1;;
     "-vt") VOLUMETYPE=$2; shift;;
     "-z") VMVOLSIZE=$2; shift;;
+    "-Z") NOJHVOL=1;;
     "-D") BOOTALLATONCE=1; BOOTFROMIMAGE=1; unset MANUALPORTSETUP;;
     "-e") if test -z "$EMAIL"; then EMAIL="$2"; else EMAIL2="$2"; fi; shift;;
     "-m") if test -z "$SMNID"; then SMNID="$2"; else SMNID2="$2"; fi; shift;;
@@ -2053,6 +2055,7 @@ delete2ndPorts()
 
 createJHVols()
 {
+  if test -n "$NOJHVOL"; then return 0; fi
   JVOLSTIME=()
   if test -n "$VOLUMETYPE"; then VOLTP="--volume-type $VOLUMETYPE"; else unset VOLTP; fi
   createResources $NOAZS VOLSTATS JHVOLUME NONE NONE JVOLSTIME id $CINDERTIMEOUT cinder create --image-id $JHIMGID --availability-zone \${VAZS[\$VAZN]} $VOLTP --name ${RPRE}RootVol_JH\$no $JHVOLSIZE
@@ -2061,6 +2064,7 @@ createJHVols()
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
 waitJHVols()
 {
+  if test -n "$NOJHVOL"; then return 0; fi
   #waitResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" "status" $CINDERTIMEOUT cinder show
   waitlistResources VOLSTATS JHVOLUME VOLCSTATS JVOLSTIME "available" "NA" $VOLSTATCOL $CINDERTIMEOUT cinder list
   handleWaitErr "JH volumes" VOLSTATS $CINDERTIMEOUT cinder show
@@ -2068,6 +2072,7 @@ waitJHVols()
 
 deleteJHVols()
 {
+  if test -n "$NOJHVOL"; then return 0; fi
   deleteResources VOLSTATS JHVOLUME "" $CINDERTIMEOUT cinder delete
 }
 
@@ -2337,7 +2342,20 @@ $RD
     fi
     echo "$USERDATA" > $DATADIR/${RPRE}user_data_JH.yaml
     cat $DATADIR/${RPRE}user_data_JH.yaml >> $LOGFILE
-    createResources 1 NOVABSTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[$JHNUM]} --key-name ${KEYPAIRS[0]} --user-data $DATADIR/${RPRE}user_data_JH.yaml --availability-zone ${AZS[$(($JHNUM%$NOAZS))]} --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[$JHNUM]} ${RPRE}VM_JH$JHNUM || return
+    if test -z "$NOJHVOL"; then
+      createResources 1 NOVABSTATS JHVM JHPORT JHVOLUME JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR --boot-volume ${JHVOLUMES[$JHNUM]} --key-name ${KEYPAIRS[0]} --user-data $DATADIR/${RPRE}user_data_JH.yaml --availability-zone ${AZS[$(($JHNUM%$NOAZS))]} --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[$JHNUM]} ${RPRE}VM_JH$JHNUM || return
+    else
+      if test -n "$NEED_JHVOL"; then
+        IMAGE="--block-device id=$JHIMGID,source=image,dest=volume,size=$JHVOLSIZE,shutdown=remove,bootindex=0"
+        if test -n "$VOLUMETYPE"; then IMAGE="$IMAGE,volumetype=$VOLUMETYPE"; fi
+        ostackcmd_tm_retry3 VOLSTATS $CINDERTIMEOUT cinder list -f value -c ID #-c Name # -c Status -c Size
+        OLDVOLS="$OSTACKRESP"
+     else
+        IMAGE="--image $JHIMGID"
+	OLDVOLS=""
+      fi
+      createResources 1 NOVABSTATS JHVM JHPORT NONE JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR $IMAGE --key-name ${KEYPAIRS[0]} --user-data $DATADIR/${RPRE}user_data_JH.yaml --availability-zone ${AZS[$(($JHNUM%$NOAZS))]} --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[$JHNUM]} ${RPRE}VM_JH$JHNUM || return
+    fi
   done
 }
 
@@ -2763,6 +2781,24 @@ waitJHVMs()
   handleWaitErr "JH VMs" NOVASTATS $NOVATIMEOUT nova show
 }
 
+nameJHVols()
+{
+  # Name Volumes created by Nova for JHs with diskless flavor
+  if test -n "$NEED_JHVOL"; then
+    VOLNEEDSTAG=1
+    declare -i attempt=1
+    while test $attempt -lt 10; do
+      nameVols $attempt
+      if test $? = $NOAZS; then return 0; fi
+      sleep 4
+      let attempt+=1
+    done
+    nameVols $attempt
+    if test $? = $NOAZS; then return 0; fi
+    return 1
+  fi
+}
+
 deleteJHVMs()
 {
   # The platform can take a long long time to delete a VM in build state, so better wait a bit
@@ -2781,6 +2817,7 @@ waitdelJHVMs()
 {
   #waitdelResources NOVASTATS JHVM VMDSTATS JVMSTIME nova show
   waitlistResources NOVASTATS JHVM VMDSTATS JVMSTIME "XDELX" "$FORCEDEL" 2 $NOVATIMEOUT nova list
+  # TODO: Extra cleanup for volumes of diskless flavors for JH
 }
 
 # Bring VMs in $OSTACKRESP (from nova list/openstack server list) into order
@@ -2915,6 +2952,7 @@ nameVols()
   if test "$VOLNEEDSTAG" != "1"; then return $((NOVMS+NOAZS)); fi
   ostackcmd_tm_retry3 VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder list -c Attached || return 0
   OSTACKRESP=$(echo "$OSTACKRESP" | grep -v '^+' | grep -v '| ID' | sed -e 's/|$//' -e 's/ *| */,/g')
+  #echo "#DEBUG: nameVols $1 old: $OLDVOLS"
   local COLL=""
   local natt=0
   while read line; do
@@ -4085,7 +4123,50 @@ getToken()
   #echo "PROJECT: $PROJECT, USER: $USER"
 }
 
-# Clean/Delete old OpenStack project
+# Get Image Information
+# $1 => Image UUID
+# Return: $? => Error
+#  MD: Min_Disk (GiB)
+#  SZ: Size (GiB)
+#  USER: ssh default username
+getImgInfo()
+{
+  ostackcmd_tm_retry GLANCESTATS $GLANCETIMEOUT glance image-show -f json $1
+  if test $? != 0; then
+    let APIERRORS+=1; sendalarm 1 "glance image-show failed for $1" "" $GLANCETIMEOUT
+    errwait $ERRWAIT
+    return 1
+  else
+    MD=$(echo "$OSTACKRESP" | jq '.min_disk' | tr -d '"')
+    SZ=$(echo "$OSTACKRESP" | jq '.size' | tr -d '"')
+    USER=$(echo "$OSTACKRESP" | jq '.properties.image_original_user' | tr -d '"')
+    SZ=$((SZ/1024/1024/1024))
+    return 0
+  fi
+}
+
+# Get Flavor Information
+# $1 => Flavor name (or ID)
+# $2 => Minimum needed volume size for image (0 => we boot from volume)
+# Results: $? => Error
+#  NEED_VSIZE: Size of volume needed
+getFlvInfo()
+{
+  unset NEED_VSIZE
+  ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova flavor-show -f json $1
+  if test $? != 0; then
+    let APIERRORS+=1; sendalarm 1 "nova flavor-show $1 failed" "" $NOVATIMEOUT; return 1
+  else
+    local FLVDISK=$(echo "$OSTACKRESP" | jq '.disk')
+    if test $FLVDISK -lt $2; then
+      patch_openstackclient_disklessboot
+      NEED_VSIZE=$2
+    fi
+  fi
+}
+
+
+#Clean/Delete old OpenStack project
 cleanprj()
 {
   if test ${#OS_PROJECT_NAME} -le 5; then echo -e "${YELLOW}ERROR: Won't delete $OS_PROJECT_NAME$NORM" 1>&2; return 1; fi
@@ -4417,51 +4498,29 @@ else # test "$1" = "DEPLOY"; then
  IMGID=$(ostackcmd_search "$IMG" $GLANCETIMEOUT glance image-list $IMGFILT | awk '{ print $2; }')
  if test -z "$IMGID" -o "$IMG" == "0"; then sendalarm 1 "No image $IMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
  let APICALLS+=2
- # Retrieve root volume size
- ostackcmd_tm_retry GLANCESTATS $GLANCETIMEOUT glance image-show -f json $JHIMGID
- if test $? != 0; then
-  let APIERRORS+=1; sendalarm 1 "glance image-show failed" "" $GLANCETIMEOUT
-  errwait $ERRWAIT
-  let loop+=1
-  continue
- else
-  MD=$(echo "$OSTACKRESP" | jq '.min_disk' | tr -d '"')
-  SZ=$(echo "$OSTACKRESP" | jq '.size' | tr -d '"')
-  USER=$(echo "$OSTACKRESP" | jq '.properties.image_original_user' | tr -d '"')
-  SZ=$((SZ/1024/1024/1024))
-  if test "$SZ" -gt "$MD"; then MD=$SZ; fi
-  JHVOLSIZE=$(($MD+$ADDJHVOLSIZE))
-  if test -n "$USER" -a "$USER" != "null"; then JHDEFLTUSER="$USER"; fi
- fi
- ostackcmd_tm_retry GLANCESTATS $GLANCETIMEOUT glance image-show -f json $IMGID
- if test $? != 0; then
-  let APIERRORS+=1; sendalarm 1 "glance image-show failed" "" $GLANCETIMEOUT
- else
-  MD=$(echo "$OSTACKRESP" | jq '.min_disk' | tr -d '"')
-  SZ=$(echo "$OSTACKRESP" | jq '.size' | tr -d '"')
-  USER=$(echo "$OSTACKRESP" | jq '.properties.image_original_user' | tr -d '"')
-  SZ=$((SZ/1024/1024/1024))
+ # Retrieve needed root volume size JH
+ getImgInfo $JHIMGID
+ if test $? != 0; then let loops+=1; continue; fi
+ if test "$SZ" -gt "$MD"; then MD=$SZ; fi
+ JHVOLSIZE=$(($MD+$ADDJHVOLSIZE))
+ if test -n "$USER" -a "$USER" != "null"; then JHDEFLTUSER="$USER"; fi
+ # Retrieve needed root volume size VM
+ getImgInfo $IMGID
+ if test $? = 0; then
   if test "$SZ" -gt "$MD"; then MD=$SZ; fi
   VOLSIZE=$(($MD+$ADDVMVOLSIZE))
   if test -n "$USER" -a "$USER" != "null"; then DEFLTUSER="$USER"; fi
  fi
  #let APICALLS+=2
+ # Check JH flavor
+ if test -n "$NOJHVOL"; then RVSIZE=$JHVOLSIZE; else RVSIZE=0; fi
+ getFlvInfo $JHFLAVOR $RVSIZE || exit 1
+ NEED_JHVOL=$NEED_VSIZE
  # Check VM flavor
- ostackcmd_tm_retry NOVASTATS $NOVATIMEOUT nova flavor-show -f json $FLAVOR
- if test $? != 0; then
-  let APIERRORS+=1; sendalarm 1 "nova flavor-show $FLAVOR failed" "" $NOVATIMEOUT; exit 1
- else
-  VMFLVDISK=$(echo "$OSTACKRESP" | jq '.disk')
-  if test $VMFLVDISK -lt $VOLSIZE -a -n "$BOOTFROMIMAGE"; then
-    patch_openstackclient_disklessboot
-    NEED_BLKDEV=1
-    VMVOLSIZE=${VMVOLSIZE:-$VOLSIZE}
-  else
-    unset NEED_BLKDEV
-    #unset VMVOLSIZE
-  fi
- fi
- if test "$VOLUMETYPE" == "LUKS" -a -n "$NEED_BLKDEV"; then
+ if test -n "$BOOTFROMIMAGE"; then RVSIZE=$VOLSIZE; else RVSIZE=0; fi
+ getFlvInfo $FLAVOR $RVSIZE || exit 1
+ VMVOLSIZE=$NEED_VSIZE
+ if test "$VOLUMETYPE" == "LUKS" -a -n "$VM_VOLSIZE"; then
   echo "Warning: volume-type LUKS may be slow and nova may time out waiting for cinder vols for VM boot"
  fi
  echo "Using images JH $JHDEFLTUSER@$JHIMG ($JHVOLSIZE GB), VM $DEFLTUSER@$IMG ($VOLSIZE GB)"
@@ -4483,6 +4542,7 @@ else # test "$1" = "DEPLOY"; then
             let ROUNDVMS=$NOAZS
             if createFIPs; then
              waitVols  # TODO: Error handling
+             nameJHVols
              if createVMs; then
               let ROUNDVMS+=$NOVMS
               waitJHVMs
