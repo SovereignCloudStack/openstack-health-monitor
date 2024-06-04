@@ -2,3 +2,4 @@
 *.psv
 *.yaml
 *.pem
+*.log.gz
