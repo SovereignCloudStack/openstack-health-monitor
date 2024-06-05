@@ -2,4 +2,4 @@
 *.psv
 *.yaml
 *.pem
-*.log.gz
+APIMonitor_*
