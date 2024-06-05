@@ -5,4 +5,4 @@ while true; do
   if test -e stop-os-hm; then break; fi
   echo -n "Hit ^C to abort ..."
   sleep 15; echo
-done 
+done
