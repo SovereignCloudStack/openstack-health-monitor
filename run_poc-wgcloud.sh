@@ -47,4 +47,4 @@ for ENV in $TOCLEAN; do
   echo "******************************"
 done
 
-exec ./api_monitor.sh -O -C -D -n 6 -s -b -B -M -T -S poc-wgcloud "$@"
+exec ./api_monitor.sh -O -C -D -n 2 -s -b -B -M -T -S poc-wgcloud "$@"
