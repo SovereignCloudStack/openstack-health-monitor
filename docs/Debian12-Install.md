@@ -29,7 +29,7 @@ The author tends to see running it internally as advantageous -- ideally combine
 
 Nothing in this test requires admin privileges on the cloud where the driver runs nor on the cloud under test. We do install and configure a few software packages in the driver VM, which requires sudo power there, but the script should just run as a normal user. For the cloud under test it is recommended to use a user (or an application credential) with a normal tenant member role to access the cloud under test. If you can, give it an OpenStack project on its own.
 
-If `openstack availability zone list --compute` fails for you without admin rights, please fix your openstack client. (Versions 6.3.0 and 6.4.0 are broken.) Do not consider giving the OpenStack Healh-Monitor admin power. (Note: It has a workaround for the broken AZ listing using curl now.)
+If `openstack availability zone list --compute` fails for you without admin rights, please fix your openstack client, e.g. by applying the [patch](https://raw.githubusercontent.com/SovereignCloudStack/openstack-health-monitor/main/docs/openstackclient-az-list-fallback-f3207bd.diff) I mentioned in [this issue](https://storyboard.openstack.org/#!/story/2010989). (Versions 6.3.0 and 6.4.0 are broken.) Do not consider giving the OpenStack Health-Monitor admin power. (Note: It has a workaround for the broken AZ listing using curl now.)
 
 ### Driver VM via openstack CLI
 
