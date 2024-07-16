@@ -405,17 +405,26 @@ Also enable it on system startup: `sudo systemctl enable influxdb`.
 
 You need to tell the monitor that it should send data via telegraf to influxdb by adding the parameter `-S CLOUDNAME` to the `api_monitor.sh` call in `run_CLOUDNAME.sh`. Restart it (see above) to make the change effective immediately (and not only after 200 iterations complete).
 
-### grafana
+### Grafana
 
-#### Basic config
+#### Install Grafana
 
-Finally grafana: We (still as root) follow https://www.server-world.info/en/note?os=Debian_12&p=grafana
+We follow https://grafana.com/docs/grafana/latest/setup-grafana/installation/debian/ and setup the stable APT repository:
+
+```shell
+mkdir -p /etc/apt/keyrings
+wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
+echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
 ```
-sudo wget -q -O /usr/share/keyrings/grafana.key https://packages.grafana.com/gpg.key
-echo "deb [signed-by=/usr/share/keyrings/grafana.key] https://packages.grafana.com/oss/deb stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+
+And install it:
+
+```shell
 sudo apt update
 sudo apt -y install grafana
 ```
+
+#### Basic config
 
 The config file `/etc/grafana/grafana.ini` needs some adjustments:
 * Set the hostname in `[server]` section: `domain = health.YOURCLOUD.sovereignit.cloud`. Set the `protocol = https` if not enabled by default.
