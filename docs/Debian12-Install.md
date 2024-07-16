@@ -568,7 +568,7 @@ access to the dashboards.
 This allows to exchange experience and to get a feeling for the achievable stability.
 (Hint: A single digit number of API call fails per week and no other failures is achievable on loaded clouds.)
 
-OIDC integration achieved by adjusting the `[auth.github]` section in `/etc/grafana/grafana.ini` as follows:
+OIDC integration is achieved by adjusting the `[auth.github]` section in `/etc/grafana/grafana.ini` as follows:
 
 ```ini
 [auth.github]
