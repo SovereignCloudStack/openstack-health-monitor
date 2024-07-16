@@ -179,7 +179,8 @@ You can use the same project as you use for your driver VM (and possibly other w
 If your cloud API's endpoints don't use TLS certificates that are signed by an official CA, you need to provide your CA to this VM and configure it. (On a SCS Cloud-in-a-Box system, you find it on the manager node in `/etc/ssl/certs/ca-certificates.crt`. You may extract the last cert or just leave them all together.) Copy the CA file to your driver VM and ensure it's readable by the `debian` user.
 
 Add it to your `clouds.yaml`
-```
+
+```yaml
 clouds:
   CLOUDNAME:
     cacert: /PATH/TO/CACERT.CRT
@@ -378,28 +379,34 @@ sudo apt -y install telegraf
 ```
 
 In the config file `/etc/telegraf/telegraf.conf`, we enable
-```
+
+```toml
 [[inputs.influxdb_listener]]
   service_address = ":8186"
 
 [[outputs.influxdb]]
   urls = ["http://127.0.0.1:8086"]
 ```
+
 and restart the service (`sudo systemctl restart telegraf`).
 Enable it on system startup: `sudo systemctl enable telegraf`.
 
 ### InfluxDB
 
 We proceed to influxdb:
-```
+
+```shell
 sudo apt-get install influxdb
 ```
+
 In the configuration file `/etc/influxdb/influxdb.conf`, ensure that the http interface on port 8086 is enabled.
-```
+
+```toml
 [http]
   enabled = true
   bind-address = ":8086"
 ```
+
 Restart influxdb as needed with `sudo systemctl restart influxdb`.
 Also enable it on system startup: `sudo systemctl enable influxdb`.
 
@@ -609,7 +616,7 @@ Unattended-Upgrade::Origins-Pattern {
 };
 ```
 
-(This corresponds to the `o=cloudsmith/caddy/stable` in the output of `apt-cache policy`).
+(This corresponds to `o=cloudsmith/caddy/stable` in the output of `apt-cache policy`).
 
 ### sshd setup
 
