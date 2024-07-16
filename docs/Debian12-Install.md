@@ -525,7 +525,7 @@ allow_sign_up = false
 allow_org_create = false
 ```
 
-We do the OIDC connection in the section `[auth.github]` later.
+We do the OIDC connection in the section `[auth.github]` [later](#github-oidc-integration).
 
 We can now restart the service: `sudo systemctl restart grafana-server`.
 Being at it, also enable it on system startup: `sudo systemctl enable grafana-server`.
@@ -561,9 +561,29 @@ The first row of panels give a health impression; there are absolute numbers as 
 
 You can change the time interval and zoom in also by marking an interval with the mouse. Zooming out to a few months can be a very useful feature to see trends and watch e.g. your API performance, your resource creation times or the benchmarks change over the long term.
 
-#### github OIDC integration
+#### GitHub OIDC Integration
 
-The SCS providers do allow all github users that belong to the SovereignCloudStack organization to get Viewer access to the dashboards by adding a `client_id` and `client_secret` in the ``[auth.github]`` section that you request from the SCS github admins (github's oauth auth). This allows to exchange experience and to get a feeling for the achievable stability. (Hint: A single digit number of API call fails per week and no other failures is achievable on loaded clouds.)
+The SCS providers do allow all GitHub users that belong to the SovereignCloudStack organization to get Viewer
+access to the dashboards.
+
+This is achieved by adjusting the `[auth.github]` section in `/etc/grafana/grafana.ini` as follows:
+
+```ini
+[auth.github]
+enabled = true
+client_id = YOUR_CLIENT_ID
+client_secret = YOUR_CLIENT_SECRET
+allowed_organizations = ["SovereignCloudStack"]
+role_attribute_path = "'Viewer'"
+allow_assign_grafana_admin = false
+skip_org_role_sync = true
+```
+
+Please replace `YOUR_CLIENT_ID` and `YOUR_CLIENT_SECRET` with the OAuth credentials that the SCS Org GitHub admins
+provided to you.
+
+This allows to exchange experience and to get a feeling for the achievable stability.
+(Hint: A single digit number of API call fails per week and no other failures is achievable on loaded clouds.)
 
 ## Alternative approach to install and configure the dashboard behind a reverse proxy
 
