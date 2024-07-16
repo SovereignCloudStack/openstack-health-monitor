@@ -461,7 +461,7 @@ You can change the time interval and zoom in also by marking an interval with th
 
 #### github OIDC integration
 
-The SCS providers do allow all github users that belong to the SovereignCloudStack organization to get Viewer access to the dashboards by adding a `client_id` and `client_secret` in the ``[github.auth]`` section that you request from the SCS github admins (github's oauth auth). This allows to exchange experience and to get a feeling for the achievable stability. (Hint: A single digit number of API call fails per week and no other failures is achievable on loaded clouds.)
+The SCS providers do allow all github users that belong to the SovereignCloudStack organization to get Viewer access to the dashboards by adding a `client_id` and `client_secret` in the ``[auth.github]`` section that you request from the SCS github admins (github's oauth auth). This allows to exchange experience and to get a feeling for the achievable stability. (Hint: A single digit number of API call fails per week and no other failures is achievable on loaded clouds.)
 
 ## Alternative approach to install and configure the dashboard behind a reverse proxy
 
