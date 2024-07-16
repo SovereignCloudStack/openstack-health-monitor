@@ -366,8 +366,10 @@ After the 200 iterations, a `.psv` file (pipe-separated values) is created `Stat
 ## Data collection and dashboard
 See https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/dashboard/README.md
 
-### telegraf
+### Telegraf
+
 To install telegraf on Debian 12, we need to add the apt repository provided by InfluxData:
+
 ```bash
 sudo curl -fsSL https://repos.influxdata.com/influxdata-archive_compat.key -o /etc/apt/keyrings/influxdata-archive_compat.key
 echo "deb [signed-by=/etc/apt/keyrings/influxdata-archive_compat.key] https://repos.influxdata.com/debian stable main" | sudo tee /etc/apt/sources.list.d/influxdata.list
@@ -386,7 +388,7 @@ In the config file `/etc/telegraf/telegraf.conf`, we enable
 and restart the service (`sudo systemctl restart telegraf`).
 Enable it on system startup: `sudo systemctl enable telegraf`.
 
-### influxdb
+### InfluxDB
 
 We proceed to influxdb:
 ```
