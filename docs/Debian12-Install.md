@@ -407,6 +407,65 @@ Also enable it on system startup: `sudo systemctl enable influxdb`.
 
 You need to tell the monitor that it should send data via telegraf to influxdb by adding the parameter `-S CLOUDNAME` to the `api_monitor.sh` call in `run_CLOUDNAME.sh`. Restart it (see above) to make the change effective immediately (and not only after 200 iterations complete).
 
+### Caddy (Reverse Proxy)
+
+We're going to deploy Grafana behind [Caddy](https://caddyserver.com/docs/) as a reverse proxy.
+Caddy is very easy to configure, comes with sensible defaults and can automatically provision TLS
+certificates using Let's Encrypt.
+
+#### Install Caddy
+
+We follow https://caddyserver.com/docs/install#debian-ubuntu-raspbian to setup the stable APT repository:
+
+```shell
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+```
+
+And install Caddy:
+
+```shell
+sudo apt update
+sudo apt install caddy
+```
+
+Ensure it's started and starts at boot with `sudo systemctl enable --now caddy`.
+
+#### Allow HTTP traffic for oshm-driver
+
+Caddy needs port `80` to be able to process the Let's Encrypt HTTP challenge, so let's configure an
+appropriate security group for `oshm-driver`:
+
+```shell
+openstack security group create http
+openstack security group rule create --ingress --ethertype ipv4 --protocol tcp --dst-port 80 http
+openstack server add security group oshm-driver http
+```
+
+#### Configure Caddy
+
+Create a file `/etc/caddy/Caddyfile` with the following contents:
+
+```
+https://health.YOURCLOUD.osba.sovereignit.cloud:3000 {
+	reverse_proxy localhost:3003
+}
+```
+
+Replace `health.YOURCLOUD.osba.sovereignit.cloud` with your actual domain.
+You can use a hostname of your liking, but Caddy will create TLS certificates for this host using
+the HTTP challenge.
+The `sovereignit.cloud` domain is controlled by the SCS project team and has been used for a number
+of health mon instances.
+
+Reload Caddy with `sudo systemctl reload caddy`. That's it.
+
+You should now be able to access `https://health.YOURCLOUD.sovereignit.de:3000` and see a proxy error
+page because the Grafana service is not yet running (this is our next step).
+The very first request will be a bit slower, because Caddy interacts with Let's Encrypt API to create
+the TLS certificate behind the scenes.
+
 ### Grafana
 
 #### Install Grafana
@@ -444,9 +503,6 @@ root_url = https://%(domain)s:3000/
 ```
 
 Please replace `health.YOURCLOUD.sovereignit.cloud` with your actual domain.
-You can use a hostname of your liking, but we will need to create TLS certificates for this host.
-The `sovereignit.cloud` domain is controlled by the SCS project team and has been used for a number
-of health mon instances.
 
 Next, in the `[security]` section, set:
 
@@ -474,7 +530,8 @@ We do the OIDC connection in the section `[auth.github]` later.
 We can now restart the service: `sudo systemctl restart grafana-server`.
 Being at it, also enable it on system startup: `sudo systemctl enable grafana-server`.
 
-You should now be able to access your dashboard on `https://health.YOURCLOUD.sovereignit.de:3000` and log in via the configured username `admin` and your `SOME_SECRET_PASS` password.
+You should now be able to access your dashboard on `https://health.YOURCLOUD.sovereignit.de:3000` and log in
+via the configured username `admin` and your `SOME_SECRET_PASS` password.
 
 #### Enable influx database in grafana
 
