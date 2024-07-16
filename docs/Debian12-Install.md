@@ -534,6 +534,14 @@ allow_sign_up = false
 allow_org_create = false
 ```
 
+The configuration file contains secrets and should be protected such that only root and group grafana
+can read it:
+
+```shell
+sudo chown root:grafana /etc/grafana/grafana.ini
+sudo chmod 0640 /etc/grafana/grafana.ini
+```
+
 We do the OIDC connection in the section `[auth.github]` [later](#github-oidc-integration).
 
 We can now restart the service: `sudo systemctl restart grafana-server`.
