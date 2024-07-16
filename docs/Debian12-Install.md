@@ -466,6 +466,8 @@ page because the Grafana service is not yet running (this is our next step).
 The very first request will be a bit slower, because Caddy interacts with Let's Encrypt API to create
 the TLS certificate behind the scenes.
 
+Caddy logs can be accessed with `sudo journalctl -u caddy`.
+
 ### Grafana
 
 #### Install Grafana
@@ -594,7 +596,35 @@ The driver VM is a snowflake: A manually set up system (unless you automate all 
 
 ### Unattended upgrades
 
-It is recommended to ensure maintenance updates are deployed automatically. These are unlikely to negatively impact the openstack-health-monitor. See https://wiki.debian.org/UnattendedUpgrades. If you decide against unattended upgrades, it is recommended to install updates manually regularly and especially watch out for issues that affect the services that are exposed to the world: sshd (port 22) and grafana (port 3000).
+It is recommended to ensure maintenance updates are deployed automatically. These are unlikely to negatively impact the openstack-health-monitor. See https://wiki.debian.org/UnattendedUpgrades. If you decide against unattended upgrades, it is recommended to install updates manually regularly and especially watch out for issues that affect the services that are exposed to the world: sshd (port 22) and Caddy/Grafana (port 3000).
+
+If you use `unattended-upgrades`, you should review your settings in `/etc/apt/apt.conf.d/50unattended-upgrades`,
+especially `Unattended-Upgrade::Origins-Pattern`. It controls which packages are upgraded. If you want Caddy to be
+part of the automated updates, add an entry like the following:
+
+```
+Unattended-Upgrade::Origins-Pattern {
+    // ...
+    "origin=cloudsmith/caddy/stable";
+};
+```
+
+(This corresponds to the `o=cloudsmith/caddy/stable` in the output of `apt-cache policy`).
+
+### sshd setup
+
+If you already use SSH keys to sign in to the driver VM, consider setting the following in your `/etc/ssh/sshd_config`
+if not already set:
+
+```
+PasswordAuthentication no
+```
+
+Debian's `openssh-server`, by default, is also very open about its version, so you might consider disabling this via:
+
+```
+DebianBanner no
+```
 
 ### Updating openstack-health-monitor
 
