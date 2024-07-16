@@ -565,8 +565,10 @@ You can change the time interval and zoom in also by marking an interval with th
 
 The SCS providers do allow all GitHub users that belong to the SovereignCloudStack organization to get Viewer
 access to the dashboards.
+This allows to exchange experience and to get a feeling for the achievable stability.
+(Hint: A single digit number of API call fails per week and no other failures is achievable on loaded clouds.)
 
-This is achieved by adjusting the `[auth.github]` section in `/etc/grafana/grafana.ini` as follows:
+OIDC integration achieved by adjusting the `[auth.github]` section in `/etc/grafana/grafana.ini` as follows:
 
 ```ini
 [auth.github]
@@ -579,11 +581,12 @@ allow_assign_grafana_admin = false
 skip_org_role_sync = true
 ```
 
-Please replace `YOUR_CLIENT_ID` and `YOUR_CLIENT_SECRET` with the OAuth credentials that the SCS Org GitHub admins
+This config maps all users to the `Viewer` role regardless of their role in the GitHub Org.
+Please replace `YOUR_CLIENT_ID` and `YOUR_CLIENT_SECRET` with the OAuth2 credentials that the SCS Org GitHub admins
 provided to you.
+Finally, don't forgot to restart Grafana with `sudo systemctl restart grafana-server` after adjusting the config.
 
-This allows to exchange experience and to get a feeling for the achievable stability.
-(Hint: A single digit number of API call fails per week and no other failures is achievable on loaded clouds.)
+More information can be found in the [Grafana documentation for GitHub OAuth2](https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/configure-authentication/github/).
 
 ## Alternative approach to install and configure the dashboard behind a reverse proxy
 
