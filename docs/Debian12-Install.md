@@ -588,41 +588,6 @@ Finally, don't forgot to restart Grafana with `sudo systemctl restart grafana-se
 
 More information can be found in the [Grafana documentation for GitHub OAuth2](https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/configure-authentication/github/).
 
-## Alternative approach to install and configure the dashboard behind a reverse proxy
-
-Install influxdb via apt: https://docs.influxdata.com/influxdb/v1/introduction/install/#installing-influxdb-oss
-Install telegraf (same apt repo as influxdb): `sudo apt update && sudo apt install telegraf`
-Install grafana: https://grafana.com/docs/grafana/latest/setup-grafana/installation/debian/#install-from-apt-repository
-
-Prepare configuration by using the config files from the repository as an alternative to doing the changes manually (as described above):
-```
-sudo cp dashboard/telegraf.conf /etc/telegraf && sudo chown root:root /etc/telegraf/telegraf.conf && sudo chmod 0644 /etc/telegraf/telegraf.conf
-sudo cp dashboard/config.toml /etc/influxdb && sudo chown root:influxdb /etc/influxdb/config.toml && sudo chmod 0640 /etc/influxdb/config.toml
-sudo cp dashboard/grafana.ini /etc/grafana && sudo chown root:grafana /etc/grafana/grafana.ini && sudo chmod 0640 /etc/grafana/grafana.ini
-```
-These config files should work as long as the versions of telegraf, influxdb and grafana don't evolve too far from the ones used in the repository. (Otherwise refer to above instructions how to tweak the default config files.)
-
-Changes to `/etc/grafana/grafana.ini` as we do tls termination at the reverse proxy:
-- set `protocol = http`
-- comment out `domain` option (? FIXME) or set it to the hostname
-- comment out `cert_*` options
-
-Also change the admin password in `grafana.ini`.
-
-Changes to `/etc/grafana/grafana.ini` if github auth should not be used yet:
-- comment out whole `[auth.github]` section for now (can be enabled later)
-
-Restart services: `sudo systemctl restart telegraf && sudo systemctl restart influxdb && sudo systemctl restart grafana-server`
-
-Configuration in grafana web gui:
-- Login to grafana `http(s)://<domain>:3000` with user admin and default password from `/etc/grafana/grafana.ini` and change password.
-- Create influxdb datasource with url `http://localhost:8086` and database name `telegraf`.
-- Finally import dashboard `dashboard/openstack-health-dashboard.json` to grafana.
-
-TODO:
-* Reverse proxy (aka ingress) with Let's Encrypt cert
-* Github auth as described above
-
 ## Maintenance
 
 The driver VM is a snowflake: A manually set up system (unless you automate all the above steps, which is possible of course) that holds data and is long-lived. As such it's important to be maintained.
