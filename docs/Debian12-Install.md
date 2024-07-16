@@ -426,14 +426,48 @@ sudo apt -y install grafana
 
 #### Basic config
 
-The config file `/etc/grafana/grafana.ini` needs some adjustments:
-* Set the hostname in `[server]` section: `domain = health.YOURCLOUD.sovereignit.cloud`. Set the `protocol = https` if not enabled by default.
-You can use a hostname of your liking, but we will need to create TLS certificates for this host. So we should have control over DNS TXT records for this domain if we want to use Let's Encrypt with DNSAUTH. The `sovereignit.cloud` domain is controlled by the SCS project team and has been used for a number of health mon instances.
-In this same section, set `cert_file = /etc/grafana/health-fullchain.pem` and `cert_key = /etc/grafana/health-key.pem`. Ensure that both files are readable by `root:grafana` and that the key file is *not* world-readable.
-* Configure the admin access. In section `[security]`, set the `admin_user = admin` and `admin_password = SOME_SECRET_PASS` which you keep private.
-* Allow local data sources (same section): `data_source_proxy_whitelist = localhost:8088 localhost:8086`
-* Let's disallow user signup (in section `[users]`): `allow_sign_up = false` and `allow_org_create = false`.
-* We do the OIDC connection with `[auth.github]` later.
+The config file `/etc/grafana/grafana.ini` needs some adjustments.
+
+We're going to deploy Grafana behind a reverse proxy (Caddy) and configure it as such.
+
+Therefore, in the `[server]` section:
+
+```ini
+[server]
+protocol = http
+http_addr = 127.0.0.1
+http_port = 3003
+domain = health.YOURCLOUD.sovereignit.cloud
+root_url = https://%(domain)s:3000/
+```
+
+Please replace `health.YOURCLOUD.sovereignit.cloud` with your actual domain.
+You can use a hostname of your liking, but we will need to create TLS certificates for this host.
+The `sovereignit.cloud` domain is controlled by the SCS project team and has been used for a number
+of health mon instances.
+
+Next, in the `[security]` section, set:
+
+```ini
+[security]
+admin_user = admin
+admin_password = SOME_SECRET_PASS
+secret_key = SOME_SECRET_KEY
+data_source_proxy_whitelist = localhost:8088 localhost:8086
+cookie_secure = true
+```
+
+Please replace `SOME_SECRET_PASS` and `SOME_SECRET_KEY` with secure passwords (for example, you can use `pwgen -s 20`).
+
+Finally, in the `[users]` section, set:
+
+```ini
+[users]
+allow_sign_up = false
+allow_org_create = false
+```
+
+We do the OIDC connection in the section `[auth.github]` later.
 
 We can now restart the service: `sudo systemctl restart grafana-server`.
 Being at it, also enable it on system startup: `sudo systemctl enable grafana-server`.
