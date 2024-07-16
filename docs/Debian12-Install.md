@@ -434,8 +434,8 @@ Ensure it's started and starts at boot with `sudo systemctl enable --now caddy`.
 
 #### Allow HTTP traffic for oshm-driver
 
-Caddy needs port `80` to be able to process the Let's Encrypt HTTP challenge, so let's configure an
-appropriate security group for `oshm-driver`:
+Caddy needs TCP port `80` opened to be able to process the Let's Encrypt HTTP challenge, so let's
+configure an appropriate security group for `oshm-driver`:
 
 ```shell
 openstack security group create http
