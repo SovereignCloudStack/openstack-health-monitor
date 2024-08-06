@@ -179,7 +179,8 @@ You can use the same project as you use for your driver VM (and possibly other w
 If your cloud API's endpoints don't use TLS certificates that are signed by an official CA, you need to provide your CA to this VM and configure it. (On a SCS Cloud-in-a-Box system, you find it on the manager node in `/etc/ssl/certs/ca-certificates.crt`. You may extract the last cert or just leave them all together.) Copy the CA file to your driver VM and ensure it's readable by the `debian` user.
 
 Add it to your `clouds.yaml`
-```
+
+```yaml
 clouds:
   CLOUDNAME:
     cacert: /PATH/TO/CACERT.CRT
@@ -366,8 +367,10 @@ After the 200 iterations, a `.psv` file (pipe-separated values) is created `Stat
 ## Data collection and dashboard
 See https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/dashboard/README.md
 
-### telegraf
+### Telegraf
+
 To install telegraf on Debian 12, we need to add the apt repository provided by InfluxData:
+
 ```bash
 sudo curl -fsSL https://repos.influxdata.com/influxdata-archive_compat.key -o /etc/apt/keyrings/influxdata-archive_compat.key
 echo "deb [signed-by=/etc/apt/keyrings/influxdata-archive_compat.key] https://repos.influxdata.com/debian stable main" | sudo tee /etc/apt/sources.list.d/influxdata.list
@@ -376,28 +379,34 @@ sudo apt -y install telegraf
 ```
 
 In the config file `/etc/telegraf/telegraf.conf`, we enable
-```
+
+```toml
 [[inputs.influxdb_listener]]
   service_address = ":8186"
 
 [[outputs.influxdb]]
   urls = ["http://127.0.0.1:8086"]
 ```
+
 and restart the service (`sudo systemctl restart telegraf`).
 Enable it on system startup: `sudo systemctl enable telegraf`.
 
-### influxdb
+### InfluxDB
 
 We proceed to influxdb:
-```
+
+```shell
 sudo apt-get install influxdb
 ```
+
 In the configuration file `/etc/influxdb/influxdb.conf`, ensure that the http interface on port 8086 is enabled.
-```
+
+```toml
 [http]
   enabled = true
   bind-address = ":8086"
 ```
+
 Restart influxdb as needed with `sudo systemctl restart influxdb`.
 Also enable it on system startup: `sudo systemctl enable influxdb`.
 
@@ -405,31 +414,141 @@ Also enable it on system startup: `sudo systemctl enable influxdb`.
 
 You need to tell the monitor that it should send data via telegraf to influxdb by adding the parameter `-S CLOUDNAME` to the `api_monitor.sh` call in `run_CLOUDNAME.sh`. Restart it (see above) to make the change effective immediately (and not only after 200 iterations complete).
 
-### grafana
+### Caddy (Reverse Proxy)
 
-#### Basic config
+We're going to deploy Grafana behind [Caddy](https://caddyserver.com/docs/) as a reverse proxy.
+Caddy is very easy to configure, comes with sensible defaults and can automatically provision TLS
+certificates using Let's Encrypt.
 
-Finally grafana: We (still as root) follow https://www.server-world.info/en/note?os=Debian_12&p=grafana
+#### Install Caddy
+
+We follow https://caddyserver.com/docs/install#debian-ubuntu-raspbian to setup the stable APT repository:
+
+```shell
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
 ```
-sudo wget -q -O /usr/share/keyrings/grafana.key https://packages.grafana.com/gpg.key
-echo "deb [signed-by=/usr/share/keyrings/grafana.key] https://packages.grafana.com/oss/deb stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+
+And install Caddy:
+
+```shell
+sudo apt update
+sudo apt install caddy
+```
+
+Ensure it's started and starts at boot with `sudo systemctl enable --now caddy`.
+
+#### Allow HTTP traffic for oshm-driver
+
+Caddy needs TCP port `80` opened to be able to process the Let's Encrypt HTTP challenge, so let's
+configure an appropriate security group for `oshm-driver`:
+
+```shell
+openstack security group create http
+openstack security group rule create --ingress --ethertype ipv4 --protocol tcp --dst-port 80 http
+openstack server add security group oshm-driver http
+```
+
+#### Configure Caddy
+
+Create a file `/etc/caddy/Caddyfile` with the following contents:
+
+```
+https://health.YOURCLOUD.osba.sovereignit.cloud:3000 {
+	reverse_proxy localhost:3003
+}
+```
+
+Replace `health.YOURCLOUD.osba.sovereignit.cloud` with your actual domain.
+You can use a hostname of your liking, but Caddy will create TLS certificates for this host using
+the HTTP challenge.
+The `sovereignit.cloud` domain is controlled by the SCS project team and has been used for a number
+of health mon instances.
+
+Reload Caddy with `sudo systemctl reload caddy`. That's it.
+
+You should now be able to access `https://health.YOURCLOUD.sovereignit.de:3000` and see a proxy error
+page because the Grafana service is not yet running (this is our next step).
+The very first request will be a bit slower, because Caddy interacts with Let's Encrypt API to create
+the TLS certificate behind the scenes.
+
+Caddy logs can be accessed with `sudo journalctl -u caddy`.
+
+### Grafana
+
+#### Install Grafana
+
+We follow https://grafana.com/docs/grafana/latest/setup-grafana/installation/debian/ and setup the stable APT repository:
+
+```shell
+mkdir -p /etc/apt/keyrings
+wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
+echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+```
+
+And install it:
+
+```shell
 sudo apt update
 sudo apt -y install grafana
 ```
 
-The config file `/etc/grafana/grafana.ini` needs some adjustments:
-* Set the hostname in `[server]` section: `domain = health.YOURCLOUD.sovereignit.cloud`. Set the `protocol = https` if not enabled by default.
-You can use a hostname of your liking, but we will need to create TLS certificates for this host. So we should have control over DNS TXT records for this domain if we want to use Let's Encrypt with DNSAUTH. The `sovereignit.cloud` domain is controlled by the SCS project team and has been used for a number of health mon instances.
-In this same section, set `cert_file = /etc/grafana/health-fullchain.pem` and `cert_key = /etc/grafana/health-key.pem`. Ensure that both files are readable by `root:grafana` and that the key file is *not* world-readable.
-* Configure the admin access. In section `[security]`, set the `admin_user = admin` and `admin_password = SOME_SECRET_PASS` which you keep private.
-* Allow local data sources (same section): `data_source_proxy_whitelist = localhost:8088 localhost:8086`
-* Let's disallow user signup (in section `[users]`): `allow_sign_up = false` and `allow_org_create = false`.
-* We do the OIDC connection with `[auth.github]` later.
+#### Basic config
+
+The config file `/etc/grafana/grafana.ini` needs some adjustments.
+
+We're going to deploy Grafana behind a reverse proxy (Caddy) and configure it as such.
+
+Therefore, in the `[server]` section:
+
+```ini
+[server]
+protocol = http
+http_addr = 127.0.0.1
+http_port = 3003
+domain = health.YOURCLOUD.sovereignit.cloud
+root_url = https://%(domain)s:3000/
+```
+
+Please replace `health.YOURCLOUD.sovereignit.cloud` with your actual domain.
+
+Next, in the `[security]` section, set:
+
+```ini
+[security]
+admin_user = admin
+admin_password = SOME_SECRET_PASS
+secret_key = SOME_SECRET_KEY
+data_source_proxy_whitelist = localhost:8088 localhost:8086
+cookie_secure = true
+```
+
+Please replace `SOME_SECRET_PASS` and `SOME_SECRET_KEY` with secure passwords (for example, you can use `pwgen -s 20`).
+
+Finally, in the `[users]` section, set:
+
+```ini
+[users]
+allow_sign_up = false
+allow_org_create = false
+```
+
+The configuration file contains secrets and should be protected such that only root and group grafana
+can read it:
+
+```shell
+sudo chown root:grafana /etc/grafana/grafana.ini
+sudo chmod 0640 /etc/grafana/grafana.ini
+```
+
+We do the OIDC connection in the section `[auth.github]` [later](#github-oidc-integration).
 
 We can now restart the service: `sudo systemctl restart grafana-server`.
 Being at it, also enable it on system startup: `sudo systemctl enable grafana-server`.
 
-You should now be able to access your dashboard on `https://health.YOURCLOUD.sovereignit.de:3000` and log in via the configured username `admin` and your `SOME_SECRET_PASS` password.
+You should now be able to access your dashboard on `https://health.YOURCLOUD.sovereignit.de:3000` and log in
+via the configured username `admin` and your `SOME_SECRET_PASS` password.
 
 #### Enable influx database in grafana
 
@@ -459,44 +578,32 @@ The first row of panels give a health impression; there are absolute numbers as 
 
 You can change the time interval and zoom in also by marking an interval with the mouse. Zooming out to a few months can be a very useful feature to see trends and watch e.g. your API performance, your resource creation times or the benchmarks change over the long term.
 
-#### github OIDC integration
+#### GitHub OIDC Integration
 
-The SCS providers do allow all github users that belong to the SovereignCloudStack organization to get Viewer access to the dashboards by adding a `client_id` and `client_secret` in the ``[github.auth]`` section that you request from the SCS github admins (github's oauth auth). This allows to exchange experience and to get a feeling for the achievable stability. (Hint: A single digit number of API call fails per week and no other failures is achievable on loaded clouds.)
+The SCS providers do allow all GitHub users that belong to the SovereignCloudStack organization to get Viewer
+access to the dashboards.
+This allows to exchange experience and to get a feeling for the achievable stability.
+(Hint: A single digit number of API call fails per week and no other failures is achievable on loaded clouds.)
 
-## Alternative approach to install and configure the dashboard behind a reverse proxy
+OIDC integration is achieved by adjusting the `[auth.github]` section in `/etc/grafana/grafana.ini` as follows:
 
-Install influxdb via apt: https://docs.influxdata.com/influxdb/v1/introduction/install/#installing-influxdb-oss
-Install telegraf (same apt repo as influxdb): `sudo apt update && sudo apt install telegraf`
-Install grafana: https://grafana.com/docs/grafana/latest/setup-grafana/installation/debian/#install-from-apt-repository
-
-Prepare configuration by using the config files from the repository as an alternative to doing the changes manually (as described above):
+```ini
+[auth.github]
+enabled = true
+client_id = YOUR_CLIENT_ID
+client_secret = YOUR_CLIENT_SECRET
+allowed_organizations = ["SovereignCloudStack"]
+role_attribute_path = "'Viewer'"
+allow_assign_grafana_admin = false
+skip_org_role_sync = true
 ```
-sudo cp dashboard/telegraf.conf /etc/telegraf && sudo chown root:root /etc/telegraf/telegraf.conf && sudo chmod 0644 /etc/telegraf/telegraf.conf
-sudo cp dashboard/config.toml /etc/influxdb && sudo chown root:influxdb /etc/influxdb/config.toml && sudo chmod 0640 /etc/influxdb/config.toml
-sudo cp dashboard/grafana.ini /etc/grafana && sudo chown root:grafana /etc/grafana/grafana.ini && sudo chmod 0640 /etc/grafana/grafana.ini
-```
-These config files should work as long as the versions of telegraf, influxdb and grafana don't evolve too far from the ones used in the repository. (Otherwise refer to above instructions how to tweak the default config files.)
 
-Changes to `/etc/grafana/grafana.ini` as we do tls termination at the reverse proxy:
-- set `protocol = http`
-- comment out `domain` option (? FIXME) or set it to the hostname
-- comment out `cert_*` options
+This config maps all users to the `Viewer` role regardless of their role in the GitHub Org.
+Please replace `YOUR_CLIENT_ID` and `YOUR_CLIENT_SECRET` with the OAuth2 credentials that the SCS Org GitHub admins
+provided to you.
+Finally, don't forgot to restart Grafana with `sudo systemctl restart grafana-server` after adjusting the config.
 
-Also change the admin password in `grafana.ini`.
-
-Changes to `/etc/grafana/grafana.ini` if github auth should not be used yet:
-- comment out whole `[auth.github]` section for now (can be enabled later)
-
-Restart services: `sudo systemctl restart telegraf && sudo systemctl restart influxdb && sudo systemctl restart grafana-server`
-
-Configuration in grafana web gui:
-- Login to grafana `http(s)://<domain>:3000` with user admin and default password from `/etc/grafana/grafana.ini` and change password.
-- Create influxdb datasource with url `http://localhost:8086` and database name `telegraf`.
-- Finally import dashboard `dashboard/openstack-health-dashboard.json` to grafana.
-
-TODO:
-* Reverse proxy (aka ingress) with Let's Encrypt cert
-* Github auth as described above
+More information can be found in the [Grafana documentation for GitHub OAuth2](https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/configure-authentication/github/).
 
 ## Maintenance
 
@@ -504,7 +611,35 @@ The driver VM is a snowflake: A manually set up system (unless you automate all 
 
 ### Unattended upgrades
 
-It is recommended to ensure maintenance updates are deployed automatically. These are unlikely to negatively impact the openstack-health-monitor. See https://wiki.debian.org/UnattendedUpgrades. If you decide against unattended upgrades, it is recommended to install updates manually regularly and especially watch out for issues that affect the services that are exposed to the world: sshd (port 22) and grafana (port 3000).
+It is recommended to ensure maintenance updates are deployed automatically. These are unlikely to negatively impact the openstack-health-monitor. See https://wiki.debian.org/UnattendedUpgrades. If you decide against unattended upgrades, it is recommended to install updates manually regularly and especially watch out for issues that affect the services that are exposed to the world: sshd (port 22) and Caddy/Grafana (port 3000).
+
+If you use `unattended-upgrades`, you should review your settings in `/etc/apt/apt.conf.d/50unattended-upgrades`,
+especially `Unattended-Upgrade::Origins-Pattern`. It controls which packages are upgraded. If you want Caddy to be
+part of the automated updates, add an entry like the following:
+
+```
+Unattended-Upgrade::Origins-Pattern {
+    // ...
+    "origin=cloudsmith/caddy/stable";
+};
+```
+
+(This corresponds to `o=cloudsmith/caddy/stable` in the output of `apt-cache policy`).
+
+### sshd setup
+
+If you already use SSH keys to sign in to the driver VM, consider setting the following in your `/etc/ssh/sshd_config`
+if not already set:
+
+```
+PasswordAuthentication no
+```
+
+Debian's `openssh-server`, by default, is also very open about its version, so you might consider disabling this via:
+
+```
+DebianBanner no
+```
 
 ### Updating openstack-health-monitor
 
