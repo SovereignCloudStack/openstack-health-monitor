@@ -120,9 +120,14 @@ if test -z "$PINGTARGET"; then PINGTARGET=google-public-dns-b.google.com; fi
 if test -z "$PINGTARGET2"; then PINGTARGET2=dns.quad9.net; fi
 
 # Prefix for test resources
+DATADIR=${DATADIR:-$PWD}
 FORCEDEL=NONONO
 STARTDATE=$(date +%s)
-if test -z "$RPRE"; then RPRE="APIMonitor_${STARTDATE}_"; fi
+if test -z "$RPRE"; then
+	STD=$STARTDATE
+	RPRE="APIMonitor_${STD}_"
+	while test -e "$DATADIR/${RPRE}Keypair_JH"; do let STD+=1; RPRE="APIMonitor_${STD}_"; done
+fi
 if test "$RPRE" == "${RPRE%_}"; then echo "Need trailing _ for prefix RPRE"; exit 1; fi
 SHORT_DOMAIN="${OS_USER_DOMAIN_NAME##*OTC*00000000001000}"
 SHPRJ="${OS_PROJECT_NAME%_Project}"
@@ -310,8 +315,6 @@ FLAVOR=${FLAVOR:-SCS-1L-1}
 # (slows things down due to preventing quick_start and growpart)
 ADDJHVOLSIZE=${ADDJHVOLSIZE:-0}
 ADDVMVOLSIZE=${ADDVMVOLSIZE:-0}
-
-DATADIR=${DATADIR:-$PWD}
 
 LOGFILE=$DATADIR/${RPRE%_}.log
 declare -i APIERRORS=0
