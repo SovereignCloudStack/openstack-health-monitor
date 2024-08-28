@@ -318,7 +318,7 @@ DATADIR="${DATADIR:-$PWD/$CLOUDDIR}"
 if ! test -d "$DATADIR"; then mkdir "$DATADIR"; fi
 
 LOGFILE="$DATADIR/${RPRE%_}.log"
-SSHHOSTSFILE="$DATADIR/known_hosts.$RPRE"
+SSHHOSTSFILE="$DATADIR/known_hosts.${RPRE%_}"
 declare -i APIERRORS=0
 declare -i APITIMEOUTS=0
 declare -i APICALLS=0
