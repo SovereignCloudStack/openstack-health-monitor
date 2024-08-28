@@ -272,9 +272,12 @@ if test -z "$OS_PROJECT_NAME"; then
 	TRIPLE="$OS_CLOUD"
 	STRIPLE="$OS_CLOUD"
 	ALARMPRE="$OS_CLOUD"
+	CLOUDDIR="$OS_CLOUD"
 else
 	TRIPLE="$OS_USER_DOMAIN_NAME/$OS_PROJECT_NAME/$OS_REGION_NAME"
 	STRIPLE="$SHORT_DOMAIN/$SHPRJ/$OS_REGION_NAME"
+	ALARMPRE="$STRIPLE"
+	CLOUDDIR="$SHPRJ"
 fi
 if ! echo "$@" | grep '\(CLEANUP\|CONNTEST\)' >/dev/null 2>&1; then
   echo "Using $RPRE prefix for resrcs on $TRIPLE (${AZS[*]})"
@@ -311,7 +314,7 @@ FLAVOR=${FLAVOR:-SCS-1L-1}
 ADDJHVOLSIZE=${ADDJHVOLSIZE:-0}
 ADDVMVOLSIZE=${ADDVMVOLSIZE:-0}
 
-DATADIR=${DATADIR:-$PWD}
+DATADIR=${DATADIR:-$PWD/$CLOUDDIR}
 
 LOGFILE=$DATADIR/${RPRE%_}.log
 declare -i APIERRORS=0
@@ -2116,6 +2119,7 @@ createKeyPair()
 {
   echo -n "$1 "
   if test ! -r $DATADIR/$1; then
+    rm -f $DATADIR/$1 $DATADIR/$1.pub 2>/dev/null
     ssh-keygen -q -C $1@$HOSTNAME -t $KPTYPE -N "" -f $DATADIR/$1 || return 1
   fi
   ostackcmd_tm NOVASTATS $NOVATIMEOUT nova keypair-add --pub-key $DATADIR/$1.pub $1
@@ -2133,7 +2137,9 @@ createKeypairs()
   echo -n "New KEYPAIR: "
   createKeyPair ${RPRE}Keypair_JH || { echo; return 1; }
   createKeyPair ${RPRE}Keypair_VM
+  RC=$?
   echo
+  return $RC
 }
 
 deleteKeypairs()
