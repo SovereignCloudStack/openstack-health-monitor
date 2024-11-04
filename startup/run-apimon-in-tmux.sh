@@ -10,7 +10,7 @@ tmux send-keys "cd ~/openstack-health-monitor; export OS_CLOUD=$OS_CLOUD" C-m
 tmux select-window -t $session:0
 tmux send-keys "cd ~/openstack-health-monitor; export OS_CLOUD=$OS_CLOUD" C-m
 #tmux send-keys "export OS_CACERT=$OS_CACERT" C-m
-tmux send-keys "./run_in_loop_pluspco.sh" C-m
+tmux send-keys "./run_in_loop.sh" C-m
 #export OS_CLOUD=plus-hm2
 #tmux new-window -t $session:2 -n apimon2
 #tmux new-window -t $session:3 -n shell2
