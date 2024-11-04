@@ -3421,7 +3421,9 @@ EOT
       if echo "$BENCH" | grep 'test:' >/dev/null 2>&1; then
 	READ=$(echo "$BENCH" | grep '  read:')
 	WRITE=$(echo "$BENCH" | grep '  write:')
-	LAT=$(echo "$BENCH" | grep '  lat (msec)' | grep ', 10=' | sed 's/^.*, 10=\([0-9\.]*\)%.*$/\1/')
+	LAT=$(echo "$BENCH" | grep '  lat (msec)' | grep '\([ ,]10=\|[, ]100=\)' | sed -e 's@^.*[, ]100\{0,1\}=@@' -e 's@%, [0-9]*=@+@g' -e 's@%$@+@')
+	LAT="0+${LAT}"
+	LAT=$(echo ${LAT%+} | bc -l)
 	RIOPS=$(echo "$READ" | sed 's/^.*IOPS=\([0-9]*\),.*$/\1/')
 	WIOPS=$(echo "$WRITE" | sed 's/^.*IOPS=\([0-9]*\),.*$/\1/')
 	RBW=$(echo "$READ" | sed 's/^.*BW=\([0-9\.]*\)MiB.*$/\1/')
