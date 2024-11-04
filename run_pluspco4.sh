@@ -29,7 +29,7 @@ export FLAVOR=SCS-1L-1
 #export FLAVOR=1C-1GB-10GB
 #fi
 # EMail notifications sender address
-export FROM=kurt@garloff.de
+export FROM=kurt.garloff@sovereignit.cloud
 # Only use one AZ
 #export AZS="az1"
 # Upload (compressed) logfiles and stats to container
