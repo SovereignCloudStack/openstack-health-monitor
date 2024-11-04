@@ -329,7 +329,7 @@ cp -p startup/apimon.service ~/.config/systemd/user/
 systemctl --user enable apimon
 systemctl --user start apimon
 sudo loginctl enable-linger debian
-tmux attach oshealthmon
+tmux attach -t oshealthmon
 ```
 
 This assumes that you are using the user `debian` for this monitoring and have checked out the repository at `~/openstack-health-monitor/`. Adjust the paths and user name otherwise. (If for whatever reason you have chosen to install things as root, you will have to install the systemd service unit in the system paths and ensure it's not started too early in the boot process.)
