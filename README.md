@@ -19,11 +19,24 @@ Failures are noted and alarms are generated.
 
 - Align sendalarm with telegraf database entries
 
+## Status
+
+This project has outgrown its development design (a simple bash script to test
+a cloud with the OpenStack CLI with a real-world scenario) and has become very
+hard to maintain. A successor has been built with the
+[scs-health-monitor](https://github.com/SovereignCloudStack/scs-health-monitor)
+which is also described in a [blog article](https://scs.community/de/tech/2024/09/06/vp12-scs-health-monitor-tech-preview/).
+
+We plan to migrate our own monitoring over to the new monitor (until ~mid 2025).
+For the time being, we do still care about bugs in this old health-monitor and try to fix them,
+but this script does no longer receive new features nor do we make promises for the long-term.
+We recommend migration as well to the new solution.
+
 ## Copyright
 
 (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017-7/2017
 (c) Kurt Garloff <scs@garloff.de>, 2/2020-4/2021
-(c) Kurt Garloff <garloff@osb-alliance.com>, 5/2021-9/2022
+(c) Kurt Garloff <garloff@osb-alliance.com>, 5/2021-11/2024
 
 License: CC-BY-SA (2.0)
 
@@ -51,6 +64,7 @@ License: CC-BY-SA (2.0)
   d) do some property changes to VMs
 - after everything is complete, we wait for the VMs to be up
 - we ping them, log in via ssh and see whether they can ping to the outside world (quad9)
+- do some simplistic benchmarks, CPU (4k digits of pi), disk (fio), network (iperf3)
 - a full cross connectivity check (can each VM ping each other?) with `-C`
 - we create a loadbalancer and check accessing all VMs as members (RR) with `-L`/`-LL`
 - we kill some backends and check that the LB's health monitor detects this and
