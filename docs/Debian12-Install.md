@@ -468,7 +468,7 @@ of health mon instances.
 
 Reload Caddy with `sudo systemctl reload caddy`. That's it.
 
-You should now be able to access `https://health.YOURCLOUD.sovereignit.de:3000` and see a proxy error
+You should now be able to access `https://health.YOURCLOUD.sovereignit.cloud:3000` and see a proxy error
 page because the Grafana service is not yet running (this is our next step).
 The very first request will be a bit slower, because Caddy interacts with Let's Encrypt API to create
 the TLS certificate behind the scenes.
@@ -547,7 +547,7 @@ We do the OIDC connection in the section `[auth.github]` [later](#github-oidc-in
 We can now restart the service: `sudo systemctl restart grafana-server`.
 Being at it, also enable it on system startup: `sudo systemctl enable grafana-server`.
 
-You should now be able to access your dashboard on `https://health.YOURCLOUD.sovereignit.de:3000` and log in
+You should now be able to access your dashboard on `https://health.YOURCLOUD.sovereignit.cloud:3000` and log in
 via the configured username `admin` and your `SOME_SECRET_PASS` password.
 
 #### Enable influx database in grafana
