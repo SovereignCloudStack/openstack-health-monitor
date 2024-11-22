@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.111
+VERSION=1.112
 
 APIMON_ARGS="$@"
 # debugging
@@ -2319,6 +2319,9 @@ createJHVMs()
     if test -z "${REDIRS[$JHNUM]}"; then
       # No fwdmasq config possible yet
       USERDATA="#cloud-config
+#package_update: false
+package_reboot_if_required: false
+package_upgrade: false
 packages:
   - iptables
   - bc
@@ -2336,6 +2339,9 @@ otc:
     else
       RD=$(echo -n "${REDIRS[$JHNUM]}" |  sed 's@^0@         - 0@')
       USERDATA="#cloud-config
+package_update: false
+package_reboot_if_required: false
+package_upgrade: false
 otc:
    internalnet:
       - 10.250/16
@@ -2855,7 +2861,7 @@ createVMsAll()
   local netno AZ THISNOVM vmid off STMS
   local ERRS=0
   local UDTMP="$DATADIR/${RPRE}user_data_VM.yaml"
-  echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}ALL\n   path: /tmp/testfile\n   permissions: '0644'" > "$UDTMP"
+  echo -e "#cloud-config\n#package_update: false\npackage_upgrade: false\npackage_reboot_if_required: false\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}ALL\n   path: /tmp/testfile\n   permissions: '0644'" > "$UDTMP"
   if test -n "$LOADBALANCER"; then
     #echo -e "packages:\n  - thttpd\nruncmd:\n  - hostname > /srv/www/htdocs/hostname\n  - systemctl start thttpd\n  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl restart SuSEfirewall2" >> $UDTMP
     # This only requires python3
@@ -2910,7 +2916,7 @@ createVMs()
   if test -n "$BOOTALLATONCE"; then createVMsAll; return; fi
   local UDTMP="$DATADIR/${RPRE}user_data_VM.yaml"
   for no in $(seq 0 $NOVMS); do
-    echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}$no\n   path: /tmp/testfile\n   permissions: '0644'" > "$UDTMP.$no"
+    echo -e "#cloud-config\npackage_update: false\npackage_upgrade: false\npackage_reboot_if_required: false\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}$no\n   path: /tmp/testfile\n   permissions: '0644'" > "$UDTMP.$no"
   done
   if test -n "$BOOTFROMIMAGE"; then
     if test -n "$VMVOLSIZE"; then
@@ -3241,6 +3247,36 @@ $OSTACKRESP" 0
   return $waiterr
 }
 
+waitssh()
+# Connect to VM, trying multiple times, up to 3*$MAXWAIT seconds
+# $1 => Keypair
+# $2 => IP
+# $3 => Port (with -p)
+# $4+ => command
+# RC: 0 => success
+#     X => fail
+{
+  declare -i waittm=0
+  local SERR=2
+  local KP=$1
+  local IP=$2
+  local PT=$3
+  shift 3
+  if test -n "$LOGFILE"; then
+    echo "ssh -i $DATADIR/$KP $PT -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" -o \"UserKnownHostsFile=$SSHHOSTSFILE\" ${USER}@$IP $@" >> "$LOGFILE"
+  fi
+  while test $SERR != 0 -a $waittm -le $((3*MAXWAIT)); do
+    ssh -i "$DATADIR/$KP" $PT -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$IP "$@" >/dev/null 2>&1
+    SERR=$?
+    if test $SERR != 0; then echo -n "....."; sleep 10; fi
+    let waittm+=10
+  done
+  if test $SERR != 0 -a -n "$LOGFILE"; then
+    echo "ERROR ssh $@ on $IP:${PT#-p }" >> "$LOGFILE"
+  fi
+  return $SERR
+}
+
 BENCH=""
 # Test ssh and test for user_data (or just plain ls) and internet ping (via SNAT instance)
 # $1 => Keypair
@@ -3266,32 +3302,15 @@ testlsandping()
     USER="$DEFLTUSER"
   fi
   if test -z "$pport"; then
-    if test -n "$LOGFILE"; then
-      echo "ssh -i $DATADIR/$1 $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" -o \"UserKnownHostsFile=$SSHHOSTSFILE\" ${USER}@$2 ls" >> "$LOGFILE"
-    fi
     # no user_data on JumpHosts
-    ssh -i "$DATADIR/$1" $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n "......"; sleep 12;
-    ssh -i "$DATADIR/$1" $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".........."; sleep 20;
-    ssh -i "$DATADIR/$1" $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=20" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 ls >/dev/null 2>&1; }; } || {
-	if test -n "$LOGFILE"; then echo "ERROR ssh ls on $2" >> "$LOGFILE"; fi
-	return 2; }
+    waitssh $1 $2 "$pport" ls || return 2
   else
-    if test -n "$LOGFILE"; then
-      echo "ssh -i $DATADIR/$1 $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 grep api_monitor.sh.${RPRE}[$4]" >> "$LOGFILE"
-    fi
-    # Test whether user_data file injection worked
     if test -n "$BOOTALLATONCE"; then
-      # no indiv user data per VM when mass booting ...
-      ssh -i "$DATADIR/$1" $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "o"; sleep 12;
-      ssh -i "$DATADIR/$1" $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || {
-	if test -n "$LOGFILE"; then echo "ERROR ssh grep on $2:$3" >> "$LOGFILE"; fi
-	return 2; }
+      DF=api_monitor.sh.${RPRE}
     else
-      ssh -i "$DATADIR/$1" $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "O"; sleep 12;
-      ssh -i "$DATADIR/$1" $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || {
-	if test -n "$LOGFILE"; then echo "ERROR ssh grep on $2:$3" >> "$LOGFILE"; fi
-	return 2; }
+      DF=api_monitor.sh.${RPRE}$4
     fi
+    waitssh $1 $2 "$pport" grep $DF /tmp/testfile || return 2
   fi
   # PING
   if test -n "$LOGFILE"; then
@@ -3385,7 +3404,7 @@ exit 1
 EOT
     chmod +x ${RPRE}wait
     for JHNO in $(seq 0 $(($NOAZS-1))); do
-      scp -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "StrictHostKeyChecking=no" -o "PasswordAuthentication=no" -i "$DATADIR/${KEYPAIRS[0]}" -p ${RPRE}wait ${USER}@${FLOATS[$JHNO]}: >/dev/null
+      scp -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "StrictHostKeyChecking=no" -o "PasswordAuthentication=no" -i "$DATADIR/${KEYPAIRS[0]}" -Op ${RPRE}wait ${USER}@${FLOATS[$JHNO]}: >/dev/null
     done
     rm ${RPRE}wait >/dev/null 2>&1
   fi
@@ -3591,7 +3610,7 @@ EOT
     for red in ${REDIRS[$JHNO]}; do
       pno=${red#*tcp,}
       pno=${pno%%,*}
-      scp -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i "$DATADIR/${KEYPAIRS[1]}" -P $pno -p ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
+      scp -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i "$DATADIR/${KEYPAIRS[1]}" -P $pno -Op ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
       #echo "ssh -o \"UserKnownHostsFile=$SSHHOSTSFILE\" -o \"PasswordAuthentication=no\" -i $DATADIR/${KEYPAIRS[1]} -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}"
       if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=$SSHHOSTSFILE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i \"$DATADIR/${KEYPAIRS[1]}\" -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}" >> "$LOGFILE"; fi
       PINGRES="$(ssh -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i "$DATADIR/${KEYPAIRS[1]}" -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]})"
@@ -3652,7 +3671,7 @@ EOT
     fi
     FLT=${FLOATS[$(($VM%$NOAZS))]}
     #echo -n "Test ($SRC,$(($VM+$NOVMS-$NONETS)),$FLT/$pno)->$TGT: "
-    scp -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i "$DATADIR/${KEYPAIRS[1]}" -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
+    scp -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i "$DATADIR/${KEYPAIRS[1]}" -P $pno -Op ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
     if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=$SSHHOSTSFILE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i \"$DATADIR/${KEYPAIRS[1]}\" -p $pno ${DEFLTUSER}@$FLT iperf3 -t5 -J -c $TGT" >> "$LOGFILE"; fi
     IPJSON=$(ssh -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i "$DATADIR/${KEYPAIRS[1]}" -p $pno ${DEFLTUSER}@$FLT "./${RPRE}wait iperf3; iperf3 -t5 -J -c $TGT")
     if test $? != 0; then
