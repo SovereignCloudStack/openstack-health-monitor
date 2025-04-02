@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.111
+VERSION=1.113
 
 APIMON_ARGS="$@"
 # debugging
@@ -286,13 +286,17 @@ fi
 # Images, flavors, disk sizes defaults -- these can be overriden
 # Ideally have SUSE image with SuSEfirewall2-snat for JumpHosts, will be detected
 # otherwise raw iptables commands will set up SNAT.
-#JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
-JHIMG="${JHIMG:-Ubuntu 22.04}"
-# Pass " " to filter if you don't need the optimization of image filtering
-#JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
 # For 2nd interface (-2/3/4), use also SUSE image with cloud-multiroute
-IMG="${IMG:-Ubuntu 22.04}"
-#IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
+#IMG="${JHIMG:-Standard_openSUSE_15_latest}"
+#IMG="${JHIMG:-openSUSE 15.6}"
+IMG="${IMG:-Ubuntu 24.04}"
+# Pass " " to filter if you don't need the optimization of image filtering
+#IMGFILT="${IMGFILT:---property-filter os_distro=Ubuntu}"
+#JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
+#JHIMG="${JHIMG:-openSUSE 15.6}"
+#JHIMG="${JHIMG:-Ubuntu 24.04}"
+JHIMG="${JHIMG:-$IMG}"
+#JHIMGFILT="${JHIMGFILT:---property-filter os_distro=openSUSE}"
 # ssh login names with injected key
 if test "${IMG:0:6}" = "Ubuntu"; then
   DEFLTUSER=${DEFLTUSER:-ubuntu}
@@ -381,6 +385,8 @@ usage()
   echo " -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)"
   echo " -LR    reverse order of LB healthmon and member creation and deletion"
+  echo " -X     test list requests for octavia, swift, heat, designte, barbican, manila, aodh,"
+  echo "         gnocchi, magnum, senlin, ironic if those are advertised in the catalog"
   echo " -b     run a simple compute benchmark (4k pi with bc)"
   echo " -B     measure TCP BW b/w VMs (iperf3)"
   echo " -M     measure disk I/O bandwidth & latency (fio)"
@@ -438,6 +444,7 @@ while test -n "$1"; do
     "-o") OPENSTACKCLIENT=1;;
     "-O") OPENSTACKCLIENT=1; OPENSTACKTOKEN=1;;
     "-x") CLEANALLFIPS=1;;
+    "-X") TESTAUX=1;;
     "-I") DISASSOC=1;;
     "-r") ROUTERITER=$2; shift;;
     "-L") LOADBALANCER=1;;
@@ -790,9 +797,10 @@ translate()
   local no DEFCMD=""
   unset MYTAG
   ORIGCMD="$1"
-  CMDS=(nova cinder neutron glance octavia swift)
-  OSTDEFS=(server volume network image loadbalancer object)
-  EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP $OCTAVIA_EP $SWIFT_EP)
+  CMDS=(nova cinder neutron glance octavia swift designate heat barbican manila aodh gnocchi magnum senlin ironic)
+  OSTDEFS=(server volume network image loadbalancer container zone stack secret share alarm "metric resource" "coe cluster" cluster "baremetal node")
+  EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP $OCTAVIA_EP $SWIFT_EP "$DESIGNATE_EP" "$HEAT_EP" \
+	"$BARBICAN_EP" "$MANILA_EP" "$AODH_EP" "$GNOCCHI_EP" "$MAGNUM_EP" "$SENLIN_EP" "$IRONIC_EP")
   for no in $(seq 0 $((${#CMDS[*]}-1))); do
     if test ${CMDS[$no]} == $1; then
       EP=${EPS[$no]}
@@ -818,6 +826,10 @@ translate()
   if test $ORIGCMD == neutron && test $CMD == create -o $CMD == list && test -z "$NOFILTERTAG" && test "$1" != "net-external-list" -a "$1" != "port-list" -a "$1" != "router-list" -a "$1" != "lbaas-loadbalancer-list"; then
     MYTAG="$TAGARG"
   fi
+  # Some services can not easily be talked to directly
+  case $ORIGCMD in
+    barbican|designate|senlin) OPST=openstack;;
+  esac
   if test "$CMD" == "$1"; then
     # No '-'
     shift
@@ -2319,6 +2331,9 @@ createJHVMs()
     if test -z "${REDIRS[$JHNUM]}"; then
       # No fwdmasq config possible yet
       USERDATA="#cloud-config
+#package_update: false
+package_reboot_if_required: false
+package_upgrade: false
 packages:
   - iptables
   - bc
@@ -2336,6 +2351,9 @@ otc:
     else
       RD=$(echo -n "${REDIRS[$JHNUM]}" |  sed 's@^0@         - 0@')
       USERDATA="#cloud-config
+package_update: false
+package_reboot_if_required: false
+package_upgrade: false
 otc:
    internalnet:
       - 10.250/16
@@ -2855,7 +2873,7 @@ createVMsAll()
   local netno AZ THISNOVM vmid off STMS
   local ERRS=0
   local UDTMP="$DATADIR/${RPRE}user_data_VM.yaml"
-  echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}ALL\n   path: /tmp/testfile\n   permissions: '0644'" > "$UDTMP"
+  echo -e "#cloud-config\n#package_update: false\npackage_upgrade: false\npackage_reboot_if_required: false\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}ALL\n   path: /tmp/testfile\n   permissions: '0644'" > "$UDTMP"
   if test -n "$LOADBALANCER"; then
     #echo -e "packages:\n  - thttpd\nruncmd:\n  - hostname > /srv/www/htdocs/hostname\n  - systemctl start thttpd\n  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl restart SuSEfirewall2" >> $UDTMP
     # This only requires python3
@@ -2910,7 +2928,7 @@ createVMs()
   if test -n "$BOOTALLATONCE"; then createVMsAll; return; fi
   local UDTMP="$DATADIR/${RPRE}user_data_VM.yaml"
   for no in $(seq 0 $NOVMS); do
-    echo -e "#cloud-config\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}$no\n   path: /tmp/testfile\n   permissions: '0644'" > "$UDTMP.$no"
+    echo -e "#cloud-config\npackage_update: false\npackage_upgrade: false\npackage_reboot_if_required: false\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}$no\n   path: /tmp/testfile\n   permissions: '0644'" > "$UDTMP.$no"
   done
   if test -n "$BOOTFROMIMAGE"; then
     if test -n "$VMVOLSIZE"; then
@@ -3241,6 +3259,36 @@ $OSTACKRESP" 0
   return $waiterr
 }
 
+waitssh()
+# Connect to VM, trying multiple times, up to 3*$MAXWAIT seconds
+# $1 => Keypair
+# $2 => IP
+# $3 => Port (with -p)
+# $4+ => command
+# RC: 0 => success
+#     X => fail
+{
+  declare -i waittm=0
+  local SERR=2
+  local KP=$1
+  local IP=$2
+  local PT=$3
+  shift 3
+  if test -n "$LOGFILE"; then
+    echo "ssh -i $DATADIR/$KP $PT -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" -o \"UserKnownHostsFile=$SSHHOSTSFILE\" ${USER}@$IP $@" >> "$LOGFILE"
+  fi
+  while test $SERR != 0 -a $waittm -le $((3*MAXWAIT)); do
+    ssh -i "$DATADIR/$KP" $PT -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$IP "$@" >/dev/null 2>&1
+    SERR=$?
+    if test $SERR != 0; then echo -n "....."; sleep 10; fi
+    let waittm+=10
+  done
+  if test $SERR != 0 -a -n "$LOGFILE"; then
+    echo "ERROR ssh $@ on $IP:${PT#-p }" >> "$LOGFILE"
+  fi
+  return $SERR
+}
+
 BENCH=""
 # Test ssh and test for user_data (or just plain ls) and internet ping (via SNAT instance)
 # $1 => Keypair
@@ -3266,32 +3314,15 @@ testlsandping()
     USER="$DEFLTUSER"
   fi
   if test -z "$pport"; then
-    if test -n "$LOGFILE"; then
-      echo "ssh -i $DATADIR/$1 $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=10\" -o \"UserKnownHostsFile=$SSHHOSTSFILE\" ${USER}@$2 ls" >> "$LOGFILE"
-    fi
     # no user_data on JumpHosts
-    ssh -i "$DATADIR/$1" $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n "......"; sleep 12;
-    ssh -i "$DATADIR/$1" $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 ls >/dev/null 2>&1 || { echo -n ".........."; sleep 20;
-    ssh -i "$DATADIR/$1" $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=20" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 ls >/dev/null 2>&1; }; } || {
-	if test -n "$LOGFILE"; then echo "ERROR ssh ls on $2" >> "$LOGFILE"; fi
-	return 2; }
+    waitssh $1 $2 "$pport" ls || return 2
   else
-    if test -n "$LOGFILE"; then
-      echo "ssh -i $DATADIR/$1 $pport -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 grep api_monitor.sh.${RPRE}[$4]" >> "$LOGFILE"
-    fi
-    # Test whether user_data file injection worked
     if test -n "$BOOTALLATONCE"; then
-      # no indiv user data per VM when mass booting ...
-      ssh -i "$DATADIR/$1" $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1 || { echo -n "o"; sleep 12;
-      ssh -i "$DATADIR/$1" $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 grep api_monitor.sh.${RPRE} /tmp/testfile >/dev/null 2>&1; } || {
-	if test -n "$LOGFILE"; then echo "ERROR ssh grep on $2:$3" >> "$LOGFILE"; fi
-	return 2; }
+      DF=api_monitor.sh.${RPRE}
     else
-      ssh -i "$DATADIR/$1" $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8"  -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1 || { echo -n "O"; sleep 12;
-      ssh -i "$DATADIR/$1" $pport -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=16" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@$2 grep api_monitor.sh.${RPRE}$4 /tmp/testfile >/dev/null 2>&1; } || {
-	if test -n "$LOGFILE"; then echo "ERROR ssh grep on $2:$3" >> "$LOGFILE"; fi
-	return 2; }
+      DF=api_monitor.sh.${RPRE}$4
     fi
+    waitssh $1 $2 "$pport" grep $DF /tmp/testfile || return 2
   fi
   # PING
   if test -n "$LOGFILE"; then
@@ -3385,7 +3416,7 @@ exit 1
 EOT
     chmod +x ${RPRE}wait
     for JHNO in $(seq 0 $(($NOAZS-1))); do
-      scp -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "StrictHostKeyChecking=no" -o "PasswordAuthentication=no" -i "$DATADIR/${KEYPAIRS[0]}" -p ${RPRE}wait ${USER}@${FLOATS[$JHNO]}: >/dev/null
+      scp -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "StrictHostKeyChecking=no" -o "PasswordAuthentication=no" -i "$DATADIR/${KEYPAIRS[0]}" -Op ${RPRE}wait ${USER}@${FLOATS[$JHNO]}: >/dev/null
     done
     rm ${RPRE}wait >/dev/null 2>&1
   fi
@@ -3591,7 +3622,7 @@ EOT
     for red in ${REDIRS[$JHNO]}; do
       pno=${red#*tcp,}
       pno=${pno%%,*}
-      scp -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i "$DATADIR/${KEYPAIRS[1]}" -P $pno -p ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
+      scp -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i "$DATADIR/${KEYPAIRS[1]}" -P $pno -Op ${RPRE}ping ${DEFLTUSER}@${FLOATS[$JHNO]}: >/dev/null
       #echo "ssh -o \"UserKnownHostsFile=$SSHHOSTSFILE\" -o \"PasswordAuthentication=no\" -i $DATADIR/${KEYPAIRS[1]} -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}"
       if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=$SSHHOSTSFILE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i \"$DATADIR/${KEYPAIRS[1]}\" -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]}" >> "$LOGFILE"; fi
       PINGRES="$(ssh -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i "$DATADIR/${KEYPAIRS[1]}" -p $pno ${DEFLTUSER}@${FLOATS[$JHNO]} ./${RPRE}ping ${IPS[*]})"
@@ -3652,7 +3683,7 @@ EOT
     fi
     FLT=${FLOATS[$(($VM%$NOAZS))]}
     #echo -n "Test ($SRC,$(($VM+$NOVMS-$NONETS)),$FLT/$pno)->$TGT: "
-    scp -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i "$DATADIR/${KEYPAIRS[1]}" -P $pno -p ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
+    scp -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i "$DATADIR/${KEYPAIRS[1]}" -P $pno -Op ${RPRE}wait ${DEFLTUSER}@$FLT: >/dev/null
     if test -n "$LOGFILE"; then echo "ssh -o \"UserKnownHostsFile=$SSHHOSTSFILE\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -i \"$DATADIR/${KEYPAIRS[1]}\" -p $pno ${DEFLTUSER}@$FLT iperf3 -t5 -J -c $TGT" >> "$LOGFILE"; fi
     IPJSON=$(ssh -o "UserKnownHostsFile=$SSHHOSTSFILE" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -i "$DATADIR/${KEYPAIRS[1]}" -p $pno ${DEFLTUSER}@$FLT "./${RPRE}wait iperf3; iperf3 -t5 -J -c $TGT")
     if test $? != 0; then
@@ -3749,7 +3780,7 @@ stats()
   DIG=${2:-2}
   PCT=${4:-95}
   eval LIST=( \"\${${1}[@]}\" )
-  if test ${#LIST[*]} -lt 2; then return; fi
+  if test ${#LIST[*]} -lt 1; then return; fi
   echo -n "$NAME: " | tee -a "$LOGFILE"
   echo "${LIST[*]}" | ./stats.py -d $DIG -p $PCT $MACHINE | tee -a "$LOGFILE"
 }
@@ -3757,34 +3788,88 @@ stats()
 # [-m] for machine readable
 allstats()
 {
- stats $1 NETSTATS   2 "Neutron CLI Stats "
- stats $1 FIPSTATS   2 "Neutron FIP Stats "
- if test -n "$LOADBALANCER" -a -n "$LBSTATS"; then
-   stats $1 LBSTATS    2 "LB CLI Stats      "
- fi
- stats $1 NOVASTATS  2 "Nova CLI Stats    "
- stats $1 NOVABSTATS 2 "Nova Boot Stats   "
- stats $1 VMCSTATS   0 "VM Creation Stats "
+ stats $1 NETSTATS    2 "Neutron CLI Stats "
+ stats $1 FIPSTATS    2 "Neutron FIP Stats "
+ stats $1 AUXSTATS    2 "AuxSvc GET Stats  "
+ stats $1 METRICSTATS 2 "Metrics Stats     "
+ stats $1 VOLSTATS    2 "Cinder CLI Stats  "
+ stats $1 VOLCSTATS   0 "Vol Creation Stats"
+ stats $1 NOVASTATS   2 "Nova CLI Stats    "
+ stats $1 NOVABSTATS  2 "Nova Boot Stats   "
+ stats $1 VMCSTATS    0 "VM Creation Stats "
+ stats $1 VMDSTATS    0 "VM Deletion Stats "
+ stats $1 WAITTIME    0 "Wait for VM Stats "
+ stats $1 LBSTATS     2 "LB CLI Stats      "
  if test -n "$LOADBALANCER" -a -n "$LBCSTATS"; then
-   stats $1 LBCSTATS   0 "LB Creation Stats "
+   stats $1 LBCSTATS  0 "LB Creation Stats "
  fi
  if test -n "$BCBENCH"; then
-   stats $1 PITIME     1 "Calc PI 4k Stats  "
+   stats $1 PITIME    1 "Calc PI 4k Stats  "
  fi
  if test -n "$IPERF"; then
-   stats $1 BANDWIDTH  0 "Bandwidth Stats   " 5
+   stats $1 BANDWIDTH 0 "Bandwidth Stats   " 5
  fi
  if test -n "$FIOBENCH"; then
-   stats $1 FIOBW      1 "DiskBW    Stats   " 5
-   stats $1 FIOIOPS    0 "DiskIOPS  Stats   " 5
-   stats $1 FIOLAT     2 "DiskLat10mStats   "
+   stats $1 FIOBW     1 "DiskBW    Stats   " 5
+   stats $1 FIOIOPS   0 "DiskIOPS  Stats   " 5
+   stats $1 FIOLAT    2 "DiskLat10mStats   "
  fi
- stats $1 VMDSTATS   0 "VM Deletion Stats "
- stats $1 VOLSTATS   2 "Cinder CLI Stats  "
- stats $1 VOLCSTATS  0 "Vol Creation Stats"
- stats $1 WAITTIME   0 "Wait for VM Stats "
- stats $1 TOTTIME    0 "Total setup Stats "
+ stats $1 TOTTIME     0 "Total setup Stats "
 }
+
+
+# $1: EP
+# $2: StatsName
+# $3: TimeOut
+# $4: Output
+# $5+: Command
+testAuxHelper()
+{
+  EP="$1"; shift
+  if test -z "$EP"; then return; fi
+  if test "${EP:$((${#EP}-3))}" = "Url"; then return; fi
+  SNM="$1"; shift
+  TMO="$1"; shift
+  echo -n "$1: "; shift
+  ostackcmd_tm_retry $SNM $TMO "$@"
+  if test $RC != 0; then
+    echo -e "${RED}FAIL{$NORM}"
+  else
+    CNT=$(echo "$OSTACKRESP" | grep -v '^+' | grep -v '^| [iI][dD]' | grep -v '^$' | wc -l)
+    echo -e "${GREEN}OK${NORM} ($CNT)"
+  fi
+}
+
+
+# Test Aux services (-X):
+# octavia (if LB tests are not enable anyways)
+# barbican
+# designate
+# heat
+# manila
+# aodh
+# gnocchi
+# swift
+testAux()
+{
+  if test -z "$TESTAUX"; then return; fi
+  if test -z "$LOADBALANCER"; then
+    testAuxHelper "$OCTAVIA_EP" LBSTATS $FIPTIMEOUT  "Octavia  service: " neutron lbaas-loadbalancer-list
+  fi
+  testAuxHelper "$BARBICAN_EP" AUXSTATS $NETTIMEOUT  "Barbican service: " barbican list
+  #testAuxHelper "$BARBICAN_EP" AUXSTATS $NETTIMEOUT  "Barbican service: " openstack secret list
+  testAuxHelper "$DESIGNATE_EP" AUXSTATS $FIPTIMEOUT "Designate   srvc: " designate list
+  #testAuxHelper "$DESIGNATE_EP" AUXSTATS $FIPTIMEOUT "Designate   srvc: " openstack zone list
+  testAuxHelper "$HEAT_EP" AUXSTATS $FIPTIMEOUT      "Heat     service: " heat list
+  testAuxHelper "$MANILA_EP" AUXSTATS $CINDERTIMEOUT "Manila   service: " manila list
+  testAuxHelper "$AODH_EP" AUXSTATS $NETTIMEOUT      "AODH     service: " aodh list
+  testAuxHelper "$GNOCCHI_EP" METRICSTATS $((FIPTIMEOUT+8)) "Gnocchi  service: " gnocchi list
+  testAuxHelper "$MAGNUM_EP" AUXSTATS $NETTIMEOUT    "Magnum   service: " magnum list
+  testAuxHelper "$SENLIN_EP" METRICSTATS $FIPTIMEOUT "Senlin   service: " senlin list
+  testAuxHelper "$IRONIC_EP" AUXSTATS $NOVATIMEOUT   "Ironic   service: " ironic list
+  testAuxHelper "$SWIFT_EP" AUXSTATS $CINDERTIMEOUT  "Swift    service: " swift list
+}
+
 
 # Identify which FIPs really belong to us
 # Also populates JHPORTS (in Name order)
@@ -4126,6 +4211,17 @@ getToken()
   if test -z "$OCTAVIA_EP"; then OCTAVIA_EP="$NEUTRON_EP"; fi
   if test -z "$SWIFT_EP"; then SWIFT_EP=$(getPublicEP radosgw-swift); fi
   #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP"
+  # Optional EPs
+  HEAT_EP=$(getPublicEP heat)
+  BARBICAN_EP=$(getPublicEP barbican)
+  DESIGNATE_EP=$(getPublicEP designate)
+  MANILA_EP=$(getPublicEP manilav2)
+  AODH_EP=$(getPublicEP aodh)
+  GNOCCHI_EP=$(getPublicEP gnocchi)
+  MAGNUM_EP=$(getPublicEP magnum)
+  SENLIN_EP=$(getPublicEP senlin)
+  IRONIC_EP=$(getPublicEP ironic)
+  #echo "MORE ENDPOINTS: $HEAT_EP, $BARBICAN_EP, $DESIGNATE_EP, $MANILA_EP, $AODH_EP, $GNOCCHI_EP, $MAGNUM_EP"
   ostackcmd_tm_retry KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
   TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')
   #echo "TOKEN: {SHA256}$(echo $TOKEN | sha256sum)"
@@ -4306,6 +4402,8 @@ declare -a VMCSTATS
 declare -a LBCSTATS
 declare -a LBDSTATS
 declare -a VMCDTATS
+declare -a AUXSTATS
+declare -a METRICSTATS
 
 declare -a TOTTIME
 declare -a WAITTIME
@@ -4503,6 +4601,7 @@ else # test "$1" = "DEPLOY"; then
  echo -e "$BOLD *** Start deployment $((loop+1))/$MAXITER for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM ($TRIPLE) $TAGARG"
  date
  unset THISRUNSUCCESS
+ testAux
  # Image IDs
  JHIMGID=$(ostackcmd_search "$JHIMG" $GLANCETIMEOUT glance image-list $JHIMGFILT | awk '{ print $2; }')
  if test -z "$JHIMGID" -o "$JHIMGID" == "0"; then sendalarm 1 "No JH image $JHIMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
@@ -4819,6 +4918,8 @@ $(allstats -m)" > "$DATADIR/Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv"
   LBCSTATS=()
   LBDSTATS=()
   VMDSTATS=()
+  AUXSTATS=()
+  METRICSTATS=()
   TOTTIME=()
   WAITTIME=()
   PITIME=()

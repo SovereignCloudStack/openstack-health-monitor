@@ -297,10 +297,10 @@ for ENV in $TOCLEAN; do
 done
 
 # Now run the monitor
-#exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -M -LO -b -B -a 2 -t -T -R -S ciab "$@"
-exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -M -LO -b -B -T "$@"
+#exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -M -LO -b -B -a 2 -t -T -R -X -S ciab "$@"
+exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -M -LO -b -B -T -X "$@"
 ```
-Compared to the previous run, we have explicitly set two networks here `-N 2` and rely on the iterations being passed in as command line arguments. Add parameter `-t` if your cloud is slow to increase timeouts. We have enabled the ovtavia loadbalancer (`-LO`) in this example rather than the amphora based one (`-LL`).
+Compared to the previous run, we have explicitly set two networks here `-N 2` and rely on the iterations being passed in as command line arguments. Add parameter `-t` if your cloud is slow to increase timeouts. We have enabled the ovtavia loadbalancer (`-LO`) in this example rather than the amphora based one (`-LL`) and have enabled GET requests to some extra services (`-X`).
 
 You may use one of the existing `run_XXXX.sh` scripts as example. Beware: eMail alerting with `ALARM_EMAIL_ADDRESS` and `NOTE_EMAIL_ADDRESS` (and limiting with `-a` and `-R` ) and reporting data to telegraf (option `-S`) may be present in the samples. Make this script executable (`chmod +x run_CLOUDNAME.sh`).
 
@@ -329,7 +329,7 @@ cp -p startup/apimon.service ~/.config/systemd/user/
 systemctl --user enable apimon
 systemctl --user start apimon
 sudo loginctl enable-linger debian
-tmux attach oshealthmon
+tmux attach -t oshealthmon
 ```
 
 This assumes that you are using the user `debian` for this monitoring and have checked out the repository at `~/openstack-health-monitor/`. Adjust the paths and user name otherwise. (If for whatever reason you have chosen to install things as root, you will have to install the systemd service unit in the system paths and ensure it's not started too early in the boot process.)
@@ -468,7 +468,7 @@ of health mon instances.
 
 Reload Caddy with `sudo systemctl reload caddy`. That's it.
 
-You should now be able to access `https://health.YOURCLOUD.sovereignit.de:3000` and see a proxy error
+You should now be able to access `https://health.YOURCLOUD.sovereignit.cloud:3000` and see a proxy error
 page because the Grafana service is not yet running (this is our next step).
 The very first request will be a bit slower, because Caddy interacts with Let's Encrypt API to create
 the TLS certificate behind the scenes.
@@ -547,7 +547,7 @@ We do the OIDC connection in the section `[auth.github]` [later](#github-oidc-in
 We can now restart the service: `sudo systemctl restart grafana-server`.
 Being at it, also enable it on system startup: `sudo systemctl enable grafana-server`.
 
-You should now be able to access your dashboard on `https://health.YOURCLOUD.sovereignit.de:3000` and log in
+You should now be able to access your dashboard on `https://health.YOURCLOUD.sovereignit.cloud:3000` and log in
 via the configured username `admin` and your `SOME_SECRET_PASS` password.
 
 #### Enable influx database in grafana
