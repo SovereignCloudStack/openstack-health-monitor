@@ -95,8 +95,8 @@ done
 
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
 #exec api_monitor.sh -o -C -D -N 2 -n 8 -s -e sender@domain.org "$@"
-#exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -M -a 2 -T -R "$@"
-exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -LO -b -B -M -a 2 -T -R -S gx-scs "$@"
-#exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -LO -LR -b -B -M -a 2 -T -R -S gx-scs "$@"
+#exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -M -a 2 -T -R -X "$@"
+exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -LO -b -B -M -a 2 -T -R -X -S gx-scs "$@"
+#exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -LO -LR -b -B -M -a 2 -T -R -X -S gx-scs "$@"
 #exec ./api_monitor.sh -o -C -D -N 2 -n 8 -s -L -b -B -M -a 2 -T -R "$@"
 

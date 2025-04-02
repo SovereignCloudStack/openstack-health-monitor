@@ -297,10 +297,10 @@ for ENV in $TOCLEAN; do
 done
 
 # Now run the monitor
-#exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -M -LO -b -B -a 2 -t -T -R -S ciab "$@"
-exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -M -LO -b -B -T "$@"
+#exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -M -LO -b -B -a 2 -t -T -R -X -S ciab "$@"
+exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -M -LO -b -B -T -X "$@"
 ```
-Compared to the previous run, we have explicitly set two networks here `-N 2` and rely on the iterations being passed in as command line arguments. Add parameter `-t` if your cloud is slow to increase timeouts. We have enabled the ovtavia loadbalancer (`-LO`) in this example rather than the amphora based one (`-LL`).
+Compared to the previous run, we have explicitly set two networks here `-N 2` and rely on the iterations being passed in as command line arguments. Add parameter `-t` if your cloud is slow to increase timeouts. We have enabled the ovtavia loadbalancer (`-LO`) in this example rather than the amphora based one (`-LL`) and have enabled GET requests to some extra services (`-X`).
 
 You may use one of the existing `run_XXXX.sh` scripts as example. Beware: eMail alerting with `ALARM_EMAIL_ADDRESS` and `NOTE_EMAIL_ADDRESS` (and limiting with `-a` and `-R` ) and reporting data to telegraf (option `-S`) may be present in the samples. Make this script executable (`chmod +x run_CLOUDNAME.sh`).
 
