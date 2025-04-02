@@ -385,8 +385,9 @@ usage()
   echo " -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)"
   echo " -LR    reverse order of LB healthmon and member creation and deletion"
-  echo " -X     test list requests for octavia, swift, heat, designte, barbican, manila, aodh,"
+  echo " -X     test list requests for octavia, swift, heat, designate, barbican, manila, aodh,"
   echo "         gnocchi, magnum, senlin, ironic if those are advertised in the catalog"
+  echo "         and client tools are installed"
   echo " -b     run a simple compute benchmark (4k pi with bc)"
   echo " -B     measure TCP BW b/w VMs (iperf3)"
   echo " -M     measure disk I/O bandwidth & latency (fio)"
@@ -4212,15 +4213,25 @@ getToken()
   if test -z "$SWIFT_EP"; then SWIFT_EP=$(getPublicEP radosgw-swift); fi
   #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP"
   # Optional EPs
+  OSHELP=$(openstack help)
   HEAT_EP=$(getPublicEP heat)
+  if test -n "$HEAT_EP" -a -z $(echo "$OSHELP" | grep heatclient); then echo "Lacking openstack heatclient support"; unset HEAT_EP; fi
   BARBICAN_EP=$(getPublicEP barbican)
+  if test -n "$BARBICAN_EP" -a -z $(echo "$OSHELP" | grep barbicanclient); then echo "Lacking openstack barbicanclient support"; unset BARBICAN_EP; fi
   DESIGNATE_EP=$(getPublicEP designate)
+  if test -n "$DESIGNATE_EP" -a -z $(echo "$OSHELP" | grep designateclient); then echo "Lacking openstack designateclient support"; unset DESIGNATE_EP; fi
   MANILA_EP=$(getPublicEP manilav2)
+  if test -n "$MANILA_EP" -a -z $(echo "$OSHELP" | grep manilaclient); then echo "Lacking openstack manilaclient support"; unset MANILA_EP; fi
   AODH_EP=$(getPublicEP aodh)
+  if test -n "$AODH_EP" -a -z $(echo "$OSHELP" | grep aodhclient); then echo "Lacking openstack aodhclient support"; unset AODH_EP; fi
   GNOCCHI_EP=$(getPublicEP gnocchi)
+  if test -n "$GNOCCHI_EP" -a -z $(echo "$OSHELP" | grep gnocchiclient); then echo "Lacking openstack gnocchiclient support"; unset GNOCCHI_EP; fi
   MAGNUM_EP=$(getPublicEP magnum)
+  if test -n "$MAGNUM_EP" -a -z $(echo "$OSHELP" | grep magnumclient); then echo "Lacking openstack magnumclient support"; unset MAGNUM_EP; fi
   SENLIN_EP=$(getPublicEP senlin)
+  if test -n "$SENLIN_EP" -a -z $(echo "$OSHELP" | grep senlinclient); then echo "Lacking openstack senlinclient support"; unset SENLIN_EP; fi
   IRONIC_EP=$(getPublicEP ironic)
+  if test -n "$IRONIC_EP" -a -z $(echo "$OSHELP" | grep ironicclient); then echo "Lacking openstack ironicclient support"; unset IRONIC_EP; fi
   #echo "MORE ENDPOINTS: $HEAT_EP, $BARBICAN_EP, $DESIGNATE_EP, $MANILA_EP, $AODH_EP, $GNOCCHI_EP, $MAGNUM_EP"
   ostackcmd_tm_retry KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
   TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')

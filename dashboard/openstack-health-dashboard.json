@@ -2071,7 +2071,7 @@
         "options": [],
         "query": "show tag values with key = cmd",
         "refresh": 2,
-        "regex": "/^(nova|neutron|glance|cinder|token|catalog|swift|octavia)$/",
+        "regex": "/^(nova|neutron|glance|cinder|token|catalog|swift|manila|octavia|barbican|designate|aodh|gnocchi|senlin|magnum|ironic|heat)$/",
         "skipUrlSync": false,
         "sort": 1,
         "tagValuesQuery": "",

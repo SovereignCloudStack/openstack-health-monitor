@@ -123,6 +123,12 @@ sudo apt-get update
 sudo apt-get install python3-openstackclient
 sudo apt-get install python3-cinderclient python3-octaviaclient python3-swiftclient python3-designateclient
 ```
+If we want to monitor the availability of more services from the service catalogue, we might want to install
+more OpenStack client utilities, e.g.
+```
+sudo apt-get install python3-heatclient python3-barbicanclient python3-manilaclient python3-aodhclient python3-gnocchiclient python3-ironicclient python3-magnumclient python3-senlinclient
+```
+Of course, the OpenStack client tools can also be installed via `pip3` into a venv, but the author prefers using well-maintained distro packages on Debian.
 
 Configure your cloud access in `~/.config/openstack/clouds.yaml`
 ```yaml
