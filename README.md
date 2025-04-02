@@ -167,8 +167,9 @@ Usage:   api_monitor.sh [options]
  -LL     create TCP  Loadbalancer (LBaaSv2/octavia) and test it
  -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)
  -LR     reverse order of LB healthmon and member creation and deletion
- -X      test list requests GET octavia, swift, heat, designte, barbican, manila, aodh,
-           gnocchi, magnum, senlin, ironic if those are advertised in the catalog
+ -X      test list requests GET octavia, swift, heat, designate, barbican, manila, aodh,
+          gnocchi, magnum, senlin, ironic if those are advertised in the catalog
+          and client tools are installed
  -b      run a simple compute benchmark (4k pi with bc)
  -B      measure TCP BW b/w VMs (iperf3)
  -M      measure disk I/O bandwidth & latency (fio)
