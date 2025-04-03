@@ -799,7 +799,7 @@ translate()
   unset MYTAG
   ORIGCMD="$1"
   CMDS=(nova cinder neutron glance octavia swift designate heat barbican manila aodh gnocchi magnum senlin ironic)
-  OSTDEFS=(server volume network image loadbalancer container zone stack secret share alarm "metric resource" "coe cluster" cluster "baremetal node")
+  OSTDEFS=(server volume network image loadbalancer object zone stack secret share alarm "metric resource" "coe cluster" cluster "baremetal node")
   EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP $OCTAVIA_EP $SWIFT_EP "$DESIGNATE_EP" "$HEAT_EP" \
 	"$BARBICAN_EP" "$MANILA_EP" "$AODH_EP" "$GNOCCHI_EP" "$MAGNUM_EP" "$SENLIN_EP" "$IRONIC_EP")
   for no in $(seq 0 $((${#CMDS[*]}-1))); do
@@ -3868,7 +3868,7 @@ testAux()
   testAuxHelper "$MAGNUM_EP" AUXSTATS $NETTIMEOUT    "Magnum   service: " magnum list
   testAuxHelper "$SENLIN_EP" METRICSTATS $FIPTIMEOUT "Senlin   service: " senlin list
   testAuxHelper "$IRONIC_EP" AUXSTATS $NOVATIMEOUT   "Ironic   service: " ironic list
-  testAuxHelper "$SWIFT_EP" AUXSTATS $CINDERTIMEOUT  "Swift    service: " swift list
+  testAuxHelper "$SWIFT_EP" AUXSTATS $CINDERTIMEOUT  "Swift    service: " swift list /
 }
 
 
