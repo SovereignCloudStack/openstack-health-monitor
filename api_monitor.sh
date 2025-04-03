@@ -3836,7 +3836,7 @@ testAuxHelper()
   if test $RC != 0; then
     echo -e "${RED}FAIL{$NORM}"
   else
-    CNT=$(echo "$OSTACKRESP" | grep -v -e '^+' -e '^| [iI][dD]' -e '^$' -e '| Secret' | wc -l)
+    CNT=$(echo "$OSTACKRESP" | grep -v -e '^+' -e '^| [iI][dD]' -e '^$' -e '^| Secret' -e '| Name ' | wc -l)
     echo -e "${GREEN}OK${NORM} ($CNT)"
   fi
 }
