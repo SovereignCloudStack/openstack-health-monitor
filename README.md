@@ -126,56 +126,59 @@ I would recommend a larger flavor (4GiB RAM, 20GB disk).
 Use `api_monitor.sh -h` to get a list of the command line options. For reference find the output (from v1.109) here:
 
 ```
-Running api_monitor.sh v1.109 on host oshm-driver5 with arguments -h
-Using APIMonitor_1714160976_ prefix for resrcs on ciab (nova)
-Usage: api_monitor.sh [options]
+Running api_monitor.sh v1.113 on host framekurt with arguments -h
+Using APIMonitor_1743587410_ prefix for resrcs on CLOUD (AZ)
+Usage:   api_monitor.sh [options]
  --debug Use set -x to print every line executed
- -n N   number of VMs to create (beyond #AZ JumpHosts, def: 12)
- -N N   number of networks/subnets/jumphosts to create (def: # AZs)
+ -n N    number of VMs to create (beyond #AZ JumpHosts, def: 12)
+ -N N    number of networks/subnets/jumphosts to create (def: # AZs)
  -l LOGFILE record all command in LOGFILE
- -a N   send at most N alarms per iteration (first plus N-1 summarized)
- -R     send recovery email after a completely successful iteration and alarms before
- -e ADR sets eMail address for notes/alarms (assumes working MTA)
-         second -e splits eMails; notes go to first, alarms to second eMail
- -E     exit on error (for CONNTEST)
- -m URN sets notes/alarms by SMN (pass URN of queue)
-         second -m splits notifications; notes to first, alarms to second URN
+ -a N    send at most N alarms per iteration (first plus N-1 summarized)
+ -R      send recovery email after a completely successful iteration and alarms before
+ -e ADR  sets eMail address for notes/alarms (assumes working MTA)
+          second -e splits eMails; notes go to first, alarms to second eMail
+ -E      exit on error (for CONNTEST)
+ -m URN  sets notes/alarms by SMN (pass URN of queue)
+          second -m splits notifications; notes to first, alarms to second URN
  -s [SH] sends stats as well once per day (or every SH hours), not just alarms
  -S [NM] sends stats to grafana via local telegraf http_listener (def for NM=api-monitoring)
- -q     do not send any alarms
- -d     boot Directly from image (not via volume)
- -vt TP use volumetype TP (overrides env VOLUMETYPE)
- -z SZ  boots VMs from volume of size SZ
- -Z     do not create volume for JHs separately
- -P     do not create Port before VM creation
- -D     create all VMs with one API call (implies -d -P)
- -i N   sets max number of iterations (def = -1 = inf)
- -r N   only recreate router after each Nth iteration
- -g N   increase VM volume size by N GB (ignored for -d/-D)
- -G N   increase JH volume size by N GB
- -w N   sets error wait (API, VM): 0-inf seconds or neg value for interactive wait
- -W N   sets error wait (VM only): 0-inf seconds or neg value for interactive wait
- -V N   set success wait: Stop for N seconds (neg val: interactive) before tearing down
- -p N   use a new project every N iterations
- -c     noColors: don't use bold/red/... ASCII sequences
- -C     full Connectivity check: Every VM pings every other
- -o     translate nova/cinder/neutron/glance into openstack client commands
- -O     like -o, but use token_endpoint auth (after getting token)
- -x     assume eXclusive project, clean all floating IPs found
- -I     dIsassociate floating IPs before deleting them
- -L     create HTTP Loadbalancer (LBaaSv2/octavia) and test it
- -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it
+ -q      do not send any alarms
+ -d      boot Directly from image (not via volume)
+ -vt TP  use volumetype TP (overrides env VOLUMETYPE)
+ -z SZ   boots VMs from volume of size SZ
+ -Z      do not create volume for JHs separately
+ -P      do not create Port before VM creation
+ -D      create all VMs with one API call (implies -d -P)
+ -i N    sets max number of iterations (def = -1 = inf)
+ -r N    only recreate router after each Nth iteration
+ -g N    increase VM volume size by N GB (ignored for -d/-D)
+ -G N    increase JH volume size by N GB
+ -w N    sets error wait (API, VM): 0-inf seconds or neg value for interactive wait
+ -W N    sets error wait (VM only): 0-inf seconds or neg value for interactive wait
+ -V N    set success wait: Stop for N seconds (neg val: interactive) before tearing down
+ -p N    use a new project every N iterations
+ -c      noColors: don't use bold/red/... ASCII sequences
+ -C      full Connectivity check: Every VM pings every other
+ -o      translate nova/cinder/neutron/glance into openstack client commands
+ -O      like -o, but use token_endpoint auth (after getting token)
+ -x      assume eXclusive project, clean all floating IPs found
+ -I      dIsassociate floating IPs before deleting them
+ -L      create HTTP Loadbalancer (LBaaSv2/octavia) and test it
+ -LL     create TCP  Loadbalancer (LBaaSv2/octavia) and test it
  -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)
- -LR    reverse order of LB healthmon and member creation and deletion
- -b     run a simple compute benchmark (4k pi with bc)
- -B     measure TCP BW b/w VMs (iperf3)
- -M     measure disk I/O bandwidth & latency (fio)
- -t     long Timeouts (2x, multiple times for 3x, 4x, ...)
- -T     assign tags to resources; use to clean up floating IPs
- -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test
- -3     Create 2ndary subnets, attach, test, reshuffle and retest
- -4     Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest
- -R2    Recreate 2ndary ports after detaching (OpenStack <= Mitaka bug)
+ -LR     reverse order of LB healthmon and member creation and deletion
+ -X      test list requests GET octavia, swift, heat, designate, barbican, manila, aodh,
+          gnocchi, magnum, senlin, ironic if those are advertised in the catalog
+          and client tools are installed
+ -b      run a simple compute benchmark (4k pi with bc)
+ -B      measure TCP BW b/w VMs (iperf3)
+ -M      measure disk I/O bandwidth & latency (fio)
+ -t      long Timeouts (2x, multiple times for 3x, 4x, ...)
+ -T      assign tags to resources; use to clean up floating IPs
+ -2      Create 2ndary subnets and attach 2ndary NICs to VMs and test
+ -3      Create 2ndary subnets, attach, test, reshuffle and retest
+ -4      Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest
+ -R2     Recreate 2ndary ports after detaching (OpenStack <= Mitaka bug)
 Or: api_monitor.sh [-f] [-o/-O] CLEANUP XXX to clean up all resources with prefix XXX
         Option -f forces the deletion
 Or: api_monitor.sh [Options] CONNTEST XXX for full conn test for existing env XXX
