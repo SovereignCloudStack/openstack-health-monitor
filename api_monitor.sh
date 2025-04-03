@@ -4215,23 +4215,23 @@ getToken()
   # Optional EPs
   OSHELP=$(openstack help)
   HEAT_EP=$(getPublicEP heat)
-  if test -n "$HEAT_EP" -a -z "$(echo $OSHELP | grep heatclient)"; then echo "${YELLOW}Lacking openstack heatclient support${NORM}"; unset HEAT_EP; fi
+  if test -n "$HEAT_EP" -a -z "$(echo $OSHELP | grep heatclient)"; then echo -e "${YELLOW}Lacking openstack heatclient support${NORM}"; unset HEAT_EP; fi
   BARBICAN_EP=$(getPublicEP barbican)
-  if test -n "$BARBICAN_EP" -a -z "$(echo $OSHELP | grep barbicanclient)"; then echo "${YELLOW}Lacking openstack barbicanclient support${NORM}"; unset BARBICAN_EP; fi
+  if test -n "$BARBICAN_EP" -a -z "$(echo $OSHELP | grep barbicanclient)"; then echo -e "${YELLOW}Lacking openstack barbicanclient support${NORM}"; unset BARBICAN_EP; fi
   DESIGNATE_EP=$(getPublicEP designate)
-  if test -n "$DESIGNATE_EP" -a -z "$(echo $OSHELP | grep designateclient)"; then echo "${YELLOW}Lacking openstack designateclient support${NORM}"; unset DESIGNATE_EP; fi
+  if test -n "$DESIGNATE_EP" -a -z "$(echo $OSHELP | grep designateclient)"; then echo -e "${YELLOW}Lacking openstack designateclient support${NORM}"; unset DESIGNATE_EP; fi
   MANILA_EP=$(getPublicEP manilav2)
-  if test -n "$MANILA_EP" -a -z "$(echo $OSHELP | grep manilaclient)"; then echo "${YELLOW}Lacking openstack manilaclient support${NORM}"; unset MANILA_EP; fi
+  if test -n "$MANILA_EP" -a -z "$(echo $OSHELP | grep manilaclient)"; then echo -e "${YELLOW}Lacking openstack manilaclient support${NORM}"; unset MANILA_EP; fi
   AODH_EP=$(getPublicEP aodh)
-  if test -n "$AODH_EP" -a -z "$(echo $OSHELP | grep aodhclient)"; then echo "${YELLOW}Lacking openstack aodhclient support${NORM}"; unset AODH_EP; fi
+  if test -n "$AODH_EP" -a -z "$(echo $OSHELP | grep aodhclient)"; then echo -e "${YELLOW}Lacking openstack aodhclient support${NORM}"; unset AODH_EP; fi
   GNOCCHI_EP=$(getPublicEP gnocchi)
-  if test -n "$GNOCCHI_EP" -a -z "$(echo $OSHELP | grep gnocchiclient)"; then echo "${YELLOW}Lacking openstack gnocchiclient support${NORM}"; unset GNOCCHI_EP; fi
+  if test -n "$GNOCCHI_EP" -a -z "$(echo $OSHELP | grep gnocchiclient)"; then echo -e "${YELLOW}Lacking openstack gnocchiclient support${NORM}"; unset GNOCCHI_EP; fi
   MAGNUM_EP=$(getPublicEP magnum)
-  if test -n "$MAGNUM_EP" -a -z "$(echo $OSHELP | grep magnumclient)"; then echo "${YELLOW}Lacking openstack magnumclient support${NORM}"; unset MAGNUM_EP; fi
+  if test -n "$MAGNUM_EP" -a -z "$(echo $OSHELP | grep magnumclient)"; then echo -e "${YELLOW}Lacking openstack magnumclient support${NORM}"; unset MAGNUM_EP; fi
   SENLIN_EP=$(getPublicEP senlin)
-  if test -n "$SENLIN_EP" -a -z "$(echo $OSHELP | grep senlinclient)"; then echo "${YELLOW}Lacking openstack senlinclient support${NORM}"; unset SENLIN_EP; fi
+  if test -n "$SENLIN_EP" -a -z "$(echo $OSHELP | grep senlinclient)"; then echo -e "${YELLOW}Lacking openstack senlinclient support${NORM}"; unset SENLIN_EP; fi
   IRONIC_EP=$(getPublicEP ironic)
-  if test -n "$IRONIC_EP" -a -z "$(echo $OSHELP | grep ironicclient)"; then echo "${YELLOW}Lacking openstack ironicclient support${NORM}"; unset IRONIC_EP; fi
+  if test -n "$IRONIC_EP" -a -z "$(echo $OSHELP | grep ironicclient)"; then echo -e "${YELLOW}Lacking openstack ironicclient support${NORM}"; unset IRONIC_EP; fi
   #echo "MORE ENDPOINTS: $HEAT_EP, $BARBICAN_EP, $DESIGNATE_EP, $MANILA_EP, $AODH_EP, $GNOCCHI_EP, $MAGNUM_EP"
   ostackcmd_tm_retry KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
   TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')
