@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.112
+VERSION=1.113
 
 APIMON_ARGS="$@"
 # debugging
@@ -286,13 +286,17 @@ fi
 # Images, flavors, disk sizes defaults -- these can be overriden
 # Ideally have SUSE image with SuSEfirewall2-snat for JumpHosts, will be detected
 # otherwise raw iptables commands will set up SNAT.
-#JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
-JHIMG="${JHIMG:-Ubuntu 22.04}"
-# Pass " " to filter if you don't need the optimization of image filtering
-#JHIMGFILT="${JHIMGFILT:---property-filter __platform=OpenSUSE}"
 # For 2nd interface (-2/3/4), use also SUSE image with cloud-multiroute
-IMG="${IMG:-Ubuntu 22.04}"
-#IMGFILT="${IMGFILT:---property-filter __platform=CentOS}"
+#IMG="${JHIMG:-Standard_openSUSE_15_latest}"
+#IMG="${JHIMG:-openSUSE 15.6}"
+IMG="${IMG:-Ubuntu 24.04}"
+# Pass " " to filter if you don't need the optimization of image filtering
+#IMGFILT="${IMGFILT:---property-filter os_distro=Ubuntu}"
+#JHIMG="${JHIMG:-Standard_openSUSE_15_latest}"
+#JHIMG="${JHIMG:-openSUSE 15.6}"
+#JHIMG="${JHIMG:-Ubuntu 24.04}"
+JHIMG="${JHIMG:-$IMG}"
+#JHIMGFILT="${JHIMGFILT:---property-filter os_distro=openSUSE}"
 # ssh login names with injected key
 if test "${IMG:0:6}" = "Ubuntu"; then
   DEFLTUSER=${DEFLTUSER:-ubuntu}
@@ -381,6 +385,9 @@ usage()
   echo " -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)"
   echo " -LR    reverse order of LB healthmon and member creation and deletion"
+  echo " -X     test list requests for octavia, swift, heat, designate, barbican, manila, aodh,"
+  echo "         gnocchi, magnum, senlin, ironic if those are advertised in the catalog"
+  echo "         and client tools are installed"
   echo " -b     run a simple compute benchmark (4k pi with bc)"
   echo " -B     measure TCP BW b/w VMs (iperf3)"
   echo " -M     measure disk I/O bandwidth & latency (fio)"
@@ -438,6 +445,7 @@ while test -n "$1"; do
     "-o") OPENSTACKCLIENT=1;;
     "-O") OPENSTACKCLIENT=1; OPENSTACKTOKEN=1;;
     "-x") CLEANALLFIPS=1;;
+    "-X") TESTAUX=1;;
     "-I") DISASSOC=1;;
     "-r") ROUTERITER=$2; shift;;
     "-L") LOADBALANCER=1;;
@@ -790,9 +798,10 @@ translate()
   local no DEFCMD=""
   unset MYTAG
   ORIGCMD="$1"
-  CMDS=(nova cinder neutron glance octavia swift)
-  OSTDEFS=(server volume network image loadbalancer object)
-  EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP $OCTAVIA_EP $SWIFT_EP)
+  CMDS=(nova cinder neutron glance octavia swift designate heat barbican manila aodh gnocchi magnum senlin ironic)
+  OSTDEFS=(server volume network image loadbalancer object zone stack secret share alarm "metric resource" "coe cluster" cluster "baremetal node")
+  EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP $OCTAVIA_EP $SWIFT_EP "$DESIGNATE_EP" "$HEAT_EP" \
+	"$BARBICAN_EP" "$MANILA_EP" "$AODH_EP" "$GNOCCHI_EP" "$MAGNUM_EP" "$SENLIN_EP" "$IRONIC_EP")
   for no in $(seq 0 $((${#CMDS[*]}-1))); do
     if test ${CMDS[$no]} == $1; then
       EP=${EPS[$no]}
@@ -818,6 +827,10 @@ translate()
   if test $ORIGCMD == neutron && test $CMD == create -o $CMD == list && test -z "$NOFILTERTAG" && test "$1" != "net-external-list" -a "$1" != "port-list" -a "$1" != "router-list" -a "$1" != "lbaas-loadbalancer-list"; then
     MYTAG="$TAGARG"
   fi
+  # Some services can not easily be talked to directly
+  case $ORIGCMD in
+    barbican|designate|senlin) OPST=openstack;;
+  esac
   if test "$CMD" == "$1"; then
     # No '-'
     shift
@@ -3768,7 +3781,7 @@ stats()
   DIG=${2:-2}
   PCT=${4:-95}
   eval LIST=( \"\${${1}[@]}\" )
-  if test ${#LIST[*]} -lt 2; then return; fi
+  if test ${#LIST[*]} -lt 1; then return; fi
   echo -n "$NAME: " | tee -a "$LOGFILE"
   echo "${LIST[*]}" | ./stats.py -d $DIG -p $PCT $MACHINE | tee -a "$LOGFILE"
 }
@@ -3776,34 +3789,88 @@ stats()
 # [-m] for machine readable
 allstats()
 {
- stats $1 NETSTATS   2 "Neutron CLI Stats "
- stats $1 FIPSTATS   2 "Neutron FIP Stats "
- if test -n "$LOADBALANCER" -a -n "$LBSTATS"; then
-   stats $1 LBSTATS    2 "LB CLI Stats      "
- fi
- stats $1 NOVASTATS  2 "Nova CLI Stats    "
- stats $1 NOVABSTATS 2 "Nova Boot Stats   "
- stats $1 VMCSTATS   0 "VM Creation Stats "
+ stats $1 NETSTATS    2 "Neutron CLI Stats "
+ stats $1 FIPSTATS    2 "Neutron FIP Stats "
+ stats $1 AUXSTATS    2 "AuxSvc GET Stats  "
+ stats $1 METRICSTATS 2 "Metrics Stats     "
+ stats $1 VOLSTATS    2 "Cinder CLI Stats  "
+ stats $1 VOLCSTATS   0 "Vol Creation Stats"
+ stats $1 NOVASTATS   2 "Nova CLI Stats    "
+ stats $1 NOVABSTATS  2 "Nova Boot Stats   "
+ stats $1 VMCSTATS    0 "VM Creation Stats "
+ stats $1 VMDSTATS    0 "VM Deletion Stats "
+ stats $1 WAITTIME    0 "Wait for VM Stats "
+ stats $1 LBSTATS     2 "LB CLI Stats      "
  if test -n "$LOADBALANCER" -a -n "$LBCSTATS"; then
-   stats $1 LBCSTATS   0 "LB Creation Stats "
+   stats $1 LBCSTATS  0 "LB Creation Stats "
  fi
  if test -n "$BCBENCH"; then
-   stats $1 PITIME     1 "Calc PI 4k Stats  "
+   stats $1 PITIME    1 "Calc PI 4k Stats  "
  fi
  if test -n "$IPERF"; then
-   stats $1 BANDWIDTH  0 "Bandwidth Stats   " 5
+   stats $1 BANDWIDTH 0 "Bandwidth Stats   " 5
  fi
  if test -n "$FIOBENCH"; then
-   stats $1 FIOBW      1 "DiskBW    Stats   " 5
-   stats $1 FIOIOPS    0 "DiskIOPS  Stats   " 5
-   stats $1 FIOLAT     2 "DiskLat10mStats   "
+   stats $1 FIOBW     1 "DiskBW    Stats   " 5
+   stats $1 FIOIOPS   0 "DiskIOPS  Stats   " 5
+   stats $1 FIOLAT    2 "DiskLat10mStats   "
  fi
- stats $1 VMDSTATS   0 "VM Deletion Stats "
- stats $1 VOLSTATS   2 "Cinder CLI Stats  "
- stats $1 VOLCSTATS  0 "Vol Creation Stats"
- stats $1 WAITTIME   0 "Wait for VM Stats "
- stats $1 TOTTIME    0 "Total setup Stats "
+ stats $1 TOTTIME     0 "Total setup Stats "
 }
+
+
+# $1: EP
+# $2: StatsName
+# $3: TimeOut
+# $4: Output
+# $5+: Command
+testAuxHelper()
+{
+  EP="$1"; shift
+  if test -z "$EP"; then return; fi
+  if test "${EP:$((${#EP}-3))}" = "Url"; then return; fi
+  SNM="$1"; shift
+  TMO="$1"; shift
+  echo -n "$1: "; shift
+  ostackcmd_tm_retry $SNM $TMO "$@"
+  if test $RC != 0; then
+    echo -e "${RED}FAIL{$NORM}"
+  else
+    CNT=$(echo "$OSTACKRESP" | grep -v -e '^+' -e '^| [iI][dD]' -e '^$' -e '^| Secret' -e '| Name ' | wc -l)
+    echo -e "${GREEN}OK${NORM} ($CNT)"
+  fi
+}
+
+
+# Test Aux services (-X):
+# octavia (if LB tests are not enable anyways)
+# barbican
+# designate
+# heat
+# manila
+# aodh
+# gnocchi
+# swift
+testAux()
+{
+  if test -z "$TESTAUX"; then return; fi
+  if test -z "$LOADBALANCER"; then
+    testAuxHelper "$OCTAVIA_EP" LBSTATS $FIPTIMEOUT  "Octavia  service: " neutron lbaas-loadbalancer-list
+  fi
+  testAuxHelper "$BARBICAN_EP" AUXSTATS $NETTIMEOUT  "Barbican service: " barbican list --limit 42
+  #testAuxHelper "$BARBICAN_EP" AUXSTATS $NETTIMEOUT  "Barbican service: " openstack secret list
+  testAuxHelper "$DESIGNATE_EP" AUXSTATS $FIPTIMEOUT "Designate   srvc: " designate list
+  #testAuxHelper "$DESIGNATE_EP" AUXSTATS $FIPTIMEOUT "Designate   srvc: " openstack zone list
+  testAuxHelper "$HEAT_EP" AUXSTATS $FIPTIMEOUT      "Heat     service: " heat list
+  testAuxHelper "$MANILA_EP" AUXSTATS $CINDERTIMEOUT "Manila   service: " manila list
+  testAuxHelper "$AODH_EP" AUXSTATS $NETTIMEOUT      "AODH     service: " aodh list
+  testAuxHelper "$GNOCCHI_EP" METRICSTATS $((FIPTIMEOUT+8)) "Gnocchi  service: " gnocchi list
+  testAuxHelper "$MAGNUM_EP" AUXSTATS $NETTIMEOUT    "Magnum   service: " magnum list
+  testAuxHelper "$SENLIN_EP" METRICSTATS $FIPTIMEOUT "Senlin   service: " senlin list
+  testAuxHelper "$IRONIC_EP" AUXSTATS $NOVATIMEOUT   "Ironic   service: " ironic list
+  testAuxHelper "$SWIFT_EP" AUXSTATS $CINDERTIMEOUT  "Swift    service: " swift list /
+}
+
 
 # Identify which FIPs really belong to us
 # Also populates JHPORTS (in Name order)
@@ -4145,6 +4212,27 @@ getToken()
   if test -z "$OCTAVIA_EP"; then OCTAVIA_EP="$NEUTRON_EP"; fi
   if test -z "$SWIFT_EP"; then SWIFT_EP=$(getPublicEP radosgw-swift); fi
   #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP"
+  # Optional EPs
+  OSHELP=$(openstack help)
+  HEAT_EP=$(getPublicEP heat)
+  if test -n "$HEAT_EP" -a -z "$(echo $OSHELP | grep heatclient)"; then echo -e "${YELLOW}Lacking openstack heatclient support${NORM}"; unset HEAT_EP; fi
+  BARBICAN_EP=$(getPublicEP barbican)
+  if test -n "$BARBICAN_EP" -a -z "$(echo $OSHELP | grep barbicanclient)"; then echo -e "${YELLOW}Lacking openstack barbicanclient support${NORM}"; unset BARBICAN_EP; fi
+  DESIGNATE_EP=$(getPublicEP designate)
+  if test -n "$DESIGNATE_EP" -a -z "$(echo $OSHELP | grep designateclient)"; then echo -e "${YELLOW}Lacking openstack designateclient support${NORM}"; unset DESIGNATE_EP; fi
+  MANILA_EP=$(getPublicEP manilav2)
+  if test -n "$MANILA_EP" -a -z "$(echo $OSHELP | grep manilaclient)"; then echo -e "${YELLOW}Lacking openstack manilaclient support${NORM}"; unset MANILA_EP; fi
+  AODH_EP=$(getPublicEP aodh)
+  if test -n "$AODH_EP" -a -z "$(echo $OSHELP | grep aodhclient)"; then echo -e "${YELLOW}Lacking openstack aodhclient support${NORM}"; unset AODH_EP; fi
+  GNOCCHI_EP=$(getPublicEP gnocchi)
+  if test -n "$GNOCCHI_EP" -a -z "$(echo $OSHELP | grep gnocchiclient)"; then echo -e "${YELLOW}Lacking openstack gnocchiclient support${NORM}"; unset GNOCCHI_EP; fi
+  MAGNUM_EP=$(getPublicEP magnum)
+  if test -n "$MAGNUM_EP" -a -z "$(echo $OSHELP | grep magnumclient)"; then echo -e "${YELLOW}Lacking openstack magnumclient support${NORM}"; unset MAGNUM_EP; fi
+  SENLIN_EP=$(getPublicEP senlin)
+  if test -n "$SENLIN_EP" -a -z "$(echo $OSHELP | grep senlinclient)"; then echo -e "${YELLOW}Lacking openstack senlinclient support${NORM}"; unset SENLIN_EP; fi
+  IRONIC_EP=$(getPublicEP ironic)
+  if test -n "$IRONIC_EP" -a -z "$(echo $OSHELP | grep ironicclient)"; then echo -e "${YELLOW}Lacking openstack ironicclient support${NORM}"; unset IRONIC_EP; fi
+  #echo "MORE ENDPOINTS: $HEAT_EP, $BARBICAN_EP, $DESIGNATE_EP, $MANILA_EP, $AODH_EP, $GNOCCHI_EP, $MAGNUM_EP"
   ostackcmd_tm_retry KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
   TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')
   #echo "TOKEN: {SHA256}$(echo $TOKEN | sha256sum)"
@@ -4325,6 +4413,8 @@ declare -a VMCSTATS
 declare -a LBCSTATS
 declare -a LBDSTATS
 declare -a VMCDTATS
+declare -a AUXSTATS
+declare -a METRICSTATS
 
 declare -a TOTTIME
 declare -a WAITTIME
@@ -4522,6 +4612,7 @@ else # test "$1" = "DEPLOY"; then
  echo -e "$BOLD *** Start deployment $((loop+1))/$MAXITER for $NOAZS SNAT JumpHosts + $NOVMS VMs *** $NORM ($TRIPLE) $TAGARG"
  date
  unset THISRUNSUCCESS
+ testAux
  # Image IDs
  JHIMGID=$(ostackcmd_search "$JHIMG" $GLANCETIMEOUT glance image-list $JHIMGFILT | awk '{ print $2; }')
  if test -z "$JHIMGID" -o "$JHIMGID" == "0"; then sendalarm 1 "No JH image $JHIMG found, aborting." "" $GLANCETIMEOUT; exit 1; fi
@@ -4838,6 +4929,8 @@ $(allstats -m)" > "$DATADIR/Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv"
   LBCSTATS=()
   LBDSTATS=()
   VMDSTATS=()
+  AUXSTATS=()
+  METRICSTATS=()
   TOTTIME=()
   WAITTIME=()
   PITIME=()
