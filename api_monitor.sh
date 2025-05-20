@@ -852,11 +852,15 @@ translate()
     # Optimization: Avoid Attachment name lookup in volume list when polling
     elif test "$DEFCMD" == "volume" -a "$CMD" == "list"; then
       if [[ "$@" != *Attached* ]] && [[ "$@" != *-c* ]]; then
-        OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
+	#OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
+	OSTACKCMD=(openstack $DEFCMD $CMD $MYTAG -c ID -c Name -c Status -c Size)
       elif [[ "$@" == *Attached* ]]; then
 	#OSTACKCMD=($OPST $DEFCMD $CMD $MYTAG)
 	# Use token that allows cinder to query nova for names
+	#ARGS=$(echo "$@" | sed -e 's@Attached@"Attached to"@')
 	OSTACKCMD=(openstack $DEFCMD $CMD $MYTAG)
+      else
+	OSTACKCMD=(openstack $DEFCMD $CMD $MYTAG "$@")
       fi
       #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
     elif test "$DEFCMD" == "server" -a "$CMD" == "boot"; then
