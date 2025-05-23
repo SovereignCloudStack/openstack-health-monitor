@@ -42,7 +42,7 @@ export DEFAULTNAMESERVER="true"
 export EMAIL_PARAM=${EMAIL_PARAM:-"scs@garloff.de"}
 
 # Ensure that all commands find custom CA, place the custom CiaB CA cert here:
-export OS_CACERT=/etc/ca-cert-ciab.crt
+export OS_CACERT=~/.config/openstack/cacert.pem
 
 # Notifications & Alarms (pass as list, arrays can't be exported)
 ALARM_EMAIL_ADDRESSES="scs@garloff.de"
@@ -98,6 +98,6 @@ done
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
 #exec api_monitor.sh -o -C -D -N 2 -n 8 -s -e sender@domain.org "$@"
 #exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -M -a 2 -t -T -R -X "$@"
-exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -LO -b -B -M -a 2 -t -T -R -X -S ciab "$@"
+exec ./api_monitor.sh -O -C -D -N 2 -n 6 -s -LO -b -B -M -a 2 -t -T -R -X -S miniciab "$@"
 #exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -b -B -M -a 2 -t -T -R -S ciab "$@"
 
