@@ -1812,7 +1812,7 @@ createRouters()
     fi
     # Not needed on OTC, but for most other OpenStack clouds:
     # Connect Router to external network gateway
-    ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET || true
+    ostackcmd_tm_retry NETSTATS $FIPTIMEOUT neutron router-gateway-set ${ROUTERS[0]} $EXTNET || true
   fi
 }
 
