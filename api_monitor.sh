@@ -895,7 +895,7 @@ translate()
       # No token_endpoint auth for server creation (need to talk to neutron/cinder/glance as well)
       OSTACKCMD=(openstack $DEFCMD create $ARGS)
     elif test "$DEFCMD" == "server" -a "$CMD" == "meta"; then
-      # nova meta ${VMS[$no]} set deployment=$CFTEST server=$no
+      # nova meta ${VMS[$no]} set deployment=$CFTEST serverno=$no
       ARGS=$(echo "$@" | sed -e 's@set @@' -e 's@\([a-zA-Z_0-9]*=[^ ]*\)@--property \1@g')
       OSTACKCMD=($OPST $DEFCMD set $ARGS)
     elif test "$DEFCMD" == "object" -a "$CMD" == "upload"; then
@@ -3114,7 +3114,7 @@ setmetaVMs()
   echo -n "Set VM Metadata: "
   for no in `seq 0 $(($NOVMS-1))`; do
     echo -n "${VMS[$no]} "
-    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova meta ${VMS[$no]} set deployment=$CFTEST server=$no || return 1
+    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova meta ${VMS[$no]} set deployment=$CFTEST serverno=$no || return 1
   done
   echo
 }
