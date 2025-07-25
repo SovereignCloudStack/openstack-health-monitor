@@ -2356,9 +2356,14 @@
             "selected": false,
             "text": "poc-wgcloud",
             "value": "poc-wgcloud"
+          },
+          {
+            "selected": false,
+            "text": "artcodix",
+            "value": "artcodix"
           }
         ],
-        "query": "plus-pco, plus-prod2, plus-prod3, plus-prod4, gx-scs, stackit, wavestack1, cnds, aov, datapoc, ciab, poc-wgcloud",
+        "query": "plus-pco, plus-prod2, plus-prod3, plus-prod4, gx-scs, stackit, wavestack1, cnds, aov, datapoc, ciab, poc-wgcloud, artcodix",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"

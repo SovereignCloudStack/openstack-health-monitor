@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.113
+VERSION=1.114
 
 APIMON_ARGS="$@"
 # debugging
@@ -168,7 +168,7 @@ b exit
 # Patch openstackclient to support availabiliy zone list --compute as project member
 patch_openstackclient_computeazlist()
 {
-  ostackver=$(openstack --version | sed 's/^openstack //')
+  #ostackver=$(openstack --version | sed 's/^openstack //')
   find_ostclient_compute || return
   case $ostackver in
 	6.3.0|6.4.0)
@@ -190,6 +190,21 @@ i from openstack import exceptions as openstack_exceptions
   sudo sed -i 's/data = volume_client\.availability_zones()/data = list(volume_client.availability_zones())/' $avz
 }
 
+# In version 7.1.3 of openstackclient, an openstack volume list -c ID -c Name with token endpoint
+#  authentication won't succeed as it lacks a nova server proxy object (which it would need to
+#  display attachment, though we explicitly did not ask for them). Blacklist 7.1.* and talk to
+#  keystone instead using normal auth.
+bad_ostackver_cinder_list()
+{
+  case $ostackver in
+	7.1.*)
+		return 0;;
+	*)
+		return 1;;
+  esac
+}
+
+ostackver=$(openstack --version | sed 's/^openstack //')
 # Number of VMs and networks
 if test -z "$AZS"; then
   #AZS=$(nova availability-zone-list 2>/dev/null| grep -v '\-\-\-' | grep -v 'not available' | grep -v '| Name' | sed 's/^| \([^ ]*\) *.*$/\1/' | sort -n)
@@ -851,12 +866,12 @@ translate()
       OSTACKCMD=($OPST $DEFCMD set --name "$@")
     # Optimization: Avoid Attachment name lookup in volume list when polling
     elif test "$DEFCMD" == "volume" -a "$CMD" == "list"; then
-      if [[ "$@" != *Attached* ]] && [[ "$@" != *-c* ]]; then
-        OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
-      elif [[ "$@" == *Attached* ]]; then
+      if bad_ostackver_cinder_list || [[ "$@" == *Attached* ]]; then
 	#OSTACKCMD=($OPST $DEFCMD $CMD $MYTAG)
 	# Use token that allows cinder to query nova for names
 	OSTACKCMD=(openstack $DEFCMD $CMD $MYTAG)
+      elif [[ "$@" != *Attached* ]] && [[ "$@" != *-c* ]]; then
+        OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
       fi
       #echo "#DEBUG: ${OSTACKCMD[@]}" 1>&2
     elif test "$DEFCMD" == "server" -a "$CMD" == "boot"; then
@@ -880,7 +895,7 @@ translate()
       # No token_endpoint auth for server creation (need to talk to neutron/cinder/glance as well)
       OSTACKCMD=(openstack $DEFCMD create $ARGS)
     elif test "$DEFCMD" == "server" -a "$CMD" == "meta"; then
-      # nova meta ${VMS[$no]} set deployment=$CFTEST server=$no
+      # nova meta ${VMS[$no]} set deployment=$CFTEST serverno=$no
       ARGS=$(echo "$@" | sed -e 's@set @@' -e 's@\([a-zA-Z_0-9]*=[^ ]*\)@--property \1@g')
       OSTACKCMD=($OPST $DEFCMD set $ARGS)
     elif test "$DEFCMD" == "object" -a "$CMD" == "upload"; then
@@ -3099,7 +3114,7 @@ setmetaVMs()
   echo -n "Set VM Metadata: "
   for no in `seq 0 $(($NOVMS-1))`; do
     echo -n "${VMS[$no]} "
-    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova meta ${VMS[$no]} set deployment=$CFTEST server=$no || return 1
+    ostackcmd_tm NOVASTATS $NOVATIMEOUT nova meta ${VMS[$no]} set deployment=$CFTEST serverno=$no || return 1
   done
   echo
 }
