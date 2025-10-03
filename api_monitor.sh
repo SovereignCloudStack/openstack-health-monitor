@@ -190,17 +190,17 @@ i from openstack import exceptions as openstack_exceptions
   sudo sed -i 's/data = volume_client\.availability_zones()/data = list(volume_client.availability_zones())/' $avz
 }
 
-# In version 7.1.3 of openstackclient, an openstack volume list -c ID -c Name with token endpoint
+# In version 7+ of openstackclient, an openstack volume list -c ID -c Name with token endpoint
 #  authentication won't succeed as it lacks a nova server proxy object (which it would need to
 #  display attachment, though we explicitly did not ask for them). Blacklist 7.1.* and talk to
 #  keystone instead using normal auth.
 bad_ostackver_cinder_list()
 {
   case $ostackver in
-	7.1.*)
-		return 0;;
-	*)
+	[3456].*)
 		return 1;;
+	*)
+		return 0;;
   esac
 }
 
