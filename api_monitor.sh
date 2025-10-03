@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.114
+VERSION=1.115
 
 APIMON_ARGS="$@"
 # debugging
@@ -867,9 +867,10 @@ translate()
     # Optimization: Avoid Attachment name lookup in volume list when polling
     elif test "$DEFCMD" == "volume" -a "$CMD" == "list"; then
       if bad_ostackver_cinder_list || [[ "$@" == *Attached* ]]; then
-	#OSTACKCMD=($OPST $DEFCMD $CMD $MYTAG)
-	# Use token that allows cinder to query nova for names
-	OSTACKCMD=(openstack $DEFCMD $CMD $MYTAG)
+        #OSTACKCMD=($OPST $DEFCMD $CMD $MYTAG)
+        # Use token that allows cinder to query nova for names
+        ARGS=$(echo "$@" | sed -e 's@-c Attached@@')
+        OSTACKCMD=(openstack $DEFCMD $CMD $MYTAG "$ARGS")
       elif [[ "$@" != *Attached* ]] && [[ "$@" != *-c* ]]; then
         OSTACKCMD=("${OSTACKCMD[@]}" -c ID -c Name -c Status -c Size)
       fi
@@ -3014,7 +3015,7 @@ nameVols()
     if [[ "$NM" == ${RPRE}* ]]; then
       if test -n "$nm"; then let natt+=1; continue; fi
     else
-      NM=$(echo "$att" | sed 's/^Attached to \([^ ]*).*$/\1_RootVol/')
+      NM=$(echo "$att" | sed 's/^Attached to \([^ ]*\).*$/\1_RootVol/')
     fi
     # Skip volumes that already have a name
     if test -n "$nm"; then continue; fi
