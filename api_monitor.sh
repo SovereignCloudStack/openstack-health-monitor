@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.115
+VERSION=1.116
 
 APIMON_ARGS="$@"
 # debugging
@@ -2032,7 +2032,7 @@ deleteSGroups()
 createVIPs()
 {
   createResources 1 NETSTATS VIP NONE NONE "" id $NETTIMEOUT neutron port-create --security-group ${SGROUPS[0]} --name ${RPRE}VirtualIP ${JHNETS[0]}
-  # FIXME: We should not need --allowed-address-pairs here ...
+  # Retrieve VIP IPv4 address for later usage
   ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-show ${VIPS[0]} || return 1
   VIP=$(extract_ip "$OSTACKRESP")
 }
@@ -2049,8 +2049,13 @@ createJHPorts()
   # TODO: We could detect here if the router does SNAT for us and just save us the trouble of allowed address pairs then
   for i in `seq 0 $((NOAZS-1))`; do
     let APICALLS+=1
+    # This would allow 0/0, which is no longer allowed on Epoxy as it could confuse OVN
     #RESP=$(ostackcmd_id id $NETTIMEOUT neutron port-update ${JHPORTS[$i]} --allowed-address-pairs type=dict list=true ip_address=0.0.0.0/1 ip_address=128.0.0.0/1)
     # This allows all excluding 10/8 but including the VIP
+    # Notes:
+    # - We could do without VIP for masquerading
+    # - In general, we would also want to remove other non-routable IP ranges (172.16/12 and 192.168/16)
+    #   beyond 10/8, but we can ignore that for OSHM.
     RESP=$(ostackcmd_id id $NETTIMEOUT neutron port-update ${JHPORTS[$i]} --allowed-address-pairs type=dict list=true ip_address=$VIP/32 ip_address=0.0.0.0/5 ip_address=8.0.0.0/7 ip_address=11.0.0.0/8 ip_address=12.0.0.0/6 ip_address=16.0.0.0/4 ip_address=32.0.0.0/3 ip_address=64.0.0.0/2 ip_address=128.0.0.0/1)
     RC=$?
     updAPIerr $RC
