@@ -4,7 +4,10 @@ session="oshealthmon"
 tmux select-window -t $session:0
 # Tell master loop to exit
 cd ~/openstack-health-monitor
-touch stop-os-hm
+touch "plus-hm1/stop-os-hm"
+touch "plus-hm2/stop-os-hm"
+touch "plus-hm3/stop-os-hm"
+touch "plus-hm4/stop-os-hm"
 # Send two ^C to the api_monitor for immediate cleanup
 # Sidenote: If we are patient, we could just leave it with the touched stop file
 tmux send-keys C-c
