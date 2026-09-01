@@ -4491,7 +4491,7 @@ echo " Send alarms to ${ALARM_EMAIL_ADDRESSES[@]} ${ALARM_MOBILE_NUMBERS[@]}"
 echo " Send  notes to ${NOTE_EMAIL_ADDRESSES[@]} ${NOTE_MOBILE_NUMBERS[@]}"
 
 # MAIN LOOP
-while test $loop != $MAXITER -a -z "$INTERRUPTED" -a ! -e stop-os-hm; do
+while test $loop != $MAXITER -a -z "$INTERRUPTED" -a ! -e "$DATADIR/stop-os-hm"; do
 
 declare -i PINGERRORS=0
 declare -i APIERRORS=0
@@ -4678,7 +4678,7 @@ else # test "$1" = "DEPLOY"; then
   if createNets; then
    if createSubNets; then
     if createRIfaces; then
-     if createSGroups -a -z "$INTERRUPTED" -a ! -e stop-os-hm; then
+     if createSGroups -a -z "$INTERRUPTED" -a ! -e "$DATADIR/stop-os-hm"; then
       createLBs;
       if createJHVols; then
        if createVIPs; then
@@ -4749,7 +4749,7 @@ else # test "$1" = "DEPLOY"; then
                 config2ndNIC
                 MSTOP=$(date +%s)
                 # Full connection test
-                if test -n "$FULLCONN" -a -z "$INTERRUPTED" -a ! -e stop-os-hm; then
+                if test -n "$FULLCONN" -a -z "$INTERRUPTED" -a ! -e "$DATADIR/stop-os-hm"; then
                   fullconntest
                   # Test for FPERR instead?
                   if test $FPERR -gt 0; then
@@ -4777,7 +4777,7 @@ else # test "$1" = "DEPLOY"; then
                 # TODO: Attach additional net interfaces to JHs ... and test IP addr
                 WAITTIME+=($(($MSTOP-$WSTART)))
                 # Test load balancer
-                if test -n "$LOADBALANCER" -a $LBERRORS = 0 -a -z "$INTERRUPTED" -a ! -e stop-os-hm; then
+                if test -n "$LOADBALANCER" -a $LBERRORS = 0 -a -z "$INTERRUPTED" -a ! -e "$DATADIR/stop-os-hm"; then
 		 LBACTIVE=1
 		 testLBs
                 else
@@ -4827,7 +4827,7 @@ else # test "$1" = "DEPLOY"; then
   fi; deleteNets
  fi
  # We may recycle the router
- if test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED" -o $((($loop+1)%$ROUTERITER)) == 0 -o -e stop-os-hm; then deleteRouters; fi
+ if test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED" -o $((($loop+1)%$ROUTERITER)) == 0 -o -e "$DATADIR/stop-os-hm"; then deleteRouters; fi
  #echo "${NETSTATS[*]}"
  echo -e "$BOLD *** Cleanup complete *** $NORM"
  THISRUNTIME=$(($(date +%s)-$MSTART+$TESTTIME))
@@ -4898,7 +4898,7 @@ CDATE=$(date +%Y-%m-%d)
 CTIME=$(date +%H:%M:%S)
 if test -n "$FULLCONN"; then CONNTXT="$CUMCONNERRORS Conn ERRORS"; CONNST="|$CUMCONNERRORS"; else CONNTXT=""; CONNST=""; fi
 if test -n "$LOADBALANCER"; then LBTXT="$CUMLBERRORS LB ERRORS"; LBST="|$CUMLBERRORS"; else LBTXT=""; LBST=""; fi
-if cycle_mon || test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED" -o -e stop-os-hm; then
+if cycle_mon || test $(($loop+1)) == $MAXITER -o -n "$INTERRUPTED" -o -e "$DATADIR/stop-os-hm"; then
   if test -n "$ROUTERS"; then deleteRouters; fi
   reallysendalarm 0 "Statistics for $LASTDATE $LASTTIME - $CDATE $CTIME" "
 $RPRE $VERSION on $HOSTNAME testing $STRIPLE ($JHIMG/$IMG):
@@ -4970,7 +4970,7 @@ $(allstats -m)" > "$DATADIR/Stats.$LASTDATE.$LASTTIME.$CDATE.$CTIME.psv"
 fi
 
 # Clean up residuals, if any
-if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0 -o -n "$INTERRUPTED" -o -e stop-os-hm; then waitnetgone; fi
+if test $(($loop+1)) == $MAXITER -o $((($loop+1)%$ROUTERITER)) == 0 -o -n "$INTERRUPTED" -o -e "$DATADIR/stop-os-hm"; then waitnetgone; fi
 #waitnetgone
 if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   unset STATSENT
@@ -4991,7 +4991,7 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   fi
 fi
 
-if test -e "$DATADIR/stop-os-hm"; then echo "Found $DATADIR/stop-os-hm. Stopping."; break; fi
+if test -e "$DATADIR/stop-os-hm"; then echo "Found $DATADIR/stop-os-hm. Stopping."; fi
 sleep 1
 let loop+=1
 done
