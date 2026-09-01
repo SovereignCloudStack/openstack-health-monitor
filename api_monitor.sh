@@ -845,6 +845,8 @@ translate()
   # Some services can not easily be talked to directly
   case $ORIGCMD in
     barbican|designate|senlin) OPST=openstack;;
+    # OpenStack Client 10+ talks to keystone before nova always
+    nova) if test $OSTACKVERMAJ -ge 10; then OPST=openstack; fi;;
   esac
   if test "$CMD" == "$1"; then
     # No '-'
