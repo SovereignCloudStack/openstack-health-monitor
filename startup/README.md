@@ -24,10 +24,10 @@
 * Create a file `run_in_loop.sh` which runs `run_YOURCLOUD.sh` in a loop:
   ```
   #!/bin/bash
-  rm stop-os-hm 2>/dev/null
+  rm "$OS_CLOUD/stop-os-hm" 2>/dev/null
   while true; do
     ./run_YOURCLOUD.sh -s -i 200
-    if test -e stop-os-hm; then break; fi
+    if test -e "$OS_CLOUD/stop-os-hm"; then break; fi
     echo -n "Hit ^C to abort ..."
     sleep 15; echo
   done
