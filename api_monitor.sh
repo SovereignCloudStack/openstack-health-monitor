@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.116
+VERSION=1.117
 
 APIMON_ARGS="$@"
 # debugging
@@ -4982,6 +4982,7 @@ if test "$RPRE" == "APIMonitor_${STARTDATE}_" -a "$STATSENT" == "1"; then
   fi
 fi
 
+if test -e "$DATADIR/stop-os-hm"; then echo "Found $DATADIR/stop-os-hm. Stopping."; break; fi
 sleep 1
 let loop+=1
 done
