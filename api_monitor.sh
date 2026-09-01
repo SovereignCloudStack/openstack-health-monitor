@@ -400,9 +400,14 @@ usage()
   echo " -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it"
   echo " -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)"
   echo " -LR    reverse order of LB healthmon and member creation and deletion"
+<<<<<<< HEAD
   echo " -X     test list requests for octavia, swift, heat, designate, barbican, manila, aodh,"
   echo "         gnocchi, magnum, senlin, ironic if those are advertised in the catalog"
   echo "         and client tools are installed"
+=======
+  echo " -X     test list requests for octavia, swift, heat, designte, barbican, manila, aodh,"
+  echo "         gnocchi, magnum, senlin, ironic if those are advertised in the catalog"
+>>>>>>> 871ad41 (Add option -X, monitoring GET on a variety of OS services.)
   echo " -b     run a simple compute benchmark (4k pi with bc)"
   echo " -B     measure TCP BW b/w VMs (iperf3)"
   echo " -M     measure disk I/O bandwidth & latency (fio)"
@@ -814,7 +819,11 @@ translate()
   unset MYTAG
   ORIGCMD="$1"
   CMDS=(nova cinder neutron glance octavia swift designate heat barbican manila aodh gnocchi magnum senlin ironic)
+<<<<<<< HEAD
   OSTDEFS=(server volume network image loadbalancer object zone stack secret share alarm "metric resource" "coe cluster" cluster "baremetal node")
+=======
+  OSTDEFS=(server volume network image loadbalancer container zone stack secret share alarm "metric resource" "coe cluster" cluster "baremetal node")
+>>>>>>> 871ad41 (Add option -X, monitoring GET on a variety of OS services.)
   EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP $OCTAVIA_EP $SWIFT_EP "$DESIGNATE_EP" "$HEAT_EP" \
 	"$BARBICAN_EP" "$MANILA_EP" "$AODH_EP" "$GNOCCHI_EP" "$MAGNUM_EP" "$SENLIN_EP" "$IRONIC_EP")
   for no in $(seq 0 $((${#CMDS[*]}-1))); do
@@ -845,8 +854,11 @@ translate()
   # Some services can not easily be talked to directly
   case $ORIGCMD in
     barbican|designate|senlin) OPST=openstack;;
+<<<<<<< HEAD
     # OpenStack Client 10+ talks to keystone before nova always
     nova) if test $OSTACKVERMAJ -ge 10; then OPST=openstack; fi;;
+=======
+>>>>>>> 871ad41 (Add option -X, monitoring GET on a variety of OS services.)
   esac
   if test "$CMD" == "$1"; then
     # No '-'
@@ -3864,7 +3876,11 @@ testAuxHelper()
   if test $RC != 0; then
     echo -e "${RED}FAIL{$NORM}"
   else
+<<<<<<< HEAD
     CNT=$(echo "$OSTACKRESP" | grep -v -e '^+' -e '^| [iI][dD]' -e '^$' -e '^| Secret' -e '| Name ' | wc -l)
+=======
+    CNT=$(echo "$OSTACKRESP" | grep -v '^+' | grep -v '^| [iI][dD]' | grep -v '^$' | wc -l)
+>>>>>>> 871ad41 (Add option -X, monitoring GET on a variety of OS services.)
     echo -e "${GREEN}OK${NORM} ($CNT)"
   fi
 }
@@ -3885,7 +3901,11 @@ testAux()
   if test -z "$LOADBALANCER"; then
     testAuxHelper "$OCTAVIA_EP" LBSTATS $FIPTIMEOUT  "Octavia  service: " neutron lbaas-loadbalancer-list
   fi
+<<<<<<< HEAD
   testAuxHelper "$BARBICAN_EP" AUXSTATS $NETTIMEOUT  "Barbican service: " barbican list --limit 42
+=======
+  testAuxHelper "$BARBICAN_EP" AUXSTATS $NETTIMEOUT  "Barbican service: " barbican list
+>>>>>>> 871ad41 (Add option -X, monitoring GET on a variety of OS services.)
   #testAuxHelper "$BARBICAN_EP" AUXSTATS $NETTIMEOUT  "Barbican service: " openstack secret list
   testAuxHelper "$DESIGNATE_EP" AUXSTATS $FIPTIMEOUT "Designate   srvc: " designate list
   #testAuxHelper "$DESIGNATE_EP" AUXSTATS $FIPTIMEOUT "Designate   srvc: " openstack zone list
@@ -3896,7 +3916,11 @@ testAux()
   testAuxHelper "$MAGNUM_EP" AUXSTATS $NETTIMEOUT    "Magnum   service: " magnum list
   testAuxHelper "$SENLIN_EP" METRICSTATS $FIPTIMEOUT "Senlin   service: " senlin list
   testAuxHelper "$IRONIC_EP" AUXSTATS $NOVATIMEOUT   "Ironic   service: " ironic list
+<<<<<<< HEAD
   testAuxHelper "$SWIFT_EP" AUXSTATS $CINDERTIMEOUT  "Swift    service: " swift list /
+=======
+  testAuxHelper "$SWIFT_EP" AUXSTATS $CINDERTIMEOUT  "Swift    service: " swift list
+>>>>>>> 871ad41 (Add option -X, monitoring GET on a variety of OS services.)
 }
 
 
@@ -4241,6 +4265,7 @@ getToken()
   if test -z "$SWIFT_EP"; then SWIFT_EP=$(getPublicEP radosgw-swift); fi
   #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP"
   # Optional EPs
+<<<<<<< HEAD
   OSHELP=$(openstack help)
   HEAT_EP=$(getPublicEP heat)
   if test -n "$HEAT_EP" -a -z "$(echo $OSHELP | grep heatclient)"; then echo -e "${YELLOW}Lacking openstack heatclient support${NORM}"; unset HEAT_EP; fi
@@ -4260,6 +4285,17 @@ getToken()
   if test -n "$SENLIN_EP" -a -z "$(echo $OSHELP | grep senlinclient)"; then echo -e "${YELLOW}Lacking openstack senlinclient support${NORM}"; unset SENLIN_EP; fi
   IRONIC_EP=$(getPublicEP ironic)
   if test -n "$IRONIC_EP" -a -z "$(echo $OSHELP | grep ironicclient)"; then echo -e "${YELLOW}Lacking openstack ironicclient support${NORM}"; unset IRONIC_EP; fi
+=======
+  HEAT_EP=$(getPublicEP heat)
+  BARBICAN_EP=$(getPublicEP barbican)
+  DESIGNATE_EP=$(getPublicEP designate)
+  MANILA_EP=$(getPublicEP manilav2)
+  AODH_EP=$(getPublicEP aodh)
+  GNOCCHI_EP=$(getPublicEP gnocchi)
+  MAGNUM_EP=$(getPublicEP magnum)
+  SENLIN_EP=$(getPublicEP senlin)
+  IRONIC_EP=$(getPublicEP ironic)
+>>>>>>> 871ad41 (Add option -X, monitoring GET on a variety of OS services.)
   #echo "MORE ENDPOINTS: $HEAT_EP, $BARBICAN_EP, $DESIGNATE_EP, $MANILA_EP, $AODH_EP, $GNOCCHI_EP, $MAGNUM_EP"
   ostackcmd_tm_retry KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
   TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')
