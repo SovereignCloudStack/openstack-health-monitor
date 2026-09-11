@@ -11,6 +11,8 @@ export JHIMG="Debian 13"
 #export IMG="openSUSE 16.0"
 export IMG="Debian 13"
 #export IMG="CentOS 8"
+# Add space for fio test (requires 2GiB)
+#export ADDJHVOLSIZE=3
 # DEFLTUSER from image_original_user property
 #export DEFLTUSER=...
 # You can use a filter when listing images (because your catalog is huge)
@@ -48,7 +50,7 @@ NOTE_EMAIL_ADDRESSES="scs@garloff.de"
 #NOTE_EMAIL_ADDRESSES="scs@garloff.de"
 export ALARM_EMAIL_ADDRESSES NOTE_EMAIL_ADDRESSES
 
-export EXTSEARCH=public1
+#export EXTSEARCH=public
 
 # Terminate early on auth error
 openstack server list >/dev/null || exit 1
