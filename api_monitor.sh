@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.117
+VERSION=1.118
 
 APIMON_ARGS="$@"
 # debugging
@@ -242,7 +242,7 @@ if test -z "$VAZS"; then
 fi
 if test -z "$VAZS"; then VAZS=(${AZS[*]}); else VAZS=($VAZS); fi
 NOVAZS=${#VAZS[*]}
-if test $NOAZS -gt 1 -a -z "$NAZS"; then
+if test $NOAZS -ge 1 -a -z "$NAZS"; then
   NAZS=$(openstack availability zone list --network -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
 fi
 if test -n "$NAZS"; then NAZS=($NAZS); fi
@@ -470,7 +470,7 @@ while test -n "$1"; do
     "-LR") REVERSEHMMEMBER=1 ;;
     "-b") BCBENCH=1;;
     "-B") IPERF=1;;
-    "-M") FIOBENCH=1;;
+    "-M") FIOBENCH=1; if test $ADDJHVOLSIZE = 0; then ADDJHVOLSIZE=2; fi;;
     "-t") let TIMEOUTFACT+=1;;
     "-T") TAG=1; TAGARG="--tag ${RPRE%_}";;
     "-R2") SECONDRECREATE=1;;
@@ -815,7 +815,7 @@ translate()
   ORIGCMD="$1"
   CMDS=(nova cinder neutron glance octavia swift designate heat barbican manila aodh gnocchi magnum senlin ironic)
   OSTDEFS=(server volume network image loadbalancer object zone stack secret share alarm "metric resource" "coe cluster" cluster "baremetal node")
-  EPS=($NOVA_EP $CINDER_EP $NEUTRON_EP $GLANCE_EP $OCTAVIA_EP $SWIFT_EP "$DESIGNATE_EP" "$HEAT_EP" \
+  EPS=("$NOVA_EP" "$CINDER_EP" "$NEUTRON_EP" "$GLANCE_EP" "$OCTAVIA_EP" "$SWIFT_EP" "$DESIGNATE_EP" "$HEAT_EP" \
 	"$BARBICAN_EP" "$MANILA_EP" "$AODH_EP" "$GNOCCHI_EP" "$MAGNUM_EP" "$SENLIN_EP" "$IRONIC_EP")
   for no in $(seq 0 $((${#CMDS[*]}-1))); do
     if test ${CMDS[$no]} == $1; then
@@ -827,7 +827,7 @@ translate()
   OSTACKCMD=("$@")
   if test "$1" == "myopenstack" -a -z "$OPENSTACKTOKEN"; then shift; OSTACKCMD=("openstack" "$@"); return 0; fi
   if test "$1" == "openstack" -a -z "$OPENSTACKTOKEN"; then shift; OSTACKCMD=("openstack" "$@"); return 0; fi
-  if test -z "$EP"; then if test "$1" != "openstack"; then echo "No translation for $@" 1>&2; fi; return 0; fi
+  if test -z "$EP"; then if test "$1" != "openstack"; then echo "No endpoint or client for $@" 1>&2; fi; return 0; fi
   if test -z "$OPENSTACKCLIENT" -o "$1" == "openstack" -o "$1" == "myopenstack"; then return 0; fi
   if test -n "$LOGFILE"; then echo "#DEBUG: $@" >> "$LOGFILE"; fi
   #echo "#DEBUG: $@" 1>&2
@@ -926,6 +926,9 @@ translate()
       OSTACKCMD=($OPST $C1 $CMD $MYTAG ${ARGS})
     elif test "$C1" == "floating ip" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed 's@\-\-port\-id@--port@')
+      OSTACKCMD=($OPST $C1 $CMD $MYTAG ${ARGS})
+    elif test "$C1" == "port" -a "$CMD" == "list"; then
+      ARGS=$(echo "$@" | sed 's@\-c fixed_ips@-c "Fixed IP Addresses"@')	# Does not work :-(
       OSTACKCMD=($OPST $C1 $CMD $MYTAG ${ARGS})
     elif test "$C1" == "net external"; then
       OSTACKCMD=($OPST network $CMD $MYTAG --external "$@")
@@ -1819,6 +1822,7 @@ showResources()
 createRouters()
 {
   if test -z "$ROUTERS"; then
+    # TODO: We could use an az-hint here with all AZs we want in case we only test in part of them
     createResources 1 NETSTATS ROUTER NONE NONE "" id $FIPTIMEOUT neutron router-create ${RPRE}Router || return
     # Need to attach external net gateway
     ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list
@@ -2294,7 +2298,8 @@ calcRedirs()
   #  secondary port reshuffling and (b) PORTS needs to match VMS ordering
   # This is why we use orderVMs
   # Optimization: Do neutron port-list once and parse multiple times ...
-  ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
+  #ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
+  ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-list -f json
   if test ${#PORTS[*]} -gt 0; then
     declare -i ptn=222
     declare -i pi=0
@@ -2448,7 +2453,8 @@ collectPorts()
   IPRESP="$OSTACKRESP"
   # FIXME: We could use the new reporting: -c ID -c "Fixed IP Addressess" -c "Device ID"
   # (but that does not help either to recover the lost device_id fields)
-  ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
+  #ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-list -c id -c fixed_ips -f json
+  ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-list -f json
   #echo -e "#DEBUG: cP VMs ${VMS[*]}\n\'$OSTACKRESP\'\n\'$IPRESP\'"
   #echo "#DEBUG: cP VMs ${VMS[*]}"
   if test -n "$SECONDNET" -a -z "$SECONDPORTS"; then COLLSECOND=1; else unset COLLSECOND; fi
@@ -3476,7 +3482,7 @@ EOT
     if test -n "$LOGFILE"; then echo -n "Disk Benchmark (fio):" >> "$LOGFILE"; fi
     for JHNO in $(seq 0 $(($NOAZS-1))); do
       if test -n "$LOGFILE"; then echo "ssh -i \"$DATADIR/${KEYPAIRS[0]}\" -o \"PasswordAuthentication=no\" -o \"StrictHostKeyChecking=no\" -o \"ConnectTimeout=8\" -o \"UserKnownHostsFile=$SSHHOSTSFILE\" ${USER}@${FLOATS[$JHNO]} fio --rw=randrw --name=test --size=500M --direct=1 --bs=16k --numjobs=4 --group_reporting --runtime=12" >> "$LOGFILE"; fi
-      BENCH=$(ssh -i "$DATADIR/${KEYPAIRS[0]}" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait fio; cd /tmp; fio --rw=randrw --name=test --size=500M --direct=1 --bs=16k --numjobs=4 --group_reporting --runtime=12; rm test.?.? 2>/dev/null")
+      BENCH=$(ssh -i "$DATADIR/${KEYPAIRS[0]}" -o "PasswordAuthentication=no" -o "StrictHostKeyChecking=no" -o "ConnectTimeout=8" -o "UserKnownHostsFile=$SSHHOSTSFILE" ${USER}@${FLOATS[$JHNO]} "./${RPRE}wait fio; fio --rw=randrw --name=test --size=500M --direct=1 --bs=16k --numjobs=4 --group_reporting --runtime=12; rm test.?.? 2>/dev/null")
       if test -n "$LOGFILE"; then echo "$BENCH" >> "$LOGFILE"; fi
       if echo "$BENCH" | grep 'test:' >/dev/null 2>&1; then
 	READ=$(echo "$BENCH" | grep '  read:')
@@ -3616,7 +3622,8 @@ exit \$((RETRIES+FAILS))
 EOT
   chmod +x ${RPRE}ping
   # collect all IPs
-  ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
+  #ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-list -c id -c device_id -c fixed_ips -f json
+  ostackcmd_tm_retry NETSTATS $NETTIMEOUT neutron port-list -f json
   IPS=()
   NP=${#PORTS[*]}
   for pno in $(seq 0 $(($NP-1))); do
@@ -4051,7 +4058,7 @@ cleanup()
   #  maybe we should use findFIPs
   translate neutron floatingip-list
   if test "$TAG" == "1" -a -z "$NOFILTERTAG"; then
-    FIPS=( $(${OSTACKCMD[@]} | grep '^| [0-9a-f]\{8\}\-' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
+    FIPS=( $(${OSTACKCMD[@]} | grep '^| [0-9a-f]\{8\}-' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   else
     FIPS=( $(${OSTACKCMD[@]} | grep '10\.250\.255\.' | sed 's/^| *\([^ ]*\) *|.*$/\1/') )
   fi
@@ -4239,7 +4246,8 @@ getToken()
   KEYSTONE_EP=$(getPublicEP keystone)
   if test -z "$OCTAVIA_EP"; then OCTAVIA_EP="$NEUTRON_EP"; fi
   if test -z "$SWIFT_EP"; then SWIFT_EP=$(getPublicEP radosgw-swift); fi
-  #echo "ENDPOINTS: $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP"
+  #echo "ENDPOINTS: $KEYSTONE_EP, $NOVA_EP, $CINDER_EP, $GLANCE_EP, $NEUTRON_EP, $OCTAVIA_EP, $SWIFT_EP"
+  if test -z "$SWIFT_EP"; then echo "# Warn: No Swift endpoint"; fi
   # Optional EPs
   OSHELP=$(openstack help)
   HEAT_EP=$(getPublicEP heat)
@@ -4263,10 +4271,11 @@ getToken()
   #echo "MORE ENDPOINTS: $HEAT_EP, $BARBICAN_EP, $DESIGNATE_EP, $MANILA_EP, $AODH_EP, $GNOCCHI_EP, $MAGNUM_EP"
   ostackcmd_tm_retry KEYSTONESTATS $DEFTIMEOUT openstack token issue -f json
   TOKEN=$(echo "$OSTACKRESP" | jq '.id' | tr -d '"')
-  #echo "TOKEN: {SHA256}$(echo $TOKEN | sha256sum)"
   PROJECT=$(echo "$OSTACKRESP" | jq '.project_id' | tr -d '"')
   USER=$(echo "$OSTACKRESP" | jq '.user_id' | tr -d '"')
-  #echo "PROJECT: $PROJECT, USER: $USER"
+  #echo "# TOKEN: {SHA256}$(echo $TOKEN | sha256sum)"
+  #echo "# PROJECT: $PROJECT, USER: $USER"
+  #echo "# Endpoints: KS $KEYSTONE_EP Glance $GLANCE_EP Neutron $NEUTRON_EP Cinder $CINDER_EP Nova $NOVA_EP Swift $SWIFT_EP Heat $HEAT_EP Barbican $BARBICAN_EP Designate $DESIGNATE_EP Manila $MANILA_EP AODH $AODH_EP Gnocchi $GNOCCHI_EP Magnum $MAGNUM_EP Senlin $SENLIN_EP Ironic $IRONIC_EP"
 }
 
 # Get Image Information
@@ -4286,7 +4295,7 @@ getImgInfo()
     MD=$(echo "$OSTACKRESP" | jq '.min_disk' | tr -d '"')
     SZ=$(echo "$OSTACKRESP" | jq '.size' | tr -d '"')
     USER=$(echo "$OSTACKRESP" | jq '.properties.image_original_user' | tr -d '"')
-    SZ=$((SZ/1024/1024/1024))
+    SZ=$(((SZ+1073741823)/1024/1024/1024))
     return 0
   fi
 }
