@@ -242,7 +242,7 @@ if test -z "$VAZS"; then
 fi
 if test -z "$VAZS"; then VAZS=(${AZS[*]}); else VAZS=($VAZS); fi
 NOVAZS=${#VAZS[*]}
-if test $NOAZS -gt 1 -a -z "$NAZS"; then
+if test $NOAZS -ge 1 -a -z "$NAZS"; then
   NAZS=$(openstack availability zone list --network -f json | jq '.[] | select(."Zone Status" == "available")."Zone Name"'  | tr -d '"' | sort -u)
 fi
 if test -n "$NAZS"; then NAZS=($NAZS); fi
@@ -1822,6 +1822,7 @@ showResources()
 createRouters()
 {
   if test -z "$ROUTERS"; then
+    # TODO: We could use an az-hint here with all AZs we want in case we only test in part of them
     createResources 1 NETSTATS ROUTER NONE NONE "" id $FIPTIMEOUT neutron router-create ${RPRE}Router || return
     # Need to attach external net gateway
     ostackcmd_tm NETSTATS $NETTIMEOUT neutron net-external-list
