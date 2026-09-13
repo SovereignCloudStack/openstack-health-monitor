@@ -31,7 +31,7 @@ export FROM=kurt@garloff.de
 # Only use one AZ
 #export AZS="muc5-a"
 # Upload (compressed) logfiles and stats to container
-#export SWIFTCONTAINER=OS-HM-Logfiles
+export SWIFTCONTAINER=OS-HM-Logfiles
 #export DEFAULTNAMESERVER="true"
 export NAMESERVER=192.168.155.10
 
@@ -99,6 +99,6 @@ done
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
 #exec api_monitor.sh -o -C -D -N 2 -n 8 -s -e sender@domain.org "$@"
 #exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -M -a 2 -t -T -R -X "$@"
-exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -LO -b -B -M -a 2 -t -T -R -X -S garloffcloud "$@"
+exec ./api_monitor.sh -O -C -D -N 2 -n 8 -A -s -LO -b -B -M -a 2 -t -T -R -X -S garloffcloud "$@"
 #exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -b -B -M -a 2 -t -T -R -S ciab "$@"
 
