@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.118
+VERSION=1.119
 
 APIMON_ARGS="$@"
 # debugging
@@ -367,6 +367,7 @@ usage()
   echo " -N N   number of networks/subnets/jumphosts to create (def: # AZs)"
   echo " -l LOGFILE record all command in LOGFILE"
   echo " -a N   send at most N alarms per iteration (first plus N-1 summarized)"
+  echo " -A     create server groups and set soft anti-affinity for the VMs"
   echo " -R     send recovery email after a completely successful iteration and alarms before"
   echo " -e ADR sets eMail address for notes/alarms (assumes working MTA)"
   echo "         second -e splits eMails; notes go to first, alarms to second eMail"
@@ -446,6 +447,7 @@ while test -n "$1"; do
     "-m") if test -z "$SMNID"; then SMNID="$2"; else SMNID2="$2"; fi; shift;;
     "-q") NOALARM=1;;
     "-a") MAXALARMS=$2; shift;;
+    "-A") ANTIAFFINITY=1;;
     "-R") SENDRECOVERY=1;;
     "-i") MAXITER=$2; shift;;
     "-g") ADDVMVOLSIZE=$2; shift;;
@@ -907,6 +909,7 @@ translate()
       OSTACKCMD=($OPST $DEFCMD create "$ON" "$@")
     fi
   else
+    # We have a - in there CMD is the last piece, rest in C1
     C1=${1%-*}
     if test "$C1" == "net"; then C1="network"; fi
     if test "$C1" == "floatingip"; then C1="floating ip"; fi
@@ -921,7 +924,10 @@ translate()
     #if test "$C1" == "keypair" -a "$CMD" == "create"; then
     #  OSTACKCMD=(openstack $C1 $CMD $MYTAG "${@//--property-filter/--property}")
     #fi
-    if test "$C1" == "subnet" -a "$CMD" == "create"; then
+    if test "$C1" == "server group" -a CMD=="create"; then
+      ARGS=$(echo "$@" | sed -e 's@\([^ ]*\) \([^ ]*\)$@\1 --policy \2@')
+      OSTACKCMD=($OPST $C1 $CMD ${ARGS})
+    elif test "$C1" == "subnet" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed -e 's@\-\-disable-dhcp@--no-dhcp@' -e 's@\-\-name \([^ ]*\) *\([^ ]*\) *\([^ ]*\)@--network \2 --subnet-range \3 \1@')
       OSTACKCMD=($OPST $C1 $CMD $MYTAG ${ARGS})
     elif test "$C1" == "floating ip" -a "$CMD" == "create"; then
@@ -2902,6 +2908,27 @@ orderVMs()
   done
 }
 
+# Create a server group with soft antiAffinity
+createSrvGrpAnti()
+{
+  unset SRVGRPID
+  if test -z "$ANTIAFFINITY"; then return 0; fi
+  # FIXME: One should be enough even for several AZs, no?
+  echo -n "Create VM Soft-Anti-Affinity: "
+  # --os-compute-api-version 2.15
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova server-group-create ${RPRE}SrvGrp soft-anti-affinity || return 1
+  SRVGRPID=$(echo "$OSTACKRESP" | grep "^| *id *|" | sed -e "s/^| *id *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
+  echo "$SRVGRPID"
+}
+
+deleteSrvGrpAnti()
+{
+  if test -z "$ANTIAFFINITY"; then return 0; fi
+  echo -n "Create VM Soft-Anti-Affinity: "
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova server-group-delete ${RPRE}SrvGrp || return 1
+  echo $SRVGRPID
+}
+
 # Create many VMs with one API call (option -D)
 createVMsAll()
 {
@@ -2937,13 +2964,14 @@ createVMsAll()
     OLDVOLS=""
   fi
   echo -n "Create VMs in batches: "
+  if test -n "$SRVGRPID"; then SRVGRP="--server-group $SRVGRPID"; else unset SRVGRP; fi
   # Can not pass port IDs during boot in batch creation
   if test -n "$SECONDNET" -a -z "$DELAYEDATTACH"; then DELAYEDATTACH=1; fi 
   for netno in $(seq 0 $(($NONETS-1))); do
     AZ=${AZS[$(($netno%$NOAZS))]}
     THISNOVM=$((($NOVMS+$NONETS-$netno-1)/$NONETS))
     STMS[$netno]=$(date +%s)
-    ostackcmd_tm NOVABSTATS $(($NOVABOOTTIMEOUT+$THISNOVM*$DEFTIMEOUT/2)) nova boot --flavor $FLAVOR $IMAGE --key-name ${KEYPAIRS[1]} --availability-zone $AZ --security-groups ${SGROUPS[1]} --nic net-id=${NETS[$netno]} --user-data "$UDTMP" ${RPRE}VM_VM_NET$netno --min-count=$THISNOVM --max-count=$THISNOVM
+    ostackcmd_tm NOVABSTATS $(($NOVABOOTTIMEOUT+$THISNOVM*$DEFTIMEOUT/2)) nova boot --flavor $FLAVOR $IMAGE --key-name ${KEYPAIRS[1]} --availability-zone $AZ --security-groups ${SGROUPS[1]} --nic net-id=${NETS[$netno]} --user-data "$UDTMP" $SRVGRP ${RPRE}VM_VM_NET$netno --min-count=$THISNOVM --max-count=$THISNOVM
     let ERRS+=$?
     # TODO: More error handling here?
   done
@@ -2962,6 +2990,7 @@ createVMs()
 {
   if test -n "$BOOTALLATONCE"; then createVMsAll; return; fi
   local UDTMP="$DATADIR/${RPRE}user_data_VM.yaml"
+  if test -n "$SRVGRPID"; then SRVGRP="--server-group $SRVGRPID"; else unset SRVGRP; fi
   for no in $(seq 0 $NOVMS); do
     echo -e "#cloud-config\npackage_update: false\npackage_upgrade: false\npackage_reboot_if_required: false\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}$no\n   path: /tmp/testfile\n   permissions: '0644'" > "$UDTMP.$no"
   done
@@ -2976,14 +3005,14 @@ createVMs()
       createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR $IMAGE --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL --user-data "$UDTMP.\$no" ${RPRE}VM_VM\$no
     else
       # SAVE: createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
-      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR $IMAGE --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" --user-data "$UDTMP.\$no" ${RPRE}VM_VM\$no
+      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR $IMAGE --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" --user-data "$UDTMP.\$no" $SRVGRP ${RPRE}VM_VM\$no
     fi
   else
     if test -n "$MANUALPORTSETUP"; then
-      createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL --user-data "$UDTMP.\$no" ${RPRE}VM_VM\$no
+      createResources $NOVMS NOVABSTATS VM PORT VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --nic port-id=\$VAL --user-data "$UDTMP.\$no" $SRVGRP ${RPRE}VM_VM\$no
     else
       # SAVE: createResources $NOVMS NETSTATS PORT NONE NONE "" id neutron port-create --name "${RPRE}Port_VM\${no}" --security-group ${SGROUPS[1]} "\${NETS[\$((\$no%$NONETS))]}"
-      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" --user-data "$UDTMP.\$no" ${RPRE}VM_VM\$no
+      createResources $NOVMS NOVABSTATS VM NET VOLUME VMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $FLAVOR --boot-volume \$MVAL --key-name ${KEYPAIRS[1]} --availability-zone \${AZS[\$AZN]} --security-groups ${SGROUPS[1]} --nic "net-id=\${NETS[\$((\$no%$NONETS))]}" --user-data "$UDTMP.\$no" $SRVGRP ${RPRE}VM_VM\$no
     fi
   fi
   local RC=$?
@@ -4701,6 +4730,7 @@ else # test "$1" = "DEPLOY"; then
             if createFIPs; then
              waitVols  # TODO: Error handling
              nameJHVols
+	     createSrvGrpAnti
              if createVMs; then
               let ROUNDVMS+=$NOVMS
               waitJHVMs
@@ -4810,7 +4840,7 @@ else # test "$1" = "DEPLOY"; then
                fi
                # TODO: Detach and delete disks again
               fi; #JH wait successful
-             fi; deleteVMs
+             fi; deleteVMs; deleteSrvGrpAnti
             fi; deleteFIPs
            fi; deleteJHVMs
           fi; deleteKeypairs

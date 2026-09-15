@@ -37,6 +37,7 @@ We recommend migration as well to the new solution.
 (c) Kurt Garloff <kurt.garloff@t-systems.com>, 2/2017-7/2017
 (c) Kurt Garloff <scs@garloff.de>, 2/2020-4/2021
 (c) Kurt Garloff <garloff@osb-alliance.com>, 5/2021-11/2024
+(c) Kurt Garloff <scs@garloff.de>, 1/2025-9/2026
 
 License: CC-BY-SA (2.0)
 
@@ -56,6 +57,7 @@ License: CC-BY-SA (2.0)
 - configuring the virtIP as default route
 - JumpHosts do SNAT for outbound traffic and port forwarding for inbound
   (this requires SUSE images with SFW2-snat package to work)
+- optionally create soft-anti-affinity server group (option `-A`)
 - create N internal VMs striped over the nets and AZs by
   a) creating disks (from image) -- if option `-d` is not used
   b) creating a port -- if option `-P` is not used
@@ -64,7 +66,8 @@ License: CC-BY-SA (2.0)
   d) do some property changes to VMs
 - after everything is complete, we wait for the VMs to be up
 - we ping them, log in via ssh and see whether they can ping to the outside world (quad9)
-- do some simplistic benchmarks, CPU (4k digits of pi), disk (fio), network (iperf3)
+- do some simplistic benchmarks, CPU (4k digits of pi `-b`), disk (fio, `-M`),
+  network (iperf3, `-B`)
 - a full cross connectivity check (can each VM ping each other?) with `-C`
 - we create a loadbalancer and check accessing all VMs as members (RR) with `-L`/`-LL`
 - we kill some backends and check that the LB's health monitor detects this and
@@ -97,11 +100,12 @@ or SMN (OTC notifications via SMS and other media) alarms.
 
 ## Runtime
 
-This takes rather long, as typical API calls take b/w 1 and 2s on OpenStack (including the round trip to keystone for the token).
+This takes rather long, as typical API calls take b/w 1 and 2s on OpenStack (including the
+round trip to keystone for the token).
 
 Optimization possibilities:
 Cache token and reuse when creating a large number of resources in a loop.
-Completed (use option `-O` (not used for volume create)).
+Completed (use option `-O` (not used for some operations, e.g. volume create)).
 
 ## Prerequisites
 
@@ -116,7 +120,7 @@ Completed (use option `-O` (not used for volume create)).
   (If we use `-2`/`-3`/`-4`, we also need a SUSE image to have the `cloud-multiroute` pkg in there.)
 
 I typically set this up on openSUSE-15.x images that come with all these tools (except sendmail)
-preinstalled -- get them at <https://kfg.images.obs-website.eu-de.otc.t-systems.com/>.
+preinstalled -- get them at <https://kfg-images.obs-website.eu-de.otc.t-systems.com/>.
 I tiny flavor is enough to run this (1GiB RAM, 5GB disk) -- watch the logfiles though to
 avoid them filling up your disk. If you set up the dashboard with telegraf, influxdb, grafana,
 I would recommend a larger flavor (4GiB RAM, 20GB disk).
@@ -126,59 +130,60 @@ I would recommend a larger flavor (4GiB RAM, 20GB disk).
 Use `api_monitor.sh -h` to get a list of the command line options. For reference find the output (from v1.109) here:
 
 ```
-Running api_monitor.sh v1.113 on host framekurt with arguments -h
-Using APIMonitor_1743587410_ prefix for resrcs on CLOUD (AZ)
-Usage:   api_monitor.sh [options]
+Running api_monitor.sh v1.119 on host os160 with arguments -h
+Using APIMonitor_1789306467_ prefix for resrcs on garloffcloud-test (nova)
+Usage: api_monitor.sh [options]
  --debug Use set -x to print every line executed
- -n N    number of VMs to create (beyond #AZ JumpHosts, def: 12)
- -N N    number of networks/subnets/jumphosts to create (def: # AZs)
+ -n N   number of VMs to create (beyond #AZ JumpHosts, def: 12)
+ -N N   number of networks/subnets/jumphosts to create (def: # AZs)
  -l LOGFILE record all command in LOGFILE
- -a N    send at most N alarms per iteration (first plus N-1 summarized)
- -R      send recovery email after a completely successful iteration and alarms before
- -e ADR  sets eMail address for notes/alarms (assumes working MTA)
-          second -e splits eMails; notes go to first, alarms to second eMail
- -E      exit on error (for CONNTEST)
- -m URN  sets notes/alarms by SMN (pass URN of queue)
-          second -m splits notifications; notes to first, alarms to second URN
+ -a N   send at most N alarms per iteration (first plus N-1 summarized)
+ -A     create server groups and set soft anti-affinity for the VMs
+ -R     send recovery email after a completely successful iteration and alarms before
+ -e ADR sets eMail address for notes/alarms (assumes working MTA)
+         second -e splits eMails; notes go to first, alarms to second eMail
+ -E     exit on error (for CONNTEST)
+ -m URN sets notes/alarms by SMN (pass URN of queue)
+         second -m splits notifications; notes to first, alarms to second URN
  -s [SH] sends stats as well once per day (or every SH hours), not just alarms
  -S [NM] sends stats to grafana via local telegraf http_listener (def for NM=api-monitoring)
- -q      do not send any alarms
- -d      boot Directly from image (not via volume)
- -vt TP  use volumetype TP (overrides env VOLUMETYPE)
- -z SZ   boots VMs from volume of size SZ
- -Z      do not create volume for JHs separately
- -P      do not create Port before VM creation
- -D      create all VMs with one API call (implies -d -P)
- -i N    sets max number of iterations (def = -1 = inf)
- -r N    only recreate router after each Nth iteration
- -g N    increase VM volume size by N GB (ignored for -d/-D)
- -G N    increase JH volume size by N GB
- -w N    sets error wait (API, VM): 0-inf seconds or neg value for interactive wait
- -W N    sets error wait (VM only): 0-inf seconds or neg value for interactive wait
- -V N    set success wait: Stop for N seconds (neg val: interactive) before tearing down
- -p N    use a new project every N iterations
- -c      noColors: don't use bold/red/... ASCII sequences
- -C      full Connectivity check: Every VM pings every other
- -o      translate nova/cinder/neutron/glance into openstack client commands
- -O      like -o, but use token_endpoint auth (after getting token)
- -x      assume eXclusive project, clean all floating IPs found
- -I      dIsassociate floating IPs before deleting them
- -L      create HTTP Loadbalancer (LBaaSv2/octavia) and test it
- -LL     create TCP  Loadbalancer (LBaaSv2/octavia) and test it
+ -q     do not send any alarms
+ -d     boot Directly from image (not via volume)
+ -vt TP use volumetype TP (overrides env VOLUMETYPE)
+ -z SZ  boots VMs from volume of size SZ
+ -Z     do not create volume for JHs separately
+ -P     do not create Port before VM creation
+ -D     create all VMs with one API call (implies -d -P)
+ -i N   sets max number of iterations (def = -1 = inf)
+ -r N   only recreate router after each Nth iteration
+ -g N   increase VM volume size by N GB (ignored for -d/-D)
+ -G N   increase JH volume size by N GB
+ -w N   sets error wait (API, VM): 0-inf seconds or neg value for interactive wait
+ -W N   sets error wait (VM only): 0-inf seconds or neg value for interactive wait
+ -V N   set success wait: Stop for N seconds (neg val: interactive) before tearing down
+ -p N   use a new project every N iterations
+ -c     noColors: don't use bold/red/... ASCII sequences
+ -C     full Connectivity check: Every VM pings every other
+ -o     translate nova/cinder/neutron/glance into openstack client commands
+ -O     like -o, but use token_endpoint auth (after getting token)
+ -x     assume eXclusive project, clean all floating IPs found
+ -I     dIsassociate floating IPs before deleting them
+ -L     create HTTP Loadbalancer (LBaaSv2/octavia) and test it
+ -LL    create TCP  Loadbalancer (LBaaSv2/octavia) and test it
  -LP PROV  create TCP LB with provider PROV test it (-LO is short for -LP ovn)
- -LR     reverse order of LB healthmon and member creation and deletion
- -X      test list requests GET octavia, swift, heat, designate, barbican, manila, aodh,
-          gnocchi, magnum, senlin, ironic if those are advertised in the catalog
-          and client tools are installed
- -b      run a simple compute benchmark (4k pi with bc)
- -B      measure TCP BW b/w VMs (iperf3)
- -M      measure disk I/O bandwidth & latency (fio)
- -t      long Timeouts (2x, multiple times for 3x, 4x, ...)
- -T      assign tags to resources; use to clean up floating IPs
- -2      Create 2ndary subnets and attach 2ndary NICs to VMs and test
- -3      Create 2ndary subnets, attach, test, reshuffle and retest
- -4      Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest
- -R2     Recreate 2ndary ports after detaching (OpenStack <= Mitaka bug)
+ -LR    reverse order of LB healthmon and member creation and deletion
+ -X     test list requests for octavia, swift, heat, designate, barbican, manila, aodh,
+         gnocchi, magnum, senlin, ironic if those are advertised in the catalog
+         and client tools are installed
+ -b     run a simple compute benchmark (4k pi with bc)
+ -B     measure TCP BW b/w VMs (iperf3)
+ -M     measure disk I/O bandwidth & latency (fio)
+ -t     long Timeouts (2x, multiple times for 3x, 4x, ...)
+ -T     assign tags to resources; use to clean up floating IPs
+ -2     Create 2ndary subnets and attach 2ndary NICs to VMs and test
+ -3     Create 2ndary subnets, attach, test, reshuffle and retest
+ -4     Create 2ndary subnets, reshuffle, attach, test, reshuffle and retest
+ -R2    Recreate 2ndary ports after detaching (OpenStack <= Mitaka bug)
 Or: api_monitor.sh [-f] [-o/-O] CLEANUP XXX to clean up all resources with prefix XXX
         Option -f forces the deletion
 Or: api_monitor.sh [Options] CONNTEST XXX for full conn test for existing env XXX
@@ -210,7 +215,8 @@ subdirectory.
 
 ## HOWTO Guide
 
-The directory docs contains a complete [setup guide](https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/docs/Debian12-Install.md)
+The directory docs contains a complete
+[setup guide](https://docs.scs.community/docs/operating-scs/guides/openstack-health-monitor/Debian12-Install)
 using Debian 12 VMs on an SCS reference deployement.
 
 ## Benchmarks
