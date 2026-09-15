@@ -3047,7 +3047,7 @@ nameVols()
   OSTACKR=$(echo "$OSTACKRESP" | grep -v '^+' | grep -v '| ID' | sed -e 's/|$//' -e 's/ *| */,/g')
   #echo "#DEBUG: nameVols $1 old: $OLDVOLS"
   local COLL=""
-  local id nm st att sz CRDATE
+  local id nm st att sz CRDATE NM
   local natt=0
   while read line; do
     id=$(echo "$line" | cut -d "," -f 2)
@@ -3061,6 +3061,8 @@ nameVols()
     if test -z "$att"; then
       # No candidate due to wrong size
       if test "$sz" != "$VMVOLSIZE"; then continue; fi
+      # No candidate because it's already named
+      if test -n "$nm"; then continue; fi
       # Get more info
       ostackcmd_tm VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder show $id -f json || continue
       # Check created_at
