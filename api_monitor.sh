@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.120
+VERSION=1.121
 
 APIMON_ARGS="$@"
 # debugging
@@ -1571,7 +1571,7 @@ waitResources()
       echo -en "Wait $RNM: $STATSTR\r"
       if test $STE != 0; then
         if test $STE == 1 -o $STE == 3; then
-          echo -e "\n${YELLOW}ERROR: $NM $rsrc status $STAT$NORM" 1>&2 #; return 1
+          echo -e "\n${YELLOW}ERROR: $RNM $rsrc status $STAT$NORM" 1>&2 #; return 1
           ERRRSC[$WERR]=$rsrc
           let WERR+=1
         fi
@@ -1672,7 +1672,7 @@ waitlistResources()
           ERRRSC[$WERR]=$rsrc
           let WERR+=1
           let misserr+=1
-          echo -e "\n${YELLOW}ERROR: $NM $rsrc status $STAT$NORM" 1>&2 #; return 1
+          echo -e "\n${YELLOW}ERROR: $RNM $rsrc status $STAT$NORM" 1>&2 #; return 1
         fi
         # Found
         TM=$(date +%s)
@@ -2137,7 +2137,7 @@ createVols()
   if test -n "$BOOTFROMIMAGE"; then return 0; fi
   VOLSTIME=()
   if test -n "$VOLUMETYPE"; then VOLTP="--volume-type $VOLUMETYPE"; else unset VOLTP; fi
-  createResources $NOVMS VOLSTATS VOLUME NONE NONE VOLSTIME id $CINDERTIMEOUT cinder create --image-id $IMGID --availability-zone \${VAZS[\$VAZN]} $VOLTP --name ${RPRE}RootVol_VM\$no $VOLSIZE
+  createResources $NOVMS VOLSTATS VOLUME NONE NONE VOLSTIME id $CINDERTIMEOUT cinder create --image-id $IMGID --availability-zone \${VAZS[\$VAZN]} $VOLTP --name ${RPRE}RootVol_VM\$no $VMVOLSIZE
 }
 
 # STATNM RSRCNM CSTAT STIME PROG1 PROG2 FIELD COMMAND
@@ -2420,6 +2420,7 @@ $RD
         IMAGE="--image $JHIMGID"
 	OLDVOLS=""
       fi
+      OLDVOLTSTAMP=$(date +%s)
       createResources 1 NOVABSTATS JHVM JHPORT NONE JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR $IMAGE --key-name ${KEYPAIRS[0]} --user-data "$DATADIR/${RPRE}user_data_JH.yaml" --availability-zone ${AZS[$(($JHNUM%$NOAZS))]} --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[$JHNUM]} ${RPRE}VM_JH$JHNUM || return
     fi
   done
@@ -2914,7 +2915,7 @@ createSrvGrpAnti()
   unset SRVGRPID
   if test -z "$ANTIAFFINITY"; then return 0; fi
   # FIXME: One should be enough even for several AZs, no?
-  echo -n "Create VM Soft-Anti-Affinity: "
+  echo -n "New VM Soft-Anti-Affinity SrvGrp: "
   # --os-compute-api-version 2.15
   ostackcmd_tm NOVASTATS $NOVATIMEOUT nova server-group-create ${RPRE}SrvGrp soft-anti-affinity || return 1
   SRVGRPID=$(echo "$OSTACKRESP" | grep "^| *id *|" | sed -e "s/^| *id *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
@@ -2924,7 +2925,7 @@ createSrvGrpAnti()
 deleteSrvGrpAnti()
 {
   if test -z "$ANTIAFFINITY"; then return 0; fi
-  echo -n "Create VM Soft-Anti-Affinity: "
+  echo -n "Del VM Soft-Anti-Affinity SrvGrp: "
   ostackcmd_tm NOVASTATS $NOVATIMEOUT nova server-group-delete ${RPRE}SrvGrp || return 1
   echo $SRVGRPID
 }
@@ -2967,6 +2968,7 @@ createVMsAll()
   if test -n "$SRVGRPID"; then SRVGRP="--server-group $SRVGRPID"; else unset SRVGRP; fi
   # Can not pass port IDs during boot in batch creation
   if test -n "$SECONDNET" -a -z "$DELAYEDATTACH"; then DELAYEDATTACH=1; fi 
+  OLDVOLTSTAMP=$(date +%s)
   for netno in $(seq 0 $(($NONETS-1))); do
     AZ=${AZS[$(($netno%$NOAZS))]}
     THISNOVM=$((($NOVMS+$NONETS-$netno-1)/$NONETS))
@@ -3042,20 +3044,38 @@ nameVols()
 {
   if test "$VOLNEEDSTAG" != "1"; then return $((NOVMS+NOAZS)); fi
   ostackcmd_tm_retry3 VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder list -c Attached || return 0
-  OSTACKRESP=$(echo "$OSTACKRESP" | grep -v '^+' | grep -v '| ID' | sed -e 's/|$//' -e 's/ *| */,/g')
+  OSTACKR=$(echo "$OSTACKRESP" | grep -v '^+' | grep -v '| ID' | sed -e 's/|$//' -e 's/ *| */,/g')
   #echo "#DEBUG: nameVols $1 old: $OLDVOLS"
   local COLL=""
+  local id nm st att sz CRDATE
   local natt=0
   while read line; do
     id=$(echo "$line" | cut -d "," -f 2)
     nm=$(echo "$line" | cut -d "," -f 3)
+    st=$(echo "$line" | cut -d "," -f 4)
+    sz=$(echo "$line" | cut -d "," -f 5)
     att=$(echo "$line" | cut -d "," -f 6)
     # Skip vols that existed before
     if inList $id "$OLDVOLS"; then continue; fi
-    ### TODO: We could very well detect volumes that are new, by double-checking created_at
-    ### and verifying size, image_id etc.
-    # Skip volumes that are not attached anywhere
-    if test -z "$att"; then continue; fi
+    # Consider skipping volumes that are not attached anywhere
+    if test -z "$att"; then
+      # No candidate due to wrong size
+      if test "$sz" != "$VMVOLSIZE"; then continue; fi
+      # Get more info
+      ostackcmd_tm VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder show $id -f json || continue
+      # Check created_at
+      if test $(echo "$OSTACKRESP" | jq .bootable | tr -d '"') != "true"; then continue; fi
+      CRDATE=$(echo "$OSTACKRESP" | jq .created_at | tr -d '"')
+      if test -z "$CRDATE" -o "$CRDATE" = "null"; then continue; fi
+      CRDATE=$(date -d "$CRDATE" +%s)
+      # Thsis should not happen
+      if test $CRDATA -lt $OLDVOLTSTAMP; then echo "# Old volume $id $CDATE ???"; continue; fi
+      # Compare image_id
+      if test $(echo "$OSTACKRESP" | jq .volume.image_metadata.image_id | tr -d '"') != $IMGID; then continue; fi
+      # If we get here, we should mark this volume ....
+      COLL="$COLL $id:${RPRE}RootVol_VM_FAIL"
+      continue
+    fi
     # Determine name
     NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_\(VM_\|JH\)\([^ ]*\) .*$/\1_RootVol_\3/')
     if [[ "$NM" != APIMonitor* ]]; then
@@ -3069,7 +3089,7 @@ nameVols()
     # Skip volumes that already have a name
     if test -n "$nm"; then continue; fi
     COLL="$COLL $id:$NM"
-  done < <(echo "$OSTACKRESP")
+  done < <(echo "$OSTACKR")
   COLL="${COLL# }"
   if test -n "$COLL"; then echo "#DEBUG: Attach names to Volumes $1: $COLL" 1>&2; fi
   for att in $COLL; do
