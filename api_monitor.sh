@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.119
+VERSION=1.120
 
 APIMON_ARGS="$@"
 # debugging
@@ -3052,6 +3052,8 @@ nameVols()
     att=$(echo "$line" | cut -d "," -f 6)
     # Skip vols that existed before
     if inList $id "$OLDVOLS"; then continue; fi
+    ### TODO: We could very well detect volumes that are new, by double-checking created_at
+    ### and verifying size, image_id etc.
     # Skip volumes that are not attached anywhere
     if test -z "$att"; then continue; fi
     # Determine name
@@ -4725,8 +4727,8 @@ else # test "$1" = "DEPLOY"; then
    if createSubNets; then
     if createRIfaces; then
      if createSGroups -a -z "$INTERRUPTED" -a ! -e "$DATADIR/stop-os-hm"; then
-      createLBs;
       if createJHVols; then
+       createLBs;
        if createVIPs; then
         if createJHPorts; then
          if createVols; then
@@ -4861,9 +4863,9 @@ else # test "$1" = "DEPLOY"; then
         #deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
         unset IGNORE_ERRORS
        fi; deleteVIPs
-      fi; waitLBs --nostat; deleteLBs
-      delPortsLBs
-      deleteJHVols
+       waitLBs --nostat; deleteLBs
+       delPortsLBs
+      fi; deleteJHVols
      # There is a chance that some VMs were not created, but ports were allocated, so clean ...
      fi; cleanupPorts; deleteSGroups
     fi # Wait for LBs to vanish, try deleting again, in case they had been in PENDING_XXXX before
