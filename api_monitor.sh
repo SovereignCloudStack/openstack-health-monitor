@@ -4032,12 +4032,15 @@ collectRes()
     # openstack server list output is slightly different
     if echo "$OSTACKRESP" | grep -e 'properties' | grep "deployment='cfbatch'" >/dev/null 2>&1; then BOOTALLATONCE=1; fi
   fi
+  SRVGRPID=$(findres ${RPRE}SrvGrp nova server-group-list)
+  if test -n "$SRVGRPID"; then ANTIAFFINITY=1; fi
 }
 
 cleanup_new()
 {
   collectRes
   deleteVMs
+  deleteSrvGrpAnti
   cleanLBs
   deleteFIPs
   deleteJHVMs
@@ -4073,6 +4076,11 @@ cleanup()
   # See cleanup_new (will switch after some extra testing)
   VMS=( $(findres ${RPRE}VM_VM nova list) )
   deleteVMs
+  SRVGRP=$(findres ${RPRE}SrvGrp nova server-group-list)
+  if test -n "$SRVGRP"; then
+    ANTIAFFINITY=1
+    deleteSrvGrpAnti
+  fi
   LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
     if test -n "$LBAASS"; then
     POOLS=( $(findres ${RPRE}Pool neutron lbaas-pool-list) )
