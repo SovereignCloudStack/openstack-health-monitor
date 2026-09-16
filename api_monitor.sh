@@ -129,7 +129,7 @@ SHPRJ="${OS_PROJECT_NAME%_Project}"
 ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_REGION_NAME}/${SHPRJ#*_}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
 GRAFANANM="${GRAFANANM:-api-monitoring}"
-WAITLB=${WAITLB:-16}
+WAITLB=${WAITLB:-20}
 KPTYPE=${KPTYPE:-rsa}
 
 # Find python openstackclient install
@@ -2779,13 +2779,13 @@ testLBs()
   echo -n "Kill backends: "
   killhttp
   echo -n " wait ... "
-  sleep $((2+WAITLB))
+  sleep $WAITLB
   # TODO: Test for degraded status of pool, ERROR for members
   ostackcmd_tm_retry LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
   handleLBErr $? "PoolShow2"
   echo $OSTACKRESP
   test "$OSTACKRESP" != "DEGRADED" && handleLBErr 1 "OpStatusNotDegraded"
-  echo -n "Retest LB at $LBIP (after $((2+WAITLB)) s):"
+  echo -n "Retest LB at $LBIP (after $WAITLB s):"
   LBCERR=0
   STTM=$(date +%s.%N)
   # Access LB NOVMS times (RR -> each server gets one request)
@@ -4920,7 +4920,7 @@ else # test "$1" = "DEPLOY"; then
  if test -n "$IPERF"; then let MAXCYC+=$((6*$NONETS)); fi
  if test -n "$BCBENCH"; then let MAXCYC+=$((16*$NOAZS)); fi
  if test -n "$FIOBENCH"; then let MAXCYC+=$((28*$NOAZS)); fi
- if test -n "$LOADBALANCER"; then let MAXCYC+=$((36+4*$NOVMS+$WAITLB)); fi
+ if test -n "$LOADBALANCER"; then let MAXCYC+=$((32+4*$NOVMS+$WAITLB)); fi
  if test -n "$SKIPKILLLB"; then let MAXCYC-=$((20+2*$NOVMS)); fi
  # FIXME: We could check THISRUNSUCCESS instead?
  SLOW=0
