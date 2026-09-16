@@ -2915,7 +2915,7 @@ createSrvGrpAnti()
   unset SRVGRPID
   if test -z "$ANTIAFFINITY"; then return 0; fi
   # FIXME: One should be enough even for several AZs, no?
-  echo -n "Create VM Soft-Anti-Affinity: "
+  echo -n "New VM Soft-Anti-Affinity SrvGrp: "
   # --os-compute-api-version 2.15
   ostackcmd_tm NOVASTATS $NOVATIMEOUT nova server-group-create ${RPRE}SrvGrp soft-anti-affinity || return 1
   SRVGRPID=$(echo "$OSTACKRESP" | grep "^| *id *|" | sed -e "s/^| *id *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
@@ -2925,7 +2925,7 @@ createSrvGrpAnti()
 deleteSrvGrpAnti()
 {
   if test -z "$ANTIAFFINITY"; then return 0; fi
-  echo -n "Create VM Soft-Anti-Affinity: "
+  echo -n "Del VM Soft-Anti-Affinity SrvGrp: "
   ostackcmd_tm NOVASTATS $NOVATIMEOUT nova server-group-delete ${RPRE}SrvGrp || return 1
   echo $SRVGRPID
 }
