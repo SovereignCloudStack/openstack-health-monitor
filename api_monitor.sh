@@ -3052,8 +3052,31 @@ nameVols()
     att=$(echo "$line" | cut -d "," -f 6)
     # Skip vols that existed before
     if inList $id "$OLDVOLS"; then continue; fi
-    # Skip volumes that are not attached anywhere
-    if test -z "$att"; then continue; fi
+    # Consider skipping volumes that are not attached anywhere
+    if test -z "$att"; then
+      # No candidate due to being in-use
+      #if test "$st" == "in-use"; then continue; fi
+      # Candidates are available, creating, reserved, attaching, error
+      if test "$st" != "available" -a "$st" != "creating" -a "$st" != "reserved" -a "$st" != "attaching" -a "$st" != "error"; then continue; fi
+      # No candidate because it's already named
+      if test "$sz" != "$VMVOLSIZE"; then continue; fi
+      # No candidate because it's already named
+      if test -n "$nm"; then continue; fi
+      # Get more info
+      ostackcmd_tm VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder show $id -f json || continue
+      # Check created_at
+      if test $(echo "$OSTACKRESP" | jq .bootable | tr -d '"') != "true"; then continue; fi
+      CRDATE=$(echo "$OSTACKRESP" | jq .created_at | tr -d '"')
+      if test -z "$CRDATE" -o "$CRDATE" = "null"; then continue; fi
+      CRDATE=$(date -d "$CRDATE" +%s)
+      # Thsis should not happen
+      if test $CRDATE -lt $OLDVOLTSTAMP; then echo "# Old volume $id $CRDATE ???"; continue; fi
+      # Compare image_id
+      if test $(echo "$OSTACKRESP" | jq .volume.image_metadata.image_id | tr -d '"') != $IMGID; then continue; fi
+      # If we get here, we should mark this volume ....
+      COLL="$COLL $id:${RPRE}RootVol_VM_FAIL"
+      continue
+    fi
     # Determine name
     NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_\(VM_\|JH\)\([^ ]*\) .*$/\1_RootVol_\3/')
     if [[ "$NM" != APIMonitor* ]]; then
