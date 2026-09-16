@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.119
+VERSION=1.120
 
 APIMON_ARGS="$@"
 # debugging
@@ -129,7 +129,7 @@ SHPRJ="${OS_PROJECT_NAME%_Project}"
 ALARMPRE="${SHORT_DOMAIN:3:3}/${OS_REGION_NAME}/${SHPRJ#*_}"
 SHORT_DOMAIN=${SHORT_DOMAIN:-$OS_PROJECT_NAME}
 GRAFANANM="${GRAFANANM:-api-monitoring}"
-WAITLB=${WAITLB:-16}
+WAITLB=${WAITLB:-20}
 KPTYPE=${KPTYPE:-rsa}
 
 # Find python openstackclient install
@@ -2420,6 +2420,7 @@ $RD
         IMAGE="--image $JHIMGID"
 	OLDVOLS=""
       fi
+      OLDVOLTSTAMP=$(date +%s)
       createResources 1 NOVABSTATS JHVM JHPORT NONE JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR $IMAGE --key-name ${KEYPAIRS[0]} --user-data "$DATADIR/${RPRE}user_data_JH.yaml" --availability-zone ${AZS[$(($JHNUM%$NOAZS))]} --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[$JHNUM]} ${RPRE}VM_JH$JHNUM || return
     fi
   done
@@ -2779,13 +2780,13 @@ testLBs()
   echo -n "Kill backends: "
   killhttp
   echo -n " wait ... "
-  sleep $((2+WAITLB))
+  sleep $WAITLB
   # TODO: Test for degraded status of pool, ERROR for members
   ostackcmd_tm_retry LBSTATS $NETTIMEOUT neutron lbaas-pool-show ${POOLS[0]} -f value -c operating_status
   handleLBErr $? "PoolShow2"
   echo $OSTACKRESP
   test "$OSTACKRESP" != "DEGRADED" && handleLBErr 1 "OpStatusNotDegraded"
-  echo -n "Retest LB at $LBIP (after $((2+WAITLB)) s):"
+  echo -n "Retest LB at $LBIP (after $WAITLB s):"
   LBCERR=0
   STTM=$(date +%s.%N)
   # Access LB NOVMS times (RR -> each server gets one request)
@@ -2914,7 +2915,7 @@ createSrvGrpAnti()
   unset SRVGRPID
   if test -z "$ANTIAFFINITY"; then return 0; fi
   # FIXME: One should be enough even for several AZs, no?
-  echo -n "Create VM Soft-Anti-Affinity: "
+  echo -n "New VM Soft-Anti-Affinity SrvGrp: "
   # --os-compute-api-version 2.15
   ostackcmd_tm NOVASTATS $NOVATIMEOUT nova server-group-create ${RPRE}SrvGrp soft-anti-affinity || return 1
   SRVGRPID=$(echo "$OSTACKRESP" | grep "^| *id *|" | sed -e "s/^| *id *| *\([^|]*\).*\$/\1/" -e 's/ *$//')
@@ -2924,7 +2925,7 @@ createSrvGrpAnti()
 deleteSrvGrpAnti()
 {
   if test -z "$ANTIAFFINITY"; then return 0; fi
-  echo -n "Create VM Soft-Anti-Affinity: "
+  echo -n "Del VM Soft-Anti-Affinity SrvGrp: "
   ostackcmd_tm NOVASTATS $NOVATIMEOUT nova server-group-delete ${RPRE}SrvGrp || return 1
   echo $SRVGRPID
 }
@@ -2963,6 +2964,7 @@ createVMsAll()
     IMAGE="--image $IMGID"
     OLDVOLS=""
   fi
+  OLDVOLTSTAMP=$(date +%s)
   echo -n "Create VMs in batches: "
   if test -n "$SRVGRPID"; then SRVGRP="--server-group $SRVGRPID"; else unset SRVGRP; fi
   # Can not pass port IDs during boot in batch creation
@@ -3046,14 +3048,48 @@ nameVols()
   #echo "#DEBUG: nameVols $1 old: $OLDVOLS"
   local COLL=""
   local natt=0
+  local NM id nm st sz att volimgid bootable CRDATE
   while read line; do
     id=$(echo "$line" | cut -d "," -f 2)
     nm=$(echo "$line" | cut -d "," -f 3)
+    st=$(echo "$line" | cut -d "," -f 4)
+    sz=$(echo "$line" | cut -d "," -f 5)
     att=$(echo "$line" | cut -d "," -f 6)
     # Skip vols that existed before
     if inList $id "$OLDVOLS"; then continue; fi
-    # Skip volumes that are not attached anywhere
-    if test -z "$att"; then continue; fi
+    # Consider skipping volumes that are not attached anywhere
+    if test -z "$att"; then
+      # Always skip on first round (performance).
+      if test $1 -le 2; then continue; fi
+      # No candidate due to being in-use
+      #if test "$st" == "in-use"; then continue; fi
+      dbgout -n "# DEBUG: Investigate volume $id $nm $st $sz "
+      # Candidates are available, creating, downloading, attaching, reserved, error
+      if test "$st" != "available" -a "$st" != "creating" -a "$st" != "downloading" \
+	   -a "$st" != "attaching" -a "$st" != "reserved" -a "$st" != "error"; then dbgout "st $st"; continue; fi
+      # No candidate because it's already named
+      if test "$sz" != "$VMVOLSIZE"; then dbgout "sz $sz != $VMVOLSIZE"; continue; fi
+      # No candidate because it's already named
+      if test -n "$nm"; then dbgout "nm $nm"; continue; fi
+      # Get more info
+      ostackcmd_tm VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder show $id -f json || continue
+      # Check bootable
+      bootable=$(echo "$OSTACKRESP" | jq .bootable | tr -d '"')
+      if test "$bootable" != "true"; then dbgout "bootable $bootable"; continue; fi
+      # Check created_at
+      CRDATE=$(echo "$OSTACKRESP" | jq .created_at | tr -d '"')
+      if test -z "$CRDATE" -o "$CRDATE" = "null"; then dbgout "no created_at"; continue; fi
+      CRDATE=$(date -d "$CRDATE" +%s)
+      # This should not happen
+      if test $CRDATE -lt $OLDVOLTSTAMP; then echo "# Old volume $id $CRDATE < $OLDVOLTSTAMP ?!?"; continue; fi
+      # Compare image_id
+      volimgid=$(echo "$OSTACKRESP" | jq .volume_image_metadata.image_id | tr -d '"')
+      if test "$volimgid" != "$IMGID"; then dbgout "imgid $volimgid != $IMGID"; continue; fi
+      # If we get here, we should mark this volume ....
+      dbgout "mark in progress"
+      COLL="$COLL $id:${RPRE}RootVol_VM_InProgress"
+      continue
+    fi
     # Determine name
     NM=$(echo "$att" | sed 's/^Attached to \(APIMonitor_[0-9]*\)_\(VM_\|JH\)\([^ ]*\) .*$/\1_RootVol_\3/')
     if [[ "$NM" != APIMonitor* ]]; then
@@ -3082,11 +3118,15 @@ nameVols()
 nameUnattachedVols()
 {
   local MISS=$1
+  local id nm stat sz att CAND
   ostackcmd_tm_retry3 VOLSTATS $CINDERTIMEOUT cinder list -f value || return 1
   CAND=()
-  while read id nm stat sz; do
-    if test -z "$sz"; then sz="$stat"; stat="$nm"; nm=""; fi
+  while read id nm stat sz att; do
+    # Detect no name
+    if test -z "$sz" -o "$sz" = "[]"; then att="$sz"; sz="$stat"; stat="$nm"; nm=""; fi
     dbgout -n "#DEBUG: \"$id\" \"$nm\" \"$stat\" \"$sz\": "
+    # Filter out attached volumes
+    if test -n "$att" -a "$att" != "[]"; then dbgout attached; continue; fi
     # Filter out vols with names or with wrong size
     if test -n "$nm"; then dbgout named; continue; fi
     #if test "$stat" == "in-use" -o "$stat" == "deleting"; then dbgout "in-use or deleting"; continue; fi
@@ -3112,11 +3152,13 @@ waitVMs()
   nameVols 1
   tagged=$?
   #if test "$tagged" != $((NOVMS+NOAZS)) -a $tagged -gt $NOAZS; then sleep 2; nameVols 2; tagged=$?; fi
-  if test $tagged != $NOVMS -a $tagged -gt 0; then sleep 2; nameVols 2; tagged=$?; fi
+  if test $tagged != $NOVMS -a $tagged -gt 1; then sleep 4; nameVols 2; tagged=$?; fi
   #waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" $NOVATIMEOUT nova show
   waitlistResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
   handleWaitErr "VMs" NOVASTATS $NOVATIMEOUT nova show
   local VRC=$?
+  # Give volumes a chance to succeed ...
+  if test $VRC != 0 -a $tagged != $NOVMS; then sleep 10; fi
   #if test "$tagged" != $((NOVMS+NOAZS)); then nameVols 3; tagged=$?; fi
   if test $tagged != $NOVMS; then nameVols 3; tagged=$?; fi
   #if test "$tagged" != $((NOVMS+NOAZS)); then echo "#WARN: Tagged volume number incorrect: $tagged != $((NOVMS+NOAZS))" 1>&2; fi
@@ -4897,7 +4939,7 @@ else # test "$1" = "DEPLOY"; then
  if test -n "$IPERF"; then let MAXCYC+=$((6*$NONETS)); fi
  if test -n "$BCBENCH"; then let MAXCYC+=$((16*$NOAZS)); fi
  if test -n "$FIOBENCH"; then let MAXCYC+=$((28*$NOAZS)); fi
- if test -n "$LOADBALANCER"; then let MAXCYC+=$((36+4*$NOVMS+$WAITLB)); fi
+ if test -n "$LOADBALANCER"; then let MAXCYC+=$((32+4*$NOVMS+$WAITLB)); fi
  if test -n "$SKIPKILLLB"; then let MAXCYC-=$((20+2*$NOVMS)); fi
  # FIXME: We could check THISRUNSUCCESS instead?
  SLOW=0
