@@ -2420,6 +2420,7 @@ $RD
         IMAGE="--image $JHIMGID"
 	OLDVOLS=""
       fi
+      OLDVOLTSTAMP=$(date +%s)
       createResources 1 NOVABSTATS JHVM JHPORT NONE JVMSTIME id $NOVABOOTTIMEOUT nova boot --flavor $JHFLAVOR $IMAGE --key-name ${KEYPAIRS[0]} --user-data "$DATADIR/${RPRE}user_data_JH.yaml" --availability-zone ${AZS[$(($JHNUM%$NOAZS))]} --security-groups ${SGROUPS[0]} --nic port-id=${JHPORTS[$JHNUM]} ${RPRE}VM_JH$JHNUM || return
     fi
   done
@@ -2963,6 +2964,7 @@ createVMsAll()
     IMAGE="--image $IMGID"
     OLDVOLS=""
   fi
+  OLDVOLTSTAMP=$(date +%s)
   echo -n "Create VMs in batches: "
   if test -n "$SRVGRPID"; then SRVGRP="--server-group $SRVGRPID"; else unset SRVGRP; fi
   # Can not pass port IDs during boot in batch creation
@@ -3046,6 +3048,7 @@ nameVols()
   #echo "#DEBUG: nameVols $1 old: $OLDVOLS"
   local COLL=""
   local natt=0
+  local NM id nm st sz att volimgid bootable CRDATE
   while read line; do
     id=$(echo "$line" | cut -d "," -f 2)
     nm=$(echo "$line" | cut -d "," -f 3)
@@ -3057,29 +3060,33 @@ nameVols()
     # Consider skipping volumes that are not attached anywhere
     if test -z "$att"; then
       # Always skip on first round (performance).
-      if test "$1" = "1"; then continue; fi
+      if test $1 -le 2; then continue; fi
       # No candidate due to being in-use
       #if test "$st" == "in-use"; then continue; fi
-      #echo "# DEBUG: Investigate volume $id $nm $st $sz"
+      dbgout -n "# DEBUG: Investigate volume $id $nm $st $sz "
       # Candidates are available, creating, downloading, attaching, reserved, error
       if test "$st" != "available" -a "$st" != "creating" -a "$st" != "downloading" \
-	   -a "$st" != "attaching" -a "$st" != "reserved" -a "$st" != "error"; then continue; fi
+	   -a "$st" != "attaching" -a "$st" != "reserved" -a "$st" != "error"; then dbgout "st $st"; continue; fi
       # No candidate because it's already named
-      if test "$sz" != "$VMVOLSIZE"; then continue; fi
+      if test "$sz" != "$VMVOLSIZE"; then dbgout "sz $sz != $VMVOLSIZE"; continue; fi
       # No candidate because it's already named
-      if test -n "$nm"; then continue; fi
+      if test -n "$nm"; then dbgout "nm $nm"; continue; fi
       # Get more info
       ostackcmd_tm VOLSTATS $((CINDERTIMEOUT+NOVMS+NOAZS)) cinder show $id -f json || continue
+      # Check bootable
+      bootable=$(echo "$OSTACKRESP" | jq .bootable | tr -d '"')
+      if test "$bootable" != "true"; then dbgout "bootable $bootable"; continue; fi
       # Check created_at
-      if test $(echo "$OSTACKRESP" | jq .bootable | tr -d '"') != "true"; then continue; fi
       CRDATE=$(echo "$OSTACKRESP" | jq .created_at | tr -d '"')
-      if test -z "$CRDATE" -o "$CRDATE" = "null"; then continue; fi
+      if test -z "$CRDATE" -o "$CRDATE" = "null"; then dbgout "no created_at"; continue; fi
       CRDATE=$(date -d "$CRDATE" +%s)
-      # Thsis should not happen
-      if test $CRDATE -lt $OLDVOLTSTAMP; then echo "# Old volume $id $CRDATE ???"; continue; fi
+      # This should not happen
+      if test $CRDATE -lt $OLDVOLTSTAMP; then echo "# Old volume $id $CRDATE < $OLDVOLTSTAMP ?!?"; continue; fi
       # Compare image_id
-      if test $(echo "$OSTACKRESP" | jq .volume.image_metadata.image_id | tr -d '"') != $IMGID; then continue; fi
+      volimgid=$(echo "$OSTACKRESP" | jq .volume_image_metadata.image_id | tr -d '"')
+      if test "$volimgid" != "$IMGID"; then dbgout "imgid $volimgid != $IMGID"; continue; fi
       # If we get here, we should mark this volume ....
+      dbgout "mark in progress"
       COLL="$COLL $id:${RPRE}RootVol_VM_InProgress"
       continue
     fi
@@ -3111,11 +3118,15 @@ nameVols()
 nameUnattachedVols()
 {
   local MISS=$1
+  local id nm stat sz att CAND
   ostackcmd_tm_retry3 VOLSTATS $CINDERTIMEOUT cinder list -f value || return 1
   CAND=()
-  while read id nm stat sz; do
-    if test -z "$sz"; then sz="$stat"; stat="$nm"; nm=""; fi
+  while read id nm stat sz att; do
+    # Detect no name
+    if test -z "$sz" -o "$sz" = "[]"; then att="$sz"; sz="$stat"; stat="$nm"; nm=""; fi
     dbgout -n "#DEBUG: \"$id\" \"$nm\" \"$stat\" \"$sz\": "
+    # Filter out attached volumes
+    if test -n "$att" -a "$att" != "[]"; then dbgout attached; continue; fi
     # Filter out vols with names or with wrong size
     if test -n "$nm"; then dbgout named; continue; fi
     #if test "$stat" == "in-use" -o "$stat" == "deleting"; then dbgout "in-use or deleting"; continue; fi
@@ -3141,11 +3152,13 @@ waitVMs()
   nameVols 1
   tagged=$?
   #if test "$tagged" != $((NOVMS+NOAZS)) -a $tagged -gt $NOAZS; then sleep 2; nameVols 2; tagged=$?; fi
-  if test $tagged != $NOVMS; then sleep 3; nameVols 2; tagged=$?; fi
+  if test $tagged != $NOVMS -a $tagged -gt 1; then sleep 4; nameVols 2; tagged=$?; fi
   #waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" $NOVATIMEOUT nova show
   waitlistResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
   handleWaitErr "VMs" NOVASTATS $NOVATIMEOUT nova show
   local VRC=$?
+  # Give volumes a chance to succeed ...
+  if test $VRC != 0 -a $tagged != $NOVMS; then sleep 10; fi
   #if test "$tagged" != $((NOVMS+NOAZS)); then nameVols 3; tagged=$?; fi
   if test $tagged != $NOVMS; then nameVols 3; tagged=$?; fi
   #if test "$tagged" != $((NOVMS+NOAZS)); then echo "#WARN: Tagged volume number incorrect: $tagged != $((NOVMS+NOAZS))" 1>&2; fi
