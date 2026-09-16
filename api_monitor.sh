@@ -3056,8 +3056,9 @@ nameVols()
     if test -z "$att"; then
       # No candidate due to being in-use
       #if test "$st" == "in-use"; then continue; fi
-      # Candidates are available, creating, reserved, attaching, error
-      if test "$st" != "available" -a "$st" != "creating" -a "$st" != "reserved" -a "$st" != "attaching" -a "$st" != "error"; then continue; fi
+      # Candidates are available, creating, downloading, attaching, reserved, error
+      if test "$st" != "available" -a "$st" != "creating" -a "$st" != "downloading" \
+	   -a "$st" != "attaching" -a "$st" != "reserved" -a "$st" != "error"; then continue; fi
       # No candidate because it's already named
       if test "$sz" != "$VMVOLSIZE"; then continue; fi
       # No candidate because it's already named
