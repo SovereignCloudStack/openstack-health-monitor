@@ -3049,13 +3049,18 @@ nameVols()
   while read line; do
     id=$(echo "$line" | cut -d "," -f 2)
     nm=$(echo "$line" | cut -d "," -f 3)
+    st=$(echo "$line" | cut -d "," -f 4)
+    sz=$(echo "$line" | cut -d "," -f 5)
     att=$(echo "$line" | cut -d "," -f 6)
     # Skip vols that existed before
     if inList $id "$OLDVOLS"; then continue; fi
     # Consider skipping volumes that are not attached anywhere
     if test -z "$att"; then
+      # Always skip on first round (performance).
+      if test "$1" = "1"; then continue; fi
       # No candidate due to being in-use
       #if test "$st" == "in-use"; then continue; fi
+      #echo "# DEBUG: Investigate volume $id $nm $st $sz"
       # Candidates are available, creating, downloading, attaching, reserved, error
       if test "$st" != "available" -a "$st" != "creating" -a "$st" != "downloading" \
 	   -a "$st" != "attaching" -a "$st" != "reserved" -a "$st" != "error"; then continue; fi
@@ -3075,7 +3080,7 @@ nameVols()
       # Compare image_id
       if test $(echo "$OSTACKRESP" | jq .volume.image_metadata.image_id | tr -d '"') != $IMGID; then continue; fi
       # If we get here, we should mark this volume ....
-      COLL="$COLL $id:${RPRE}RootVol_VM_FAIL"
+      COLL="$COLL $id:${RPRE}RootVol_VM_InProgress"
       continue
     fi
     # Determine name
@@ -3136,7 +3141,7 @@ waitVMs()
   nameVols 1
   tagged=$?
   #if test "$tagged" != $((NOVMS+NOAZS)) -a $tagged -gt $NOAZS; then sleep 2; nameVols 2; tagged=$?; fi
-  if test $tagged != $NOVMS -a $tagged -gt 0; then sleep 2; nameVols 2; tagged=$?; fi
+  if test $tagged != $NOVMS; then sleep 3; nameVols 2; tagged=$?; fi
   #waitResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NA" "status" $NOVATIMEOUT nova show
   waitlistResources NOVASTATS VM VMCSTATS VMSTIME "ACTIVE" "NONONO" 2 $NOVATIMEOUT nova list
   handleWaitErr "VMs" NOVASTATS $NOVATIMEOUT nova show
