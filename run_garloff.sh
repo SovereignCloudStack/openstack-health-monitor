@@ -51,6 +51,7 @@ NOTE_EMAIL_ADDRESSES="scs@garloff.de"
 export ALARM_EMAIL_ADDRESSES NOTE_EMAIL_ADDRESSES
 
 #export EXTSEARCH=public
+#export DEBUG=1
 
 # Terminate early on auth error
 openstack server list >/dev/null || exit 1
