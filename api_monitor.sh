@@ -4767,8 +4767,8 @@ else # test "$1" = "DEPLOY"; then
    if createSubNets; then
     if createRIfaces; then
      if createSGroups -a -z "$INTERRUPTED" -a ! -e "$DATADIR/stop-os-hm"; then
-      createLBs;
       if createJHVols; then
+       createLBs;
        if createVIPs; then
         if createJHPorts; then
          if createVols; then
@@ -4902,11 +4902,10 @@ else # test "$1" = "DEPLOY"; then
         #if test -n "$SECONDNET" -o -n "$MANUALPORTSETUP"; then deletePorts; fi
         #deletePorts; deleteJHPorts	# not strictly needed, ports are del by VM del
         unset IGNORE_ERRORS
-       fi; deleteVIPs
-      fi; waitLBs --nostat; deleteLBs
-      delPortsLBs
-      deleteJHVols
-     # There is a chance that some VMs were not created, but ports were allocated, so clean ...
+       fi; deleteVIPs # There is a chance that some VMs were not created, but ports were allocated, so clean ...
+       waitLBs --nostat; deleteLBs
+       delPortsLBs
+      fi; deleteJHVols
      fi; cleanupPorts; deleteSGroups
     fi # Wait for LBs to vanish, try deleting again, in case they had been in PENDING_XXXX before
     CLEANUPMODE=1
