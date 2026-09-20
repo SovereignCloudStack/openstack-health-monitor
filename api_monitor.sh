@@ -1624,8 +1624,8 @@ waitlistResources()
   eval RRLIST=( \"\${${RNM}S[@]}\" )
   eval local SLIST=( \"\${${STIME}[@]}\" )
   local LAST=$(( ${#RLIST[@]} - 1 ))
-  if test ${#RLIST[@]} != ${#SLIST[@]} -a "$STIME" != "NONE"; then
-    echo " WARN: ${RNM}S RLIST \"${RLIST[@]}\" $STIME SLIST \"${SLIST[@]}\""
+  if test "$STIME" != "NONE" -a ${#RLIST[@]} != ${#SLIST[@]}; then
+    echo " WARN: ${RNM}S RLIST \"${RLIST[@]}\" $STIME SLIST \"${SLIST[@]}\" should have same len"
   fi
   local PARSE="^|"
   local WAITVAL
