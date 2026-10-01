@@ -1882,8 +1882,9 @@ createSubNets()
 {
   ERC=0
   if test -n "$NAMESERVER"; then
-    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 5.1.66.255 --dns-nameserver $NAMESERVER --name "${RPRE}SUBNET_JH" "\$VAL" "$JHSUBNETIP" || ERC=$?
-    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 185.150.99.255 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22" || ERC=$?
+    if test "${NAMESERVER%,*}" = "${NAMESERVER}"; then NAMESERVER=$NAMESERVER,5.1.66.255; fi
+    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver ${NAMESERVER%,*} --dns-nameserver ${NAMESERVER##*,} --name "${RPRE}SUBNET_JH" "\$VAL" "$JHSUBNETIP" || ERC=$?
+    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver ${NAMESERVER##*,} --dns-nameserver ${NAMESERVER%,*}  --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22" || ERC=$?
   else
     createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH" "\$VAL" "$JHSUBNETIP" || ERC=$?
     createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_VM_\$no" "\$VAL" "10.250.\$((no*4)).0/22" || ERC=$?
