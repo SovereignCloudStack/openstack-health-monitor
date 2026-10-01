@@ -252,11 +252,13 @@ NOVMS=12
 NONETS=$NOAZS
 MANUALPORTSETUP=1
 ROUTERITER=1
+# If DEFAULTNAMESERVER is set, then use whatever the cloud provides
 if test -z "$DEFAULTNAMESERVER"; then
-if [[ $OS_AUTH_URL == *otc*t-systems.com* ]]; then
-  NAMESERVER=${NAMESERVER:-100.125.4.25}
-fi
-if test -z "$NAMESERVER"; then NAMESERVER=8.8.8.8; fi
+  if [[ $OS_AUTH_URL == *otc*t-systems.com* ]]; then
+    NAMESERVER=${NAMESERVER:-100.125.4.25}
+  else
+    NAMESERVER=${NAMESERVER:-8.8.8.8}
+  fi
 fi
 
 MAXITER=-9999

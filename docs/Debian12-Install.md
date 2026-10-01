@@ -220,7 +220,7 @@ export IMG="Debian 12"
 export JHIMG="Debian 12"
 ./api_monitor.sh -O -C -D -n 6 -s -b -B -M -T -LL -i 1
 ```
-Leave out the `-LL` if you don't have a working loadbalancer service or replace `-LL` with `-LO` if you want to test the ovn loadbalancer instead of amphorae (saving quite some resources).
+Leave out the `-LL` if you don't have a working loadbalancer service or replace `-LL` with `-LO` if you want to test the ovn loadbalancer instead of amphorae (saving quite some resources). Set `export NAMESERVER=NS1,NS2` if you want to configure local nameservers. You can also override `PINGTARGET` and `PINGTARGET2` to adjust the external target that is pinged to test the connectivity.
 
 Feel free to study the meaning of all the command line parameters by looking at the [README.md](https://github.com/SovereignCloudStack/openstack-health-monitor/blob/main/README.md). (Note: Many of the things enabled by the parameters should be default, but are not for historic reasons. This would change if we rewrite this whole thing in python.)
 
