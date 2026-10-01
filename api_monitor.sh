@@ -252,11 +252,13 @@ NOVMS=12
 NONETS=$NOAZS
 MANUALPORTSETUP=1
 ROUTERITER=1
+# If DEFAULTNAMESERVER is set, then use whatever the cloud provides
 if test -z "$DEFAULTNAMESERVER"; then
-if [[ $OS_AUTH_URL == *otc*t-systems.com* ]]; then
-  NAMESERVER=${NAMESERVER:-100.125.4.25}
-fi
-if test -z "$NAMESERVER"; then NAMESERVER=8.8.8.8; fi
+  if [[ $OS_AUTH_URL == *otc*t-systems.com* ]]; then
+    NAMESERVER=${NAMESERVER:-100.125.4.25}
+  else
+    NAMESERVER=${NAMESERVER:-8.8.8.8}
+  fi
 fi
 
 MAXITER=-9999
@@ -1882,8 +1884,9 @@ createSubNets()
 {
   ERC=0
   if test -n "$NAMESERVER"; then
-    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver 5.1.66.255 --dns-nameserver $NAMESERVER --name "${RPRE}SUBNET_JH" "\$VAL" "$JHSUBNETIP" || ERC=$?
-    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver $NAMESERVER --dns-nameserver 185.150.99.255 --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22" || ERC=$?
+    if test "${NAMESERVER%,*}" = "${NAMESERVER}"; then NAMESERVER=$NAMESERVER,5.1.66.255; fi
+    createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver ${NAMESERVER%,*} --dns-nameserver ${NAMESERVER##*,} --name "${RPRE}SUBNET_JH" "\$VAL" "$JHSUBNETIP" || ERC=$?
+    createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --dns-nameserver ${NAMESERVER##*,} --dns-nameserver ${NAMESERVER%,*}  --name "${RPRE}SUBNET_\$no" "\$VAL" "10.250.\$((no*4)).0/22" || ERC=$?
   else
     createResources 1 NETSTATS JHSUBNET JHNET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_JH" "\$VAL" "$JHSUBNETIP" || ERC=$?
     createResources $NONETS NETSTATS SUBNET NET NONE "" id $NETTIMEOUT neutron subnet-create --name "${RPRE}SUBNET_VM_\$no" "\$VAL" "10.250.\$((no*4)).0/22" || ERC=$?
