@@ -5,12 +5,13 @@
 #  openSUSE Leap 15.2 (opensuse), CentOS 8 (centos)
 # You can freely mix ...
 #export JHIMG="Ubuntu 22.04"
-#export JHIMG="openSUSE 15.5"
 export JHIMG="Debian 12"
+#export JHIMG="openSUSE 15.6"
 #export ADDJHVOLSIZE=2
 #export IMG="Ubuntu 22.04"
-#export IMG="openSUSE 15.5"
 export IMG="Debian 12"
+#export IMG="openSUSE 15.6"
+#export IMG="CentOS 8"
 # DEFLTUSER from image_original_user property
 #export DEFLTUSER=opensuse
 #export DEFLTUSER=ubuntu
@@ -21,8 +22,10 @@ export IMG="Debian 12"
 # ECP flavors
 #if test $OS_REGION_NAME == Kna1; then
 #export JHFLAVOR=SCS-1L:1:5
-export JHFLAVOR=SCS-1V-2
+export JHFLAVOR=SCS-1V-1
+#export JHFLAVOR=SCS-1V:1:10
 #export FLAVOR=SCS-1L:1:5
+#export FLAVOR=SCS-1V:1:10
 export FLAVOR=SCS-1L-1
 #else
 #export JHFLAVOR=1C-1GB-10GB
@@ -31,7 +34,7 @@ export FLAVOR=SCS-1L-1
 # EMail notifications sender address
 export FROM=kurt.garloff@sovereignit.cloud
 # Only use one AZ
-#export AZS="az1"
+export AZS="az1"
 # Upload (compressed) logfiles and stats to container
 export SWIFTCONTAINER=OS-HM-Logfiles
 
@@ -61,12 +64,15 @@ done
 FIPLIST=$(echo "$FIPLIST" | grep -v '^$' | sort -u)
 # Cleanup previous interrupted runs
 SERVERS=$(openstack server  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+KEYPAIR=$(openstack keypair list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 VOLUMES=$(openstack volume  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 NETWORK=$(openstack network list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 LOADBAL=$(openstack loadbalancer list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 ROUTERS=$(openstack router  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 SECGRPS=$(openstack security group list | grep -o "APIMonitor_[0-9]*_" | sort -u)
-echo CLEANUP: FIPs $FIPLIST Servers $SERVERS Volumes $VOLUMES Networks $NETWORK LoadBalancers $LOADBAL Routers $ROUTERS SecGrps $SECGRPS
+SRVGRPS=$(openstack server group list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+if test -n "$SRVGRPS"; then AA=-A; else AA=""; fi
+echo CLEANUP: FIPs $FIPLIST Servers $SERVERS Keypairs $KEYPAIR Volumes $VOLUMES Networks $NETWORK LoadBalancers $LOADBAL Routers $ROUTERS SecGrps $SECGRPS SrvGrps $SRVGRPS
 for ENV in $FIPLIST; do
   echo "******************************"
   echo "CLEAN $ENV"
@@ -74,22 +80,24 @@ for ENV in $FIPLIST; do
   echo "******************************"
 done
 TOCLEAN=$(echo "$SERVERS
+$KEYPAIR
 $VOLUMES
 $NETWORK
 $LOADBAL
 $ROUTERS
 $SECGRPS
+$SRVGRPS
 " | grep -v '^$' | sort -u)
 for ENV in $TOCLEAN; do
   echo "******************************"
   echo "CLEAN $ENV"
   #bash ./api_monitor.sh -o -T -q -LL -c CLEANUP $ENV
-  bash ./api_monitor.sh -o -q -LL -c CLEANUP $ENV
+  bash ./api_monitor.sh -o -q $AA -LL -c CLEANUP $ENV
   echo "******************************"
 done
 
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
 #exec api_monitor.sh -o -C -D -N 2 -n 8 -s -e sender@domain.org "$@"
 #exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -M -a 2 -t -T -R -X "$@"
-exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -LL -b -B -M -a 2 -t -T -R -X -S plus-prod4 "$@"
+exec ./api_monitor.sh -O -C -D -N 2 -n 8 -A -s -LL -b -B -M -a 2 -t -T -R -X -S plus-prod4 "$@"
 

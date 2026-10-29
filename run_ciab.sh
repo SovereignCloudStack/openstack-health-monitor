@@ -72,7 +72,9 @@ NETWORK=$(openstack network list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 LOADBAL=$(openstack loadbalancer list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 ROUTERS=$(openstack router  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 SECGRPS=$(openstack security group list | grep -o "APIMonitor_[0-9]*_" | sort -u)
-echo CLEANUP: FIPs $FIPLIST Servers $SERVERS Keypairs $KEYPAIR Volumes $VOLUMES Networks $NETWORK LoadBalancers $LOADBAL Routers $ROUTERS SecGrps $SECGRPS
+SRVGRPS=$(openstack server group list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+if test -n "$SRVGRPS"; then AA=-A; else AA=""; fi
+echo CLEANUP: FIPs $FIPLIST Servers $SERVERS Keypairs $KEYPAIR Volumes $VOLUMES Networks $NETWORK LoadBalancers $LOADBAL Routers $ROUTERS SecGrps $SECGRPS SrvGrps $SRVGRPS
 for ENV in $FIPLIST; do
   echo "******************************"
   echo "CLEAN $ENV"
@@ -86,12 +88,13 @@ $NETWORK
 $LOADBAL
 $ROUTERS
 $SECGRPS
+$SRVGRPS
 " | grep -v '^$' | sort -u)
 for ENV in $TOCLEAN; do
   echo "******************************"
   echo "CLEAN $ENV"
   #bash ./api_monitor.sh -o -T -q -LL -c CLEANUP $ENV
-  bash ./api_monitor.sh -o -q -LL -c CLEANUP $ENV
+  bash ./api_monitor.sh -o -q -LL $AA -c CLEANUP $ENV
   echo "******************************"
 done
 

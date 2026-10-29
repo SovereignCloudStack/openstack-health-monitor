@@ -4172,8 +4172,10 @@ cleanup()
   deleteVMs
   SRVGRP=$(findres ${RPRE}SrvGrp nova server-group-list)
   if test -n "$SRVGRP"; then
+    OLDAA="$ANTIAFFINITY"
     ANTIAFFINITY=1
     deleteSrvGrpAnti
+    ANTIAFFINITY="$OLDAA"
   fi
   LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
     if test -n "$LBAASS"; then
