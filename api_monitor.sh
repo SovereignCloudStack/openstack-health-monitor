@@ -1627,8 +1627,8 @@ waitlistResources()
   eval RRLIST=( \"\${${RNM}S[@]}\" )
   eval local SLIST=( \"\${${STIME}[@]}\" )
   local LAST=$(( ${#RLIST[@]} - 1 ))
-  if test ${#RLIST[@]} != ${#SLIST[@]} -a "$STIME" != "NONE"; then
-    echo " WARN: ${RNM}S RLIST \"${RLIST[@]}\" $STIME SLIST \"${SLIST[@]}\""
+  if test "$STIME" != "NONE" -a ${#RLIST[@]} != ${#SLIST[@]}; then
+    echo " WARN: ${RNM}S RLIST \"${RLIST[@]}\" $STIME SLIST \"${SLIST[@]}\" should have same len"
   fi
   local PARSE="^|"
   local WAITVAL
@@ -3138,6 +3138,7 @@ nameVols()
       # If we get here, we should mark this volume ....
       dbgout "mark in progress"
       COLL="$COLL $id:${RPRE}RootVol_VM_InProgress"
+      # FIXME: We should remove the volume directly if it's in state available, no?
       continue
     fi
     # Determine name
@@ -3183,6 +3184,7 @@ nameUnattachedVols()
     if test "$stat" != "available" -a "$stat" != "downloading" -a "$stat" != "creating"; then dbgout "not available, downloading, creating"; continue; fi
     if test "$sz" != "$VMVOLSIZE"; then dbgout "!= $VMVOLSIZE"; continue; fi
     if inList $id "$OLDVOLS"; then dbgout "preexist"; continue; fi
+    # TODO: If $stat is available, we could directly remove the volume ...
     CAND[${#CAND[*]}]=$id
     dbgout "added"
   done < <(echo "$OSTACKRESP")
