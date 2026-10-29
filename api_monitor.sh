@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.120
+VERSION=1.121
 
 APIMON_ARGS="$@"
 # debugging
@@ -423,7 +423,8 @@ usage()
   echo "You can override defaults by exporting the environment variables AZS, VAZS, NAZS, RPRE,"
   echo " PINGTARGET, PINGTARGET2, GRAFANANM, [JH]IMG, [JH]IMGFILT, [JH]FLAVOR, [JH]DEFLTUSER,"
   echo " ADDJHVOLSIZE, ADDVMVOLSIZE, SUCCWAIT, ALARMPRE, FROM, ALARM_/NOTE_EMAIL_ADDRESSES, VOLUMETYPE,"
-  echo " NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER, FIPWAITPORTDEVOWNER, EXTSEARCH, OS_EXTRA_PARAMS."
+  echo " NAMESERVER/DEFAULTNAMESERVER, SWIFTCONTAINER, FIPWAITPORTDEVOWNER, EXTSEARCH, OS_EXTRA_PARAMS"
+  echo " HTTPPROXY, HTTPSPROXY, NOPROXY (these are different from http_proxy... by design)."
   echo "Typically, you should configure OS_CLOUD, [JH]IMG, [JH]FLAVOR, [JH]DEFLTUSER."
   exit 0
 }
@@ -887,7 +888,7 @@ translate()
         case "$*" in
 	       *"--block-device "*)
 	  OSTACKCMD=(nova boot "$@")
-          echo -e "${YELLOW}#WARNING: Outdated openstackclient, trying to boot with nova (needs OS_USERNAME/PASSWORD)${NORM}" 1>&2
+          echo -e "${YELLOW}#WARN: Outdated openstackclient, trying to boot with nova (needs OS_USERNAME/PASSWORD)${NORM}" 1>&2
           return
         esac
       fi
@@ -1826,6 +1827,50 @@ showResources()
   done
 }
 
+# Prepare the cloud-init-snippet for proxy config
+# $1: JHIMG to gen config for
+genCIProxyConf()
+{
+  HTTPPROXY="${HTTPPROXY:-$HTTPSSPROXY}"
+  HTTPSPROXY="${HTTPSPROXY:-$HTTPPROXY}"
+  NOPROXY="${NOPROXY:-localhost,169.254.169.254}"	# TODO: could add OS API endpoint
+  if test -z "$HTTPPROXY"; then
+    if test -n "$https_proxy"; then echo "#WARN: https_proxy set but not HTTPSPROXY"; fi
+    return
+  fi
+  # /etc/environment
+  CI_PROXY="write_files:
+  - path: /etc/environment
+    content: |
+      http_proxy=$HTTPPROXY
+      https_proxy=$HTTPSPROXY
+      no_proxy=$NOPROXY
+"
+  # Now comes a distro specific piece
+  local BIMG=${1:-$JHIMG}
+  case $BIMG in
+    *Ubuntu*|*Debian*)
+	CI_PROXY="${CI_PROXY}  - path: /etc/apt/apt.conf.d/95proxy
+    content: |
+      Acquire::http::Proxy \"$HTTPPROXY\";
+      Acquire::https::Proxy \"$HTTPSPROXY\";
+";;
+    *SUSE*|*SuSE*|*SLES*)
+	CI_PROXY="${CI_PROXY}  - path: /etc/zypp/zypper.conf
+    content: |
+      [main]
+      proxy=${HTTPPROXY%:*}
+      proxyport=${HTTPPROXY#**:}
+";;
+    *Fedora*|*RHEL*|*RedHat*)
+	CI_PROXY="${CI_PROXY}dnf:
+  proxy: $HTTPPROXY
+";;
+    *)
+	echo "#WARN: Don't know how to configure proxy for $BIMG pkg management";;
+  esac
+  #echo -e "#DEBUG: CI Proxy conf:\n$CI_PROXY"
+}
 
 # The commands that create and delete resources ...
 
@@ -2376,7 +2421,7 @@ createJHVMs()
     if test -z "${REDIRS[$JHNUM]}"; then
       # No fwdmasq config possible yet
       USERDATA="#cloud-config
-#package_update: false
+${CI_PROXY}#package_update: false
 package_reboot_if_required: false
 package_upgrade: false
 packages:
@@ -2396,7 +2441,7 @@ otc:
     else
       RD=$(echo -n "${REDIRS[$JHNUM]}" |  sed 's@^0@         - 0@')
       USERDATA="#cloud-config
-package_update: false
+${CI_PROXY}package_update: false
 package_reboot_if_required: false
 package_upgrade: false
 otc:
@@ -2941,7 +2986,7 @@ createVMsAll()
   local netno AZ THISNOVM vmid off STMS
   local ERRS=0
   local UDTMP="$DATADIR/${RPRE}user_data_VM.yaml"
-  echo -e "#cloud-config\n#package_update: false\npackage_upgrade: false\npackage_reboot_if_required: false\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}ALL\n   path: /tmp/testfile\n   permissions: '0644'" > "$UDTMP"
+  echo -e "#cloud-config\n${CI_PROXY}#package_update: false\npackage_upgrade: false\npackage_reboot_if_required: false\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}ALL\n   path: /tmp/testfile\n   permissions: '0644'" > "$UDTMP"
   if test -n "$LOADBALANCER"; then
     #echo -e "packages:\n  - thttpd\nruncmd:\n  - hostname > /srv/www/htdocs/hostname\n  - systemctl start thttpd\n  - sed -i 's/FW_SERVICES_EXT_TCP=""/FW_SERVICES_EXT_TCP="http"/' /etc/sysconfig/SuSEfirewall2\n  - systemctl restart SuSEfirewall2" >> $UDTMP
     # This only requires python3
@@ -2999,7 +3044,7 @@ createVMs()
   local UDTMP="$DATADIR/${RPRE}user_data_VM.yaml"
   if test -n "$SRVGRPID"; then SRVGRP="--server-group $SRVGRPID"; else unset SRVGRP; fi
   for no in $(seq 0 $NOVMS); do
-    echo -e "#cloud-config\npackage_update: false\npackage_upgrade: false\npackage_reboot_if_required: false\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}$no\n   path: /tmp/testfile\n   permissions: '0644'" > "$UDTMP.$no"
+    echo -e "#cloud-config\n${CI_PROXY}package_update: false\npackage_upgrade: false\npackage_reboot_if_required: false\nwrite_files:\n - content: |\n      # TEST FILE CONTENTS\n      api_monitor.sh.${RPRE}$no\n   path: /tmp/testfile\n   permissions: '0644'" > "$UDTMP.$no"
   done
   if test -n "$BOOTFROMIMAGE"; then
     if test -n "$VMVOLSIZE"; then
@@ -4583,6 +4628,8 @@ fi
 echo " Send alarms to ${ALARM_EMAIL_ADDRESSES[@]} ${ALARM_MOBILE_NUMBERS[@]}"
 echo " Send  notes to ${NOTE_EMAIL_ADDRESSES[@]} ${NOTE_MOBILE_NUMBERS[@]}"
 
+genCIProxyConf
+
 # MAIN LOOP
 while test $loop != $MAXITER -a -z "$INTERRUPTED" -a ! -e "$DATADIR/stop-os-hm"; do
 
@@ -5087,7 +5134,9 @@ fi
 if test -e "$DATADIR/stop-os-hm"; then echo "Found $DATADIR/stop-os-hm. Stopping."; fi
 sleep 1
 let loop+=1
+
 done
+# End main loop
 
 #if test -n "$LOGFILE"; then
 #  compress_and_upload "$LOGFILE"
