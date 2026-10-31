@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # Specify image names, JumpHost ideally has sfw2-snat
-# Options for the images: my openSUSE 15.2 (linux), Ubuntu 20.04 (ubuntu),
-#  openSUSE Leap 15.2 (opensuse), CentOS 8 (centos)
+# Options for the images: my openSUSE 15.6 (linux), Ubuntu 26.04 (ubuntu),
+#  openSUSE Leap 15.6 (opensuse), CentOS 8 (centos)
 # You can freely mix ...
-#export JHIMG="Ubuntu 22.04"
+#export JHIMG="Ubuntu 26.04"
 #export JHIMG="openSUSE 15.6"
 export JHIMG="Debian 12"
 #export ADDJHVOLSIZE=2
-#export IMG="Ubuntu 22.04"
+#export IMG="Ubuntu 26.04"
 #export IMG="openSUSE 15.6"
 export IMG="Debian 12"
 #export DEFLTUSER=ubuntu
@@ -35,28 +35,61 @@ export IMG="Debian 12"
 
 export EMAIL_PARAM=${EMAIL_PARAM:-"sender@domain.org"}
 
+# Notifications & Alarms (pass as list, arrays can't be exported)
+ALARM_EMAIL_ADDRESSES="scs@garloff.de"
+NOTE_EMAIL_ADDRESSES="scs@garloff.de"
+#ALARM_EMAIL_ADDRESSES="scs@garloff.de scs-monitoring@plusserver.com"
+#NOTE_EMAIL_ADDRESSES="scs@garloff.de"
+export ALARM_EMAIL_ADDRESSES NOTE_EMAIL_ADDRESSES
+
 # Terminate early on auth error
 openstack server list >/dev/null
 
+echo "Finding resources from previous runs to clean up ..."
+# Find Floating IPs
+FIPLIST=""
+FIPS=$(openstack floating ip list -f value -c ID)
+for fip in $FIPS; do
+	FIP=$(openstack floating ip show $fip | grep -o "APIMonitor_[0-9]*")
+	if test -n "$FIP"; then FIPLIST="${FIPLIST}${FIP}_
+"; fi
+done
+FIPLIST=$(echo "$FIPLIST" | grep -v '^$' | sort -u)
 # Cleanup previous interrupted runs
 SERVERS=$(openstack server  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+KEYPAIR=$(openstack keypair list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 VOLUMES=$(openstack volume  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 NETWORK=$(openstack network list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+LOADBAL=$(openstack loadbalancer list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 ROUTERS=$(openstack router  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 SECGRPS=$(openstack security group list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+SRVGRPS=$(openstack server group list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+if test -n "$SRVGRPS"; then AA=-A; else AA=""; fi
+echo CLEANUP: FIPs $FIPLIST Servers $SERVERS Keypairs $KEYPAIR Volumes $VOLUMES Networks $NETWORK LoadBalancers $LOADBAL Routers $ROUTERS SecGrps $SECGRPS SrvGrps $SRVGRPS
+for ENV in $FIPLIST; do
+  echo "******************************"
+  echo "CLEAN $ENV"
+  bash ./api_monitor.sh -o -T -q -c CLEANUP $ENV
+  echo "******************************"
+done
 TOCLEAN=$(echo "$SERVERS
+$KEYPAIR
 $VOLUMES
 $NETWORK
+$LOADBAL
 $ROUTERS
 $SECGRPS
-" | sort -u)
+$SRVGRPS
+" | grep -v '^$' | sort -u)
 for ENV in $TOCLEAN; do
   echo "******************************"
   echo "CLEAN $ENV"
-  bash ./api_monitor.sh -q -o -c CLEANUP $ENV
+  #bash ./api_monitor.sh -o -T -q -LL -c CLEANUP $ENV
+  bash ./api_monitor.sh -o -q -LL $AA -c CLEANUP $ENV
   echo "******************************"
 done
 
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
-exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -LL -b -B -T -e recipient@domain.org "$@"
+#exec ./api_monitor.sh -O -C -D -N 2 -n 8 -A -s -LL -b -B -T -e recipient@domain.org "$@"
+exec ./api_monitor.sh -O -C -D -N 2 -n 8 -A -s -LO -b -B -M -a 2 -t -T -R -X -S $OS_CLOUD "$@"
 

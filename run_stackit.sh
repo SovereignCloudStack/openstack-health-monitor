@@ -4,11 +4,11 @@
 # Options for the images: my openSUSE 15.2 (linux), Ubuntu 20.04 (ubuntu),
 #  openSUSE Leap 15.2 (opensuse), CentOS 8 (centos)
 # You can freely mix ...
-export JHIMG="Ubuntu 22.04"
-#export JHIMG="openSUSE 15.2"
+export JHIMG="Ubuntu 24.04"
+#export JHIMG="openSUSE 15.6"
 export ADDJHVOLSIZE=5
-export IMG="Ubuntu 22.04"
-#export IMG="openSUSE 15.2"
+export IMG="Ubuntu 24.04"
+#export IMG="openSUSE 15.6"
 export ADDVOLSIZE=10
 #export IMG="CentOS 8"
 # DEFLTUSER from image_original_user property
@@ -72,7 +72,9 @@ NETWORK=$(openstack network list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 LOADBAL=$(openstack loadbalancer list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 ROUTERS=$(openstack router  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 SECGRPS=$(openstack security group list | grep -o "APIMonitor_[0-9]*_" | sort -u)
-echo CLEANUP: FIPs $FIPLIST Servers $SERVERS Keypair $KEYPAIR Volumes $VOLUMES Networks $NETWORK LoadBalancers $LOADBAL Routers $ROUTERS SecGrps $SECGRPS
+SRVGRPS=$(openstack server group list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+if test -n "$SRVGRPS"; then AA=-A; else AA=""; fi
+echo CLEANUP: FIPs $FIPLIST Servers $SERVERS Keypair $KEYPAIR Volumes $VOLUMES Networks $NETWORK LoadBalancers $LOADBAL Routers $ROUTERS SecGrps $SECGRPS SrvGrps $SRVGRPS
 for ENV in $FIPLIST; do
   echo "******************************"
   echo "CLEAN $ENV"
@@ -87,17 +89,18 @@ $NETWORK
 $LOADBAL
 $ROUTERS
 $SECGRPS
+$SRVGRPS
 " | grep -v '^$' | sort -u)
 for ENV in $TOCLEAN; do
   echo "******************************"
   echo "CLEAN $ENV"
-  bash ./api_monitor.sh -o -q -c CLEANUP $ENV
+  bash ./api_monitor.sh -o -q $AA -c CLEANUP $ENV
   echo "******************************"
 done
 
 #bash ./api_monitor.sh -c -x -d -n 8 -l last.log -e $EMAIL_PARAM -S -i 9
 #exec api_monitor.sh -o -C -D -N 2 -n 8 -s -e sender@domain.org "$@"
 #exec ./api_monitor.sh -O -C -D -N 2 -n 8 -s -L -b -B -a 2 -T -R -X "$@"
-exec ./api_monitor.sh -O -C -D -n 8 -s -b -B -a 2 -z 5 -T -R -X -S stackit "$@"
+exec ./api_monitor.sh -O -C -D -n 8 -A -s -b -B -a 2 -z 5 -T -R -X -S stackit "$@"
 #exec ./api_monitor.sh -o -C -D -N 2 -n 8 -s -L -b -B -a 2 -T -R -X "$@"
 

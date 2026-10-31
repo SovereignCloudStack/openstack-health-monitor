@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.121
+VERSION=1.122
 
 APIMON_ARGS="$@"
 # debugging
@@ -4172,8 +4172,10 @@ cleanup()
   deleteVMs
   SRVGRP=$(findres ${RPRE}SrvGrp nova server-group-list)
   if test -n "$SRVGRP"; then
+    OLDAA="$ANTIAFFINITY"
     ANTIAFFINITY=1
     deleteSrvGrpAnti
+    ANTIAFFINITY="$OLDAA"
   fi
   LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
     if test -n "$LBAASS"; then

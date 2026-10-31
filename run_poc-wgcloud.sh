@@ -26,7 +26,9 @@ VOLUMES=$(openstack volume  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 NETWORK=$(openstack network list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 ROUTERS=$(openstack router  list | grep -o "APIMonitor_[0-9]*_" | sort -u)
 SECGRPS=$(openstack security group list | grep -o "APIMonitor_[0-9]*_" | sort -u)
-echo CLEANUP: FIPs $FIPLIST Servers $SERVERS Keypairs $KEYPAIR Volumes $VOLUMES Networks $NETWORK LoadBalancers $LOADBAL Routers $ROUTERS SecGrps $SECGRPS
+SRVGRPS=$(openstack server group list | grep -o "APIMonitor_[0-9]*_" | sort -u)
+if test -n "$SRVGRPS"; then AA=-A; else AA=""; fi
+echo CLEANUP: FIPs $FIPLIST Servers $SERVERS Keypairs $KEYPAIR Volumes $VOLUMES Networks $NETWORK LoadBalancers $LOADBAL Routers $ROUTERS SecGrps $SECGRPS SrvGrps $SRVGRP
 for ENV in $FIPLIST; do
   echo "******************************"
   echo "CLEAN $ENV"
@@ -39,12 +41,13 @@ $VOLUMES
 $NETWORK
 $ROUTERS
 $SECGRPS
+$SRVGRPS
 " | grep -v '^$' | sort -u)
 for ENV in $TOCLEAN; do
   echo "******************************"
   echo "CLEAN $ENV"
-  bash ./api_monitor.sh -o -q -c CLEANUP $ENV
+  bash ./api_monitor.sh -o -q $AA -c CLEANUP $ENV
   echo "******************************"
 done
 
-exec ./api_monitor.sh -O -C -D -n 2 -s -b -B -M -T -X -S poc-wgcloud "$@"
+exec ./api_monitor.sh -O -C -D -n 2 -A -s -b -B -M -T -X -S poc-wgcloud "$@"
