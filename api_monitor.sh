@@ -99,7 +99,7 @@
 # ./api_monitor.sh -n 8 -d -P -s -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMon-Notes -m urn:smn:eu-de:0ee085d22f6a413293a2c37aaa1f96fe:APIMonitor -i 100
 # (SMN is OTC specific notification service that supports sending SMS.)
 
-VERSION=1.122
+VERSION=1.123
 
 APIMON_ARGS="$@"
 # debugging
@@ -816,7 +816,7 @@ OSTACKCMD=""; EP=""
 translate()
 {
   local no DEFCMD=""
-  unset MYTAG
+  unset MYTAG CMD
   ORIGCMD="$1"
   CMDS=(nova cinder neutron glance octavia swift designate heat barbican manila aodh gnocchi magnum senlin ironic)
   OSTDEFS=(server volume network image loadbalancer object zone stack secret share alarm "metric resource" "coe cluster" cluster "baremetal node")
@@ -927,7 +927,7 @@ translate()
     #if test "$C1" == "keypair" -a "$CMD" == "create"; then
     #  OSTACKCMD=(openstack $C1 $CMD $MYTAG "${@//--property-filter/--property}")
     #fi
-    if test "$C1" == "server group" -a CMD=="create"; then
+    if test "$C1" == "server group" -a "$CMD" == "create"; then
       ARGS=$(echo "$@" | sed -e 's@\([^ ]*\) \([^ ]*\)$@\1 --policy \2@')
       OSTACKCMD=($OPST $C1 $CMD ${ARGS})
     elif test "$C1" == "subnet" -a "$CMD" == "create"; then
@@ -2974,10 +2974,13 @@ createSrvGrpAnti()
 
 deleteSrvGrpAnti()
 {
-  if test -z "$ANTIAFFINITY"; then return 0; fi
+  #if test -z "$ANTIAFFINITY"; then return 0; fi
+  if test -z "$SRVGRPID"; then return 0; fi
   echo -n "Del VM Soft-Anti-Affinity SrvGrp: "
-  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova server-group-delete ${RPRE}SrvGrp || return 1
+  #ostackcmd_tm NOVASTATS $NOVATIMEOUT nova server-group-delete ${RPRE}SrvGrp || return 1
+  ostackcmd_tm NOVASTATS $NOVATIMEOUT nova server-group-delete $SRVGRPID || return 1
   echo $SRVGRPID
+  unset SRVGRPID
 }
 
 # Create many VMs with one API call (option -D)
@@ -4068,6 +4071,9 @@ findres()
     sleep 2
     ${OSTACKCMD[@]} 2>/dev/null | grep " $FILT" | sed 's/^| \([0-9a-f-]*\) .*$/\1/'
   fi
+  RC=$?
+  if test -n "$LOGFILE"; then echo "# findres ${OSTACKCMD[@]} | grep $FILT -> $RC" >> $LOGFILE; fi
+  return $RC
 }
 
 collectRes()
@@ -4127,7 +4133,6 @@ collectRes()
     if echo "$OSTACKRESP" | grep -e 'properties' | grep "deployment='cfbatch'" >/dev/null 2>&1; then BOOTALLATONCE=1; fi
   fi
   SRVGRPID=$(findres ${RPRE}SrvGrp nova server-group-list)
-  if test -n "$SRVGRPID"; then ANTIAFFINITY=1; fi
 }
 
 cleanup_new()
@@ -4170,13 +4175,8 @@ cleanup()
   # See cleanup_new (will switch after some extra testing)
   VMS=( $(findres ${RPRE}VM_VM nova list) )
   deleteVMs
-  SRVGRP=$(findres ${RPRE}SrvGrp nova server-group-list)
-  if test -n "$SRVGRP"; then
-    OLDAA="$ANTIAFFINITY"
-    ANTIAFFINITY=1
-    deleteSrvGrpAnti
-    ANTIAFFINITY="$OLDAA"
-  fi
+  SRVGRPID=$(findres ${RPRE}SrvGrp nova server-group-list)
+  deleteSrvGrpAnti
   LBAASS=( $(findres ${RPRE}LB neutron lbaas-loadbalancer-list) )
     if test -n "$LBAASS"; then
     POOLS=( $(findres ${RPRE}Pool neutron lbaas-pool-list) )
